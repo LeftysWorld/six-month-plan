@@ -13,5 +13,8 @@
     "preview": "npm run preview --workspace @six/web",
     "test": "npm run test --workspace @six/core",
     "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
