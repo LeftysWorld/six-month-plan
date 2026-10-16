@@ -1,0 +1,17 @@
+{
+  "name": "six-month-plan",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @six/web",
+    "build": "npm run build --workspace @six/web",
+    "preview": "npm run preview --workspace @six/web",
+    "test": "npm run test --workspace @six/core",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

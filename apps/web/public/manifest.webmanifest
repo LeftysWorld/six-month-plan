@@ -1,0 +1,12 @@
+{
+  "name": "Six Months",
+  "short_name": "Six Months",
+  "description": "Your six-month plan, one day at a time.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F5F2",
+  "theme_color": "#F4F5F2",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

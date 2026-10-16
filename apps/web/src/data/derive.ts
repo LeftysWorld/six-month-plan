@@ -1,0 +1,293 @@
+import { useMemo } from 'react';
+import {
+  addDays,
+  blockIndex,
+  blockRange,
+  currentTargets,
+  daysSince,
+  goalsOnPace,
+  isActivePlan,
+  milestoneProgress,
+  missingSessionsForWeek,
+  numberGoalStatus,
+  progressFor,
+  quarterRange,
+  scheduleOn,
+  weekStart,
+  type Action,
+  type ActionSchedule,
+  type DateRange,
+  type Goal,
+  type ISODate,
+  type Measurement,
+  type MeasurementType,
+  type NumberGoalStatus,
+  type PaceLabel,
+  type PathPoint,
+  type Plan,
+  type Progress,
+  type Session,
+} from '@six/core';
+import type { AppData } from './model.ts';
+import { useStore } from './store.tsx';
+
+export interface GoalPace {
+  goal: Goal;
+  label: PaceLabel;
+  /** Short summary for cards, e.g. "12 of 13 expected" or "207.5 vs 209 path". */
+  summary: string;
+  progress: Progress | null;
+  number: NumberGoalStatus | null;
+}
+
+export interface Horizon {
+  key: 'today' | 'week' | 'block' | 'quarter' | 'plan';
+  name: string;
+  detail: string;
+  progress: Progress;
+}
+
+/** All derived views for one moment in time. */
+export class View {
+  constructor(
+    readonly data: AppData,
+    readonly today: ISODate,
+    readonly dayFraction: number,
+  ) {}
+
+  get activePlans(): Plan[] {
+    return this.data.plans
+      .filter((p) => isActivePlan(p, this.today))
+      .sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+  }
+
+  /** The plan Home focuses on: the earliest active one, else the next upcoming one. */
+  get mainPlan(): Plan | null {
+    const active = this.activePlans[0];
+    if (active) return active;
+    return (
+      this.data.plans
+        .filter((p) => !p.archived_at && p.start_date > this.today)
+        .sort((a, b) => (a.start_date < b.start_date ? -1 : 1))[0] ?? null
+    );
+  }
+
+  plan(id: string): Plan | undefined {
+    return this.data.plans.find((p) => p.id === id);
+  }
+
+  goal(id: string): Goal | undefined {
+    return this.data.goals.find((g) => g.id === id);
+  }
+
+  action(id: string | null): Action | undefined {
+    return id ? this.data.actions.find((a) => a.id === id) : undefined;
+  }
+
+  goalsForPlan(planId: string, includeArchived = false): Goal[] {
+    const ids = new Set(this.data.planGoals.filter((pg) => pg.plan_id === planId).map((pg) => pg.goal_id));
+    return this.data.goals.filter((g) => ids.has(g.id) && (includeArchived || !g.archived_at));
+  }
+
+  plansForGoal(goalId: string): Plan[] {
+    const ids = new Set(this.data.planGoals.filter((pg) => pg.goal_id === goalId).map((pg) => pg.plan_id));
+    return this.data.plans.filter((p) => ids.has(p.id));
+  }
+
+  actionsForGoal(goalId: string, includeArchived = false): Action[] {
+    const ids = new Set(this.data.actionGoals.filter((ag) => ag.goal_id === goalId).map((ag) => ag.action_id));
+    return this.data.actions.filter((a) => ids.has(a.id) && (includeArchived || !a.archived_at));
+  }
+
+  goalsForAction(actionId: string | null): Goal[] {
+    if (!actionId) return [];
+    const ids = new Set(this.data.actionGoals.filter((ag) => ag.action_id === actionId).map((ag) => ag.goal_id));
+    return this.data.goals.filter((g) => ids.has(g.id));
+  }
+
+  /** First goal colour for a session (one-offs get a neutral grey). */
+  colorFor(session: Session): string {
+    return this.goalsForAction(session.action_id)[0]?.color ?? '#9AA49E';
+  }
+
+  scheduleFor(actionId: string, date: ISODate = this.today): ActionSchedule | null {
+    return scheduleOn(this.data.schedules, actionId, date);
+  }
+
+  sessionsOn(date: ISODate): Session[] {
+    return this.data.sessions.filter((s) => s.date === date && s.status !== 'moved');
+  }
+
+  sessionsInWeek(monday: ISODate): Session[] {
+    return this.data.sessions.filter(
+      (s) => s.status !== 'moved' && (s.date ? weekStart(s.date) === monday : s.week_start === monday),
+    );
+  }
+
+  unplacedThisWeek(): Session[] {
+    const monday = weekStart(this.today);
+    return this.data.sessions.filter((s) => !s.date && s.week_start === monday && s.status === 'planned');
+  }
+
+  sessionsForGoal(goalId: string): Session[] {
+    const actionIds = new Set(this.data.actionGoals.filter((ag) => ag.goal_id === goalId).map((ag) => ag.action_id));
+    return this.data.sessions.filter((s) => s.action_id && actionIds.has(s.action_id));
+  }
+
+  measurementsFor(typeId: string | null): Measurement[] {
+    if (!typeId) return [];
+    return this.data.measurements
+      .filter((m) => m.type_id === typeId)
+      .sort((a, b) => (a.measured_on < b.measured_on ? -1 : 1));
+  }
+
+  measurementTypesForGoal(goalId: string): MeasurementType[] {
+    return this.data.measurementTypes.filter((t) => !t.archived_at && (t.goal_id === goalId));
+  }
+
+  /** Measurement types due for a reading on or before `date`. */
+  measurementsDue(date: ISODate = this.today): MeasurementType[] {
+    return this.data.measurementTypes.filter((t) => {
+      if (t.archived_at) return false;
+      const last = this.measurementsFor(t.id).at(-1);
+      return !last || addDays(last.measured_on, t.cadence_days) <= addDays(date, 1);
+    });
+  }
+
+  pathFor(goal: Goal): PathPoint[] {
+    return currentTargets(this.data.goalTargets, goal.id).map((t) => ({ date: t.target_date, value: Number(t.target_value) }));
+  }
+
+  tooEarly(plan: Plan | null): boolean {
+    return !plan || addDays(plan.start_date, 7) > this.today;
+  }
+
+  /** Pace for one goal over a period (practice goals) or overall (number and finish goals). */
+  goalPace(goal: Goal, plan: Plan | null, range?: DateRange): GoalPace {
+    const early = this.tooEarly(plan);
+    const fallbackStart = plan?.start_date ?? this.today;
+    if (goal.type === 'number') {
+      const status = numberGoalStatus(goal, this.pathFor(goal), this.measurementsFor(goal.measurement_type_id), this.today, fallbackStart, early);
+      const summary =
+        status.trend == null
+          ? 'No readings yet'
+          : `${fmt(status.trend)} vs ${fmt(status.pathToday)} path`;
+      return { goal, label: status.label, summary, progress: null, number: status };
+    }
+    if (goal.type === 'finish') {
+      const ms = this.data.milestones.filter((m) => m.goal_id === goal.id);
+      const progress = milestoneProgress(ms, this.today, early);
+      return {
+        goal,
+        label: ms.length ? progress.label : 'none',
+        summary: ms.length ? `${progress.actual} of ${progress.planned} milestones` : 'No milestones yet',
+        progress,
+        number: null,
+      };
+    }
+    const period = range ?? { start: plan?.start_date ?? addDays(this.today, -28), end: this.today };
+    // Today's sessions don't count against pace until the day is over (done early still helps).
+    const progress = progressFor(this.sessionsForGoal(goal.id), period, { today: this.today, dayFraction: 0, tooEarly: early });
+    return {
+      goal,
+      label: progress.planned ? progress.label : 'none',
+      summary: progress.planned ? `${fmt(progress.actual)} of ${fmt(progress.expected)} expected` : 'No sessions yet',
+      progress,
+      number: null,
+    };
+  }
+
+  /**
+   * Sessions for a period, including weeks not generated yet (projected from the
+   * schedules, never saved), so a block's total reflects the whole block.
+   */
+  projectedSessions(range: DateRange, base: Session[] = this.data.sessions): Session[] {
+    const out = [...base];
+    const generated = new Set(this.data.sessions.filter((s) => s.origin === 'scheduled').map((s) => s.week_start));
+    for (let monday = weekStart(range.start); monday <= range.end; monday = addDays(monday, 7)) {
+      if (monday <= weekStart(this.today) || generated.has(monday)) continue;
+      let n = 0;
+      out.push(...missingSessionsForWeek(this.data.actions, this.data.schedules, [], monday, () => `projected-${monday}-${n++}`));
+    }
+    return out;
+  }
+
+  /** The five plan-vs-actual horizons for Home. */
+  horizons(plan: Plan): Horizon[] {
+    const opts = { today: this.today, dayFraction: this.dayFraction };
+    const early = this.tooEarly(plan);
+    const goals = this.goalsForPlan(plan.id);
+    const goalIds = new Set(goals.map((g) => g.id));
+    const actionIds = new Set(this.data.actionGoals.filter((ag) => goalIds.has(ag.goal_id)).map((ag) => ag.action_id));
+    const inPlan = (s: Session) => !s.action_id || actionIds.has(s.action_id);
+    const milestones = this.data.milestones.filter((m) => goalIds.has(m.goal_id));
+    const monday = weekStart(this.today);
+    const block = blockRange(plan, blockIndex(plan, this.today));
+    const quarter = quarterRange(plan, this.today);
+    const labels = goals.map((g) => this.goalPace(g, plan).label);
+    return [
+      {
+        key: 'today',
+        name: 'Today',
+        detail: 'tasks',
+        progress: progressFor(this.data.sessions, { start: this.today, end: this.today }, opts),
+      },
+      {
+        key: 'week',
+        name: 'Week',
+        detail: `${short(monday)}–${short(addDays(monday, 6))}`,
+        progress: progressFor(this.data.sessions, { start: monday, end: addDays(monday, 6) }, { ...opts, dayFraction: 0 }),
+      },
+      {
+        key: 'block',
+        name: 'Block',
+        detail: `${short(block.start)}–${short(block.end)}`,
+        progress: progressFor(this.projectedSessions(block).filter(inPlan), block, { ...opts, dayFraction: 0, tooEarly: early }, milestones),
+      },
+      {
+        key: 'quarter',
+        name: '3 months',
+        detail: `to ${short(quarter.end)}`,
+        progress: progressFor(this.projectedSessions(quarter).filter(inPlan), quarter, { ...opts, dayFraction: 0, tooEarly: early }, milestones),
+      },
+      {
+        key: 'plan',
+        name: '6 months',
+        detail: 'goals on pace',
+        progress: goalsOnPace(labels, early),
+      },
+    ];
+  }
+
+  /** Days since anything was last logged (null if nothing ever was). */
+  daysAway(): number | null {
+    const dates = [
+      ...this.data.sessions.filter((s) => s.logged_at).map((s) => s.logged_at!.slice(0, 10)),
+      ...this.data.measurements.map((m) => m.measured_on),
+    ];
+    return daysSince(dates, this.today);
+  }
+}
+
+export function useView(): View {
+  const { data, today, dayFraction } = useStore();
+  return useMemo(() => new View(data, today, dayFraction), [data, today, dayFraction]);
+}
+
+export function fmt(n: number | null | undefined, digits = 1): string {
+  if (n == null || Number.isNaN(n)) return '–';
+  const rounded = Math.round(n * 10 ** digits) / 10 ** digits;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(digits);
+}
+
+export function minutesText(min: number): string {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+function short(date: ISODate): string {
+  const [, m, d] = date.split('-').map(Number);
+  return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][(m ?? 1) - 1]} ${d}`;
+}
