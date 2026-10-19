@@ -138,5 +138,19 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       const saveError = toSaveError(error);
       if (saveError) throw saveError;
     },
+
+    async wipeAll(): Promise<void> {
+      // Children first so nothing is left pointing at a deleted row (the foreign keys cascade anyway).
+      const order = [
+        'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
+        'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
+        'plan_steps', 'plan_goals', 'goals', 'plans', 'measurement_types',
+      ];
+      for (const table of order) {
+        const { error } = await sb.from(table).delete().eq('user_id', userId);
+        // An older database without the breakdown table has nothing to delete there.
+        if (error && !(table === 'plan_steps' && isMissingBreakdown(error.message))) throw new Error(`${table}: ${error.message}`);
+      }
+    },
   };
 }

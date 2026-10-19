@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../data/store.tsx';
 import { opsProfile } from '../data/ops.ts';
 import { resetDemo } from '../data/local.ts';
-import { BackLink, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
+import { BackLink, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import type { ShellProps } from '../App.tsx';
 
 function download(name: string, content: string, type: string) {
@@ -27,11 +27,65 @@ function toCsv(rows: Record<string, unknown>[]): string {
 
 declare const __APP_VERSION__: string;
 
+/** Deletes every plan, goal, task, log and review after you type DELETE. Settings stay. */
+function StartOver({ onClose }: { onClose: () => void }) {
+  const { db, data } = useStore();
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const counts = [
+    [data.plans.length, 'plan'],
+    [data.goals.length, 'goal'],
+    [data.actions.length, 'task'],
+    [data.sessions.filter((s) => s.status !== 'planned').length, 'logged session'],
+    [data.measurements.length, 'measurement'],
+    [data.reviews.length, 'review'],
+  ] as const;
+  const summary = counts
+    .filter(([n]) => n > 0)
+    .map(([n, w]) => `${n} ${w}${n === 1 ? '' : 's'}`)
+    .join(', ');
+
+  async function wipe() {
+    setBusy(true);
+    setError(null);
+    try {
+      localStorage.removeItem('six.outbox.v1'); // drop any unsaved changes so they don't come back
+      await db.wipeAll();
+      window.location.hash = '#/';
+      window.location.reload();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet title="Start from scratch" onClose={busy ? () => {} : onClose}>
+      <p className="small" style={{ margin: 0 }}>
+        This permanently deletes {summary || 'everything you have added'}. Your name, time zone, units and daily hours stay.
+      </p>
+      <p className="small muted" style={{ margin: 0 }}>
+        Want a copy first? Close this and use Export everything.
+      </p>
+      <label className="field">
+        Type DELETE to confirm
+        <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoCapitalize="characters" />
+      </label>
+      {error && <div className="banner warn" role="alert">Couldn't delete everything: {error}</div>}
+      <button className="btn danger-solid" disabled={typed.trim().toUpperCase() !== 'DELETE' || busy} onClick={() => void wipe()}>
+        {busy ? 'Deleting…' : 'Delete all my data'}
+      </button>
+    </Sheet>
+  );
+}
+
 export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
   const { data, db, commit, today } = useStore();
   const toast = useToast();
   const p = data.profile;
   const [name, setName] = useState(p.display_name);
+  const [startOver, setStartOver] = useState(false);
   const zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [p.timezone];
 
   return (
@@ -160,6 +214,17 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
           </div>
         </>
       )}
+
+      <div className="section-label">Start from scratch</div>
+      <div className="card stack-sm">
+        <p className="small muted" style={{ margin: 0 }}>
+          Delete every plan, goal, task, log and review and start with a blank app.
+        </p>
+        <button className="btn danger" onClick={() => setStartOver(true)}>
+          Delete all my data…
+        </button>
+      </div>
+      {startOver && <StartOver onClose={() => setStartOver(false)} />}
 
       {onSignOut && (
         <button

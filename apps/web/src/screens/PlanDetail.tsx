@@ -139,10 +139,10 @@ function inRange(s: Session, start: ISODate, end: ISODate): boolean {
 function Hero({ eyebrow, title, children }: { eyebrow: string; title: string; children?: ReactNode }) {
   return (
     <div className="card dark stack-sm">
-      <span className="xsmall" style={{ color: '#9fb3aa', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 600 }}>
+      <span className="xsmall" style={{ color: 'var(--hero-faint)', fontWeight: 550 }}>
         {eyebrow}
       </span>
-      <h2 style={{ color: '#fff', fontSize: 22 }}>{title}</h2>
+      <h2 style={{ color: 'var(--hero-ink)', fontSize: 24, letterSpacing: '-0.03em' }}>{title}</h2>
       {children}
     </div>
   );
@@ -176,8 +176,8 @@ function SixMonthView({ plan, goals, refDate, view }: ViewProps) {
                 left: `${pos(b.start)}%`,
                 width: `calc(${pos(b.end) - pos(b.start)}% - 3px)`,
                 borderRadius: 6,
-                background: i < current ? '#3c7f74' : i === current ? '#5FC4B4' : '#2c3833',
-                color: i <= current ? '#0b1f1a' : '#9fb3aa',
+                background: i < current ? 'var(--hero-past)' : i === current ? 'var(--hero-accent)' : 'var(--hero-line)',
+                color: i <= current ? 'var(--hero-on-accent)' : 'var(--hero-faint)',
                 fontSize: 11,
                 fontWeight: 600,
                 display: 'flex',
@@ -188,18 +188,18 @@ function SixMonthView({ plan, goals, refDate, view }: ViewProps) {
               B{i + 1}
             </div>
           ))}
-          <div style={{ position: 'absolute', left: `calc(${pos(checkpoint)}% - 5px)`, top: 31, width: 10, height: 10, transform: 'rotate(45deg)', background: '#E9B45A', border: '2px solid #17201C' }} title="3-month checkpoint" />
-          <div style={{ position: 'absolute', left: `calc(${pos(refDate)}% - 1px)`, top: 4, height: 42, width: 2, background: '#fff' }} />
-          <span style={{ position: 'absolute', left: `${pos(refDate)}%`, top: -8, transform: 'translateX(-50%)', fontSize: 10, color: '#fff', fontWeight: 600 }}>Today</span>
+          <div style={{ position: 'absolute', left: `calc(${pos(checkpoint)}% - 5px)`, top: 31, width: 10, height: 10, transform: 'rotate(45deg)', background: 'var(--gold)', border: '2px solid var(--hero-bg)' }} title="3-month checkpoint" />
+          <div style={{ position: 'absolute', left: `calc(${pos(refDate)}% - 1px)`, top: 4, height: 42, width: 2, background: 'var(--hero-ink)' }} />
+          <span style={{ position: 'absolute', left: `${pos(refDate)}%`, top: -8, transform: 'translateX(-50%)', fontSize: 10, color: 'var(--hero-ink)', fontWeight: 600 }}>Today</span>
           {months.map((m) => (
-            <span key={m.date} style={{ position: 'absolute', left: `${pos(m.date)}%`, top: 42, fontSize: 10, color: '#9fb3aa', transform: 'translateX(-50%)' }}>
+            <span key={m.date} style={{ position: 'absolute', left: `${pos(m.date)}%`, top: 42, fontSize: 10, color: 'var(--hero-faint)', transform: 'translateX(-50%)' }}>
               {m.label}
             </span>
           ))}
         </div>
-        <div className="row-start xsmall" style={{ color: '#c9d2cd', gap: 14 }}>
+        <div className="row-start xsmall" style={{ color: 'var(--hero-muted)', gap: 14 }}>
           <span className="row-start" style={{ gap: 5 }}>
-            <span style={{ width: 9, height: 9, transform: 'rotate(45deg)', background: '#E9B45A', display: 'inline-block' }} /> 3-month checkpoint {shortDate(checkpoint)}
+            <span style={{ width: 9, height: 9, transform: 'rotate(45deg)', background: 'var(--gold)', display: 'inline-block' }} /> 3-month checkpoint {shortDate(checkpoint)}
           </span>
           <span>Block {current + 1} of {blocks.length} now</span>
         </div>
@@ -294,7 +294,7 @@ function RoadmapLane({
                 height: m.diamond ? 10 : 12,
                 borderRadius: m.diamond ? 2 : '50%',
                 transform: m.diamond ? 'rotate(45deg)' : undefined,
-                background: m.filled ? goal.color : '#fff',
+                background: m.filled ? goal.color : 'var(--surface)',
                 border: `2px solid ${goal.color}`,
               }}
             />
@@ -354,13 +354,13 @@ function QuarterView({ plan, goals, refDate, view }: ViewProps) {
       <Hero eyebrow="3-month checkpoint" title={`${shortDate(q.end)} · ${weeksLeft} week${weeksLeft === 1 ? '' : 's'} to go`}>
         <div className="row-start" style={{ gap: 16, flexWrap: 'nowrap' }}>
           <svg width="76" height="76" viewBox="0 0 76 76" role="img" aria-label={`${Math.round(pct * 100)}% of this 3-month stretch gone`}>
-            <circle cx="38" cy="38" r="30" fill="none" stroke="#2c3833" strokeWidth="8" />
-            <circle cx="38" cy="38" r="30" fill="none" stroke="#E9B45A" strokeWidth="8" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - pct)} transform="rotate(-90 38 38)" />
-            <text x="38" y="43" textAnchor="middle" fontFamily="Space Grotesk" fontSize="16" fontWeight="600" fill="#fff">
+            <circle cx="38" cy="38" r="30" fill="none" style={{ stroke: 'var(--hero-line)' }} strokeWidth="8" />
+            <circle cx="38" cy="38" r="30" fill="none" style={{ stroke: 'var(--gold)' }} strokeWidth="8" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - pct)} transform="rotate(-90 38 38)" />
+            <text x="38" y="43" textAnchor="middle" fontSize="16" fontWeight="600" style={{ fill: 'var(--hero-ink)', fontFamily: 'var(--display)' }}>
               {Math.round(pct * 100)}%
             </text>
           </svg>
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.45, color: '#dce3df' }}>
+          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.45, color: 'var(--hero-muted)' }}>
             {shortDate(q.start)} to {shortDate(q.end)}. Day {elapsed} of {totalDays}. Below is what each goal needs to look like by the checkpoint.
           </p>
         </div>
@@ -499,7 +499,7 @@ function BlockView({ plan, goals, refDate, view }: ViewProps) {
   return (
     <>
       <Hero eyebrow={`Block ${idx + 1} of ${blockCount(plan)}`} title={`${shortDate(b.start)} – ${shortDate(b.end)} · ${daysLeft} days left`}>
-        <div className="row-between small" style={{ color: '#dce3df' }}>
+        <div className="row-between small" style={{ color: 'var(--hero-muted)' }}>
           <span>
             {fmt(horizon.progress.actual)} of {horizon.progress.planned} actions done
           </span>
@@ -655,19 +655,19 @@ function WeekView({ plan, refDate, view }: { plan: Plan; refDate: ISODate; view:
   return (
     <>
       <Hero eyebrow={offset === 0 ? 'This week' : offset < 0 ? `${-offset} week${offset === -1 ? '' : 's'} ago` : `In ${offset} week${offset === 1 ? '' : 's'}`} title={`${shortDate(monday)} – ${shortDate(addDays(monday, 6))}`}>
-        <div className="small" style={{ color: '#dce3df' }}>
+        <div className="small" style={{ color: 'var(--hero-muted)' }}>
           {fmt(done)} of {all.length + tray.length} done · {minutesText(plannedMin)} planned of {minutesText(availableTotal)} available
         </div>
         <div className="btn-row" style={{ marginTop: 4 }}>
-          <button className="btn small" disabled={!canBack} onClick={() => setOffset(offset - 1)} style={{ background: '#2c3833', color: '#fff', borderColor: '#2c3833' }}>
+          <button className="btn small" disabled={!canBack} onClick={() => setOffset(offset - 1)} style={{ background: 'var(--hero-line)', color: 'var(--hero-ink)' }}>
             ‹ Previous week
           </button>
           {offset !== 0 && (
-            <button className="btn small" onClick={() => setOffset(0)} style={{ background: '#2c3833', color: '#fff', borderColor: '#2c3833' }}>
+            <button className="btn small" onClick={() => setOffset(0)} style={{ background: 'var(--hero-line)', color: 'var(--hero-ink)' }}>
               This week
             </button>
           )}
-          <button className="btn small" disabled={!canForward} onClick={() => setOffset(offset + 1)} style={{ background: '#2c3833', color: '#fff', borderColor: '#2c3833' }}>
+          <button className="btn small" disabled={!canForward} onClick={() => setOffset(offset + 1)} style={{ background: 'var(--hero-line)', color: 'var(--hero-ink)' }}>
             Next week ›
           </button>
         </div>
@@ -747,11 +747,11 @@ function chipStyle(status: Session['status'], color: string): CSSProperties {
       return { background: `${color}1f`, border: `1px solid ${color}55`, color: 'var(--ink)' };
     case 'minimum':
     case 'partial':
-      return { background: 'var(--amber-soft)', border: '1px solid #e9c98f', color: 'var(--amber-ink)' };
+      return { background: 'var(--amber-soft)', border: '1px solid var(--amber-line)', color: 'var(--amber-ink)' };
     case 'skipped':
       return { background: 'var(--line-2)', border: '1px solid var(--line)', color: 'var(--muted)', textDecoration: 'line-through' };
     default:
-      return { background: '#fff', border: `1.5px dashed ${color}`, color: 'var(--ink)' };
+      return { background: 'var(--surface)', border: `1.5px dashed ${color}`, color: 'var(--ink)' };
   }
 }
 
@@ -785,12 +785,12 @@ function SessionChip({ session, color, onClick }: { session: Session; color: str
 function LegendChip({ cls, text }: { cls: 'done' | 'min' | 'skip' | 'plan'; text: string }) {
   const style =
     cls === 'done'
-      ? chipStyle('done', '#0E6B61')
+      ? chipStyle('done', 'var(--accent)')
       : cls === 'min'
-        ? chipStyle('minimum', '#0E6B61')
+        ? chipStyle('minimum', 'var(--accent)')
         : cls === 'skip'
-          ? chipStyle('skipped', '#0E6B61')
-          : chipStyle('planned', '#0E6B61');
+          ? chipStyle('skipped', 'var(--accent)')
+          : chipStyle('planned', 'var(--accent)');
   return (
     <span className="row-start" style={{ gap: 4, flexWrap: 'nowrap' }}>
       <span style={{ ...style, width: 14, height: 10, borderRadius: 5, display: 'inline-block', textDecoration: 'none' }} />

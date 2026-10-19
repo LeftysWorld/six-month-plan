@@ -88,8 +88,8 @@ export function WeightChart({ start, path, readings, range, today, unit, color =
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={description} style={{ display: 'block', maxWidth: 520, margin: '0 auto' }}>
       {ticks.map((t, i) => (
         <g key={i}>
-          <line x1={LEFT} x2={RIGHT} y1={y(t)} y2={y(t)} stroke={i === 2 ? '#E2E5DF' : '#EEF0EC'} />
-          <text x={0} y={y(t) + 3} fontSize="10" fill="#55605A">
+          <line x1={LEFT} x2={RIGHT} y1={y(t)} y2={y(t)} style={{ stroke: i === 2 ? 'var(--line)' : 'var(--line-2)' }} />
+          <text x={0} y={y(t) + 3} fontSize="10" style={{ fill: 'var(--muted)' }}>
             {fmt(t, 0)}
           </text>
         </g>
@@ -99,13 +99,13 @@ export function WeightChart({ start, path, readings, range, today, unit, color =
         .filter((m) => m.date >= range.start && m.date <= range.end)
         .map((m) => (
           <g key={m.date}>
-            <circle cx={x(m.date)} cy={y(planAt(m.date))} r="5" fill="#fff" stroke={color} strokeWidth="2" />
+            <circle cx={x(m.date)} cy={y(planAt(m.date))} r="5" style={{ fill: 'var(--surface)' }} stroke={color} strokeWidth="2" />
             <text
               x={x(m.date) > RIGHT - 70 ? x(m.date) - 6 : x(m.date) + 7}
               y={y(planAt(m.date)) - 7}
               fontSize="10"
               fontWeight="600"
-              fill="#244F86"
+              style={{ fill: 'var(--blue-ink)' }}
               textAnchor={x(m.date) > RIGHT - 70 ? 'end' : 'start'}
             >
               {m.label}
@@ -122,15 +122,15 @@ export function WeightChart({ start, path, readings, range, today, unit, color =
       )}
       {todayInRange && (
         <>
-          <line x1={x(today)} x2={x(today)} y1={6} y2={BOTTOM + 4} stroke="#17201C" strokeDasharray="2 3" />
-          <text x={x(today) + (x(today) > RIGHT - 40 ? -4 : 4)} y={11} fontSize="10" fontWeight="600" fill="#17201C" textAnchor={x(today) > RIGHT - 40 ? 'end' : 'start'}>
+          <line x1={x(today)} x2={x(today)} y1={6} y2={BOTTOM + 4} style={{ stroke: 'var(--ink)' }} strokeDasharray="2 3" />
+          <text x={x(today) + (x(today) > RIGHT - 40 ? -4 : 4)} y={11} fontSize="10" fontWeight="600" style={{ fill: 'var(--ink)' }} textAnchor={x(today) > RIGHT - 40 ? 'end' : 'start'}>
             Today
           </text>
         </>
       )}
-      {latest && <circle cx={x(latest.measured_on)} cy={y(Number(latest.value))} r="5" fill={color} stroke="#fff" strokeWidth="2" />}
+      {latest && <circle cx={x(latest.measured_on)} cy={y(Number(latest.value))} r="5" fill={color} style={{ stroke: 'var(--surface)' }} strokeWidth="2" />}
       {months.map((m) => (
-        <text key={m.date} x={Math.min(x(m.date), RIGHT - 14)} y={H - 6} fontSize="10" fill="#55605A" textAnchor="middle">
+        <text key={m.date} x={Math.min(x(m.date), RIGHT - 14)} y={H - 6} fontSize="10" style={{ fill: 'var(--muted)' }} textAnchor="middle">
           {m.label}
         </text>
       ))}

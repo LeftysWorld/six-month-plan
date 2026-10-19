@@ -36,6 +36,10 @@ export function createLocalDb(): Db {
       const current = read() ?? emptyData();
       write(applyOp(current, op));
     },
+    async wipeAll(): Promise<void> {
+      const current = read() ?? emptyData();
+      write({ ...emptyData(), profile: current.profile });
+    },
   };
 }
 

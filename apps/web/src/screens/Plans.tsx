@@ -95,8 +95,8 @@ export function Plans() {
                   top: i * 18,
                   height: 14,
                   borderRadius: 7,
-                  background: p.start_date <= today ? 'var(--accent)' : '#fff',
-                  border: p.start_date <= today ? 0 : '2px dashed #6A4AA0',
+                  background: p.start_date <= today ? 'var(--accent)' : 'var(--surface)',
+                  border: p.start_date <= today ? 0 : '2px dashed var(--violet-ink)',
                 }}
               />
             ))}
@@ -155,8 +155,8 @@ function PlanCard({ plan }: { plan: Plan }) {
           </div>
         </div>
         <svg width="46" height="46" viewBox="0 0 46 46" role="img" aria-label={`${Math.round(elapsed * 100)}% of plan time used`}>
-          <circle cx="23" cy="23" r="19" fill="none" stroke="#E2E5DF" strokeWidth="5" />
-          <circle cx="23" cy="23" r="19" fill="none" stroke="#0E6B61" strokeWidth="5" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - elapsed)} transform="rotate(-90 23 23)" />
+          <circle cx="23" cy="23" r="19" fill="none" style={{ stroke: 'var(--track)' }} strokeWidth="5" />
+          <circle cx="23" cy="23" r="19" fill="none" style={{ stroke: 'var(--accent)' }} strokeWidth="5" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - elapsed)} transform="rotate(-90 23 23)" />
         </svg>
       </div>
       <div className="chips">

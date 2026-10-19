@@ -61,7 +61,7 @@ function FirstPlan() {
   return (
     <>
       <div className="card dark stack-sm">
-        <h2 style={{ color: '#fff' }}>Start with one plan and one goal.</h2>
+        <h2 style={{ color: 'var(--hero-ink)' }}>Start with one plan and one goal.</h2>
         <p className="muted small" style={{ margin: 0 }}>
           Six months from today, what do you want to be true? Add one goal now; add the rest over your first week.
         </p>
@@ -118,14 +118,14 @@ function Dashboard({ plan, view }: { plan: Plan; view: View }) {
       <div className="card dark stack">
         <div className="row-start" style={{ gap: 10 }}>
           <span className={`status-dot ${status.behind ? 'behind' : ''}`} />
-          <h2 style={{ color: '#fff', fontSize: 19 }}>{status.title}</h2>
+          <h2 style={{ color: 'var(--hero-ink)', fontSize: 20 }}>{status.title}</h2>
           {!early && judged.length > 0 && (
             <span className="xsmall muted" style={{ marginLeft: 'auto' }}>
               {onPace.length} of {judged.length} horizons
             </span>
           )}
         </div>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.45, color: '#dce3df' }}>{status.sentence}</p>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.45, color: 'var(--hero-muted)' }}>{status.sentence}</p>
         <a className="up-next" href={href('/today')}>
           <span className="small">
             {next ? (
@@ -245,9 +245,13 @@ function WeightCard({ goal, plan, view }: { goal: Goal; plan: Plan; view: View }
   return (
     <div className="card stack-sm">
       <div className="row-between">
-        <div className="row-start" style={{ gap: 7, flexWrap: 'nowrap' }}>
+        <div className="row-start" style={{ gap: 7, flexWrap: 'nowrap', minWidth: 0 }}>
           <span className="dot" style={{ background: goal.color }} />
-          <a className="label" href={href(`/goals/${goal.id}`)} style={{ color: 'var(--ink)', textDecoration: 'none', minHeight: 36, display: 'flex', alignItems: 'center' }}>
+          <a
+            className="label"
+            href={href(`/goals/${goal.id}`)}
+            style={{ color: 'var(--ink)', textDecoration: 'none', minHeight: 36, display: 'block', lineHeight: '36px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+          >
             {goal.title} · path ›
           </a>
         </div>

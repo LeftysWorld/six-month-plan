@@ -4,8 +4,8 @@
   "description": "Your six-month plan, one day at a time.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F4F5F2",
-  "theme_color": "#F4F5F2",
+  "background_color": "#F6F6F3",
+  "theme_color": "#F6F6F3",
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]

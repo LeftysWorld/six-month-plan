@@ -32,7 +32,7 @@ export function ReviewHub() {
     ? [
         { tag: 'B', kind: 'block', title: `Block ${blockIndex(plan, today) + 1} review`, date: blockRange(plan, blockIndex(plan, today)).end, detail: 'Milestones, block targets, set the next block · ~25 min', color: 'var(--accent-soft)', ink: 'var(--accent-ink)' },
         { tag: '3M', kind: 'quarter', title: '3-month checkpoint', date: quarterRange(plan, today).end, detail: 'Does each goal still make sense? · ~40 min', color: 'var(--blue-soft)', ink: 'var(--blue-ink)' },
-        { tag: '6M', kind: 'retro', title: 'Plan retrospective', date: plan.end_date, detail: 'What worked, what carries into the next plan', color: '#F2ECD6', ink: '#5E4C10' },
+        { tag: '6M', kind: 'retro', title: 'Plan retrospective', date: plan.end_date, detail: 'What worked, what carries into the next plan', color: 'var(--gold-soft)', ink: 'var(--gold-ink)' },
       ].filter((u) => u.date >= today)
     : [];
 
@@ -41,12 +41,12 @@ export function ReviewHub() {
       <h1 style={{ fontSize: 34 }}>Review</h1>
       <div className="card dark stack">
         <div className="row-between" style={{ alignItems: 'baseline' }}>
-          <h2 style={{ color: '#fff' }}>{weekLabel}</h2>
+          <h2 style={{ color: 'var(--hero-ink)' }}>{weekLabel}</h2>
           <span className="xsmall muted">
             {target.done ? 'Done' : target.overdue ? 'Still open' : 'Due Sunday'} · ~15 min
           </span>
         </div>
-        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: '#dce3df' }}>
+        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: 'var(--hero-muted)' }}>
           {target.done
             ? 'This week is reviewed. The next one opens on Saturday.'
             : `${shortDate(target.monday)} – ${shortDate(addDays(target.monday, 6))}. ${
@@ -54,7 +54,7 @@ export function ReviewHub() {
               }You'll look back, reflect, adjust and plan the next week.`}
         </p>
         {!target.done && (
-          <a className="btn" style={{ background: '#fff', borderColor: '#fff' }} href={href(`/review/run?kind=weekly&week=${target.monday}`)}>
+          <a className="btn" style={{ background: 'var(--hero-ink)', color: 'var(--hero-bg)' }} href={href(`/review/run?kind=weekly&week=${target.monday}`)}>
             Start review
           </a>
         )}

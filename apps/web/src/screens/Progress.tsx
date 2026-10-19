@@ -172,7 +172,7 @@ function HeatRow({ name, cells, color }: { name: string; cells: string[]; color?
   return (
     <>
       <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
-        <span className="dot" style={{ background: color ?? '#9AA49E', width: 6, height: 6 }} />
+        <span className="dot" style={{ background: color ?? 'var(--faint)', width: 6, height: 6 }} />
         {name}
       </span>
       {cells.map((c, i) => (

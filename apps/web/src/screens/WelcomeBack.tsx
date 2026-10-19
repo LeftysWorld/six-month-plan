@@ -39,10 +39,10 @@ export function WelcomeBack({ days, onDone }: { days: number; onDone: () => void
   return (
     <div className="stack" style={{ paddingTop: 24 }}>
       <svg width="120" height="84" viewBox="0 0 120 84" aria-hidden="true">
-        <path d="M4 70 Q30 52 60 62 T116 50" fill="none" stroke="#CDD3CC" strokeWidth="3" strokeLinecap="round" />
-        <circle cx="84" cy="26" r="16" fill="#FBEFD9" />
-        <circle cx="84" cy="26" r="9" fill="#E9B45A" />
-        <path d="M4 78 Q40 64 70 72 T116 64" fill="none" stroke="#0E6B61" strokeWidth="3" strokeLinecap="round" />
+        <path d="M4 70 Q30 52 60 62 T116 50" fill="none" style={{ stroke: 'var(--border-strong)' }} strokeWidth="3" strokeLinecap="round" />
+        <circle cx="84" cy="26" r="16" style={{ fill: 'var(--gold-soft)' }} />
+        <circle cx="84" cy="26" r="9" style={{ fill: 'var(--gold)' }} />
+        <path d="M4 78 Q40 64 70 72 T116 64" fill="none" style={{ stroke: 'var(--accent)' }} strokeWidth="3" strokeLinecap="round" />
       </svg>
       <div>
         <h1 style={{ fontSize: 32, marginBottom: 8 }}>Welcome back{name ? `, ${name}` : ''}.</h1>
@@ -74,8 +74,8 @@ export function WelcomeBack({ days, onDone }: { days: number; onDone: () => void
       )}
       <Option
         icon="plans"
-        tint="#ECE6F5"
-        ink="#6A4AA0"
+        tint="var(--violet-soft)"
+        ink="var(--violet-ink)"
         title="Review my plan"
         detail="Look at goals and adjust before starting again"
         onClick={() => {

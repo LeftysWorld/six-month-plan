@@ -144,7 +144,7 @@ export function WorkoutLog({ id }: { id: string }) {
                 aria-label={`${ex.name} set ${si + 1} ${s.done ? 'done' : 'not done'}`}
                 aria-pressed={s.done}
                 onClick={() => update(ei, si, { done: !s.done })}
-                style={{ width: 44, height: 44, borderRadius: 10, border: `1.5px solid ${s.done ? 'var(--accent)' : '#9AA49E'}`, background: s.done ? 'var(--accent)' : '#fff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                style={{ width: 44, height: 44, borderRadius: 10, border: `1.5px solid ${s.done ? 'var(--accent)' : 'var(--faint)'}`, background: s.done ? 'var(--accent)' : 'var(--surface)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
                 {s.done && <Icon name="check" size={16} stroke={3} />}
               </button>

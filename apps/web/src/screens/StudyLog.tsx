@@ -87,7 +87,7 @@ export function StudyLog({ id }: { id: string }) {
       <div className="card stack" style={{ alignItems: 'center', padding: '22px 16px' }}>
         <div style={{ position: 'relative', width: 190, height: 190 }}>
           <svg width="190" height="190" viewBox="0 0 190 190" role="img" aria-label={`${minutes} of ${planned} planned minutes`}>
-            <circle cx="95" cy="95" r={r} fill="none" stroke="#E2E5DF" strokeWidth="12" />
+            <circle cx="95" cy="95" r={r} fill="none" style={{ stroke: 'var(--track)' }} strokeWidth="12" />
             <circle
               cx="95"
               cy="95"

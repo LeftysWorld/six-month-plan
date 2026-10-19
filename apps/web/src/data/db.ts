@@ -7,6 +7,8 @@ export interface Db {
   loadAll(): Promise<AppData>;
   /** Persist one change. Throws if it couldn't be saved (the store will retry). */
   apply(op: Op): Promise<void>;
+  /** Delete every plan, goal, task, log and review. Settings (name, time zone, hours) are kept. */
+  wipeAll(): Promise<void>;
 }
 
 export class SaveError extends Error {

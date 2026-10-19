@@ -787,11 +787,11 @@ function chipLook(status: Session['status'], color: string): CSSProperties {
       return { background: `${color}22`, color: 'var(--ink)', border: `1px solid ${color}55` };
     case 'minimum':
     case 'partial':
-      return { background: 'var(--amber-soft)', color: 'var(--amber-ink)', border: '1px solid #e9c98f' };
+      return { background: 'var(--amber-soft)', color: 'var(--amber-ink)', border: '1px solid var(--amber-line)' };
     case 'skipped':
       return { background: 'var(--line-2)', color: 'var(--muted)', border: '1px solid var(--line)', textDecoration: 'line-through' };
     default:
-      return { background: '#fff', color: 'var(--ink)', border: `1.5px dashed ${color}` };
+      return { background: 'var(--surface)', color: 'var(--ink)', border: `1.5px dashed ${color}` };
   }
 }
 
