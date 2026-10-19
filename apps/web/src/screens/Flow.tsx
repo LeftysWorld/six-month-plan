@@ -67,7 +67,7 @@ export function Flow({ goalId }: { goalId: string }) {
   const [wId, setW] = useState<string | null>(null);
   const [dayPick, setDayPick] = useState<ISODate | null>(null);
 
-  const quarter = quarters.find((q) => q.id === qId) ?? stepAt(quarters, focus);
+  const quarter = quarters.find((q) => q.id === qId) ?? stepAt(quarters, focus) ?? quarters.at(-1);
   const months = quarter ? childSteps(data, quarter.id) : [];
   const month = months.find((m) => m.id === mId) ?? stepAt(months, focus) ?? months[0];
   const weeks = month ? childSteps(data, month.id) : [];

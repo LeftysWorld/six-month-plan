@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { isoWeekday, longDate, minutesLeft, type Session } from '@six/core';
+import { isoWeekday, longDate, minutesLeft, shortDate, weekDates, weekStart, weekdayName, type ISODate, type Session } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { minutesText, useView } from '../data/derive.ts';
 import { opsAddOneOff, opsLogSession, opsLogUnplanned, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
@@ -7,16 +7,25 @@ import { href, navigate } from '../router.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
 
+const FULL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const fullDay = (d: ISODate) => FULL_DAYS[isoWeekday(d) - 1] ?? '';
+
 export function Today() {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
   const [open, setOpen] = useState<Session | null>(null);
   const [adding, setAdding] = useState(false);
+  // The day being shown. Opens on today; tap any day of this week to see it.
+  const [picked, setPicked] = useState<ISODate>(today);
+  const week = weekDates(weekStart(today));
+  const day = week.includes(picked) ? picked : today;
+  const isToday = day === today;
+  const isFuture = day > today;
 
-  const sessions = view.sessionsOn(today);
+  const sessions = view.sessionsOn(day);
   const done = sessions.filter((s) => s.status !== 'planned');
-  const available = data.profile.available_minutes[isoWeekday(today) - 1] ?? 0;
+  const available = data.profile.available_minutes[isoWeekday(day) - 1] ?? 0;
   const priorities = sessions.filter((s) => s.priority);
   const routines = sessions.filter((s) => !s.priority && s.action_id);
   const other = sessions.filter((s) => !s.priority && !s.action_id);
@@ -25,6 +34,8 @@ export function Today() {
     first: s,
     count: tray.filter((t) => (t.action_id ?? t.id) === (s.action_id ?? s.id)).length,
   }));
+  // Flexible sessions go on the day you're looking at, unless that day has passed.
+  const placeOn = day >= today ? day : today;
 
   const plan = view.mainPlan;
   const horizons = plan && plan.start_date <= today ? view.horizons(plan) : [];
@@ -35,6 +46,10 @@ export function Today() {
 
   function toggle(s: Session) {
     const before = s;
+    if (isFuture) {
+      toast(`You can check this off on ${weekdayName(day)}`);
+      return;
+    }
     if (s.status === 'planned') {
       commit(opsLogSession(s, { status: 'done' }));
       toast(`${s.title} done`, () => commit(opsRestoreSession(before)));
@@ -46,8 +61,8 @@ export function Today() {
 
   function openSession(s: Session) {
     const kind = view.action(s.action_id)?.kind;
-    if (kind === 'workout') navigate(`/workout/${s.id}`);
-    else if (kind === 'study') navigate(`/study/${s.id}`);
+    if (!isFuture && kind === 'workout') navigate(`/workout/${s.id}`);
+    else if (!isFuture && kind === 'study') navigate(`/study/${s.id}`);
     else setOpen(s);
   }
 
@@ -64,7 +79,7 @@ export function Today() {
   return (
     <div className="stack-sm">
       <div className="row-between">
-        <span className="small muted">{longDate(today)}</span>
+        <span className="small muted">{longDate(day)}</span>
         {chip && (
           <a
             href={href('/')}
@@ -76,24 +91,55 @@ export function Today() {
           </a>
         )}
       </div>
-      <h1 style={{ fontSize: 34 }}>Today</h1>
+      <div className="row-between">
+        <h1 style={{ fontSize: 34 }}>{isToday ? 'Today' : fullDay(day)}</h1>
+        {!isToday && (
+          <button className="btn small" onClick={() => setPicked(today)}>
+            Back to today
+          </button>
+        )}
+      </div>
+
+      <div className="section-label">This week</div>
+      <div className="today-week" role="group" aria-label="This week">
+        {week.map((d) => {
+          const list = view.sessionsOn(d);
+          const finished = list.filter((s) => s.status !== 'planned').length;
+          const selected = d === day;
+          return (
+            <button
+              key={d}
+              className={`today-day${selected ? ' selected' : ''}${d === today ? ' is-today' : ''}${d < today ? ' past' : ''}`}
+              aria-pressed={selected}
+              aria-label={`${weekdayName(d)} ${shortDate(d)}${d === today ? ', today' : ''}: ${finished} of ${list.length} done`}
+              onClick={() => setPicked(d)}
+            >
+              <span className="today-day-name">{weekdayName(d).slice(0, 3)}</span>
+              <b>{Number(d.slice(8))}</b>
+              <span className="today-day-count">{list.length === 0 ? '–' : d > today ? `${list.length}` : `${finished}/${list.length}`}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="card tight stack-sm">
         <div className="row-between small">
           <span className="strong">
-            {done.length} of {sessions.length} done
+            {isFuture ? `${sessions.length} planned` : `${done.length} of ${sessions.length} done`}
           </span>
           <span className="muted">
             {minutesText(minutesLeft(sessions))} left · {minutesText(available)} available
           </span>
         </div>
         <div className="bar">
-          <div className="fill" style={{ width: `${sessions.length ? (done.length / sessions.length) * 100 : 0}%` }} />
+          <div className="fill" style={{ width: `${sessions.length && !isFuture ? (done.length / sessions.length) * 100 : 0}%` }} />
         </div>
+        {isFuture && <span className="xsmall muted">Coming up. You can check these off on the day.</span>}
       </div>
 
       {sessions.length === 0 && (
         <div className="card empty">
-          <h3 style={{ color: 'var(--ink)', marginBottom: 6 }}>Nothing planned today.</h3>
+          <h3 style={{ color: 'var(--ink)', marginBottom: 6 }}>Nothing planned {isToday ? 'today' : `on ${weekdayName(day)}`}.</h3>
           Add a task, or rest. Rest counts.
         </div>
       )}
@@ -114,11 +160,11 @@ export function Today() {
                 <button
                   className="btn small"
                   onClick={() => {
-                    commit(opsMoveSession(first, today));
-                    toast(`${first.title} added to today`, () => commit(opsRestoreSession(first)));
+                    commit(opsMoveSession(first, placeOn));
+                    toast(`${first.title} added to ${placeOn === today ? 'today' : weekdayName(placeOn)}`, () => commit(opsRestoreSession(first)));
                   }}
                 >
-                  Do one today
+                  Do one {placeOn === today ? 'today' : `on ${weekdayName(placeOn)}`}
                 </button>
               </div>
             ))}
@@ -130,7 +176,7 @@ export function Today() {
         <Icon name="plus" size={24} stroke={2.4} />
       </button>
       {open && <LogSheet session={data.sessions.find((s) => s.id === open.id) ?? open} onClose={() => setOpen(null)} />}
-      {adding && <QuickAdd onClose={() => setAdding(false)} />}
+      {adding && <QuickAdd date={placeOn} onClose={() => setAdding(false)} />}
     </div>
   );
 }
@@ -191,8 +237,9 @@ function TaskRow({ session, onToggle, onOpen }: { session: Session; onToggle: ()
   );
 }
 
-function QuickAdd({ onClose }: { onClose: () => void }) {
+function QuickAdd({ date, onClose }: { date: ISODate; onClose: () => void }) {
   const { data, today, commit } = useStore();
+  const dayWord = date === today ? 'today' : weekdayName(date);
   const toast = useToast();
   const [tab, setTab] = useState<'task' | 'log'>('task');
   const [title, setTitle] = useState('');
@@ -206,7 +253,7 @@ function QuickAdd({ onClose }: { onClose: () => void }) {
     <Sheet title="Add" onClose={onClose}>
       <div className="seg" role="tablist">
         <button role="tab" aria-selected={tab === 'task'} onClick={() => setTab('task')}>
-          New task for today
+          New task for {dayWord}
         </button>
         <button role="tab" aria-selected={tab === 'log'} onClick={() => setTab('log')} disabled={actions.length === 0}>
           Log something extra
@@ -218,7 +265,7 @@ function QuickAdd({ onClose }: { onClose: () => void }) {
           onSubmit={(e) => {
             e.preventDefault();
             if (!title.trim()) return;
-            commit(opsAddOneOff({ title, minutes, priority, date: today }));
+            commit(opsAddOneOff({ title, minutes, priority, date }));
             toast(`Added ${title.trim()}`);
             onClose();
           }}
@@ -236,7 +283,7 @@ function QuickAdd({ onClose }: { onClose: () => void }) {
             Priority
           </label>
           <button className="btn primary" type="submit">
-            Add to today
+            Add to {dayWord}
           </button>
         </form>
       ) : (

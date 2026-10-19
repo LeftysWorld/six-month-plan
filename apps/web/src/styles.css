@@ -202,3 +202,15 @@ h3 { font-size: 16px; font-weight: 600; }
 button.day-cell { border: 0; cursor: pointer; font: inherit; color: var(--ink); min-height: 78px; }
 .week-day { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font: inherit; color: var(--ink); min-height: 56px; }
 .week-day-date { display: flex; flex-direction: column; width: 40px; flex: none; }
+
+/* Today: this week's days */
+.today-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.today-day { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 2px; min-height: 68px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font: inherit; color: var(--ink); }
+.today-day b { font-size: 17px; line-height: 1.2; }
+.today-day-name { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.today-day-count { font-size: 11px; color: var(--muted); }
+.today-day.past { opacity: 0.75; }
+.today-day.is-today { border-color: var(--accent); }
+.today-day.is-today .today-day-name { color: var(--accent-ink); font-weight: 700; }
+.today-day.selected { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
+.today-day.selected .today-day-name, .today-day.selected .today-day-count { color: rgba(255, 255, 255, 0.9); }
