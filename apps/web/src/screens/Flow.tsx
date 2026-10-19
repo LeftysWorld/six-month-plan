@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   addDays,
   describeSchedule,
@@ -478,6 +478,7 @@ function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Pl
   const over = week.end_date < today;
   const days = weekDates(addDays(week.start_date, 1 - isoWeekday(week.start_date))).filter((d) => d >= week.start_date && d <= week.end_date);
   const [day, setDay] = useState<ISODate>(() => (days.includes(today) ? today : days[0]!));
+  const [view, setView] = useState<'day' | 'week'>('day');
   useEffect(() => {
     if (!days.includes(day)) setDay(days.includes(today) ? today : days[0]!);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -492,12 +493,53 @@ function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Pl
   const goalOn = (d: ISODate) => tasks.filter((t) => runsOn(t, d));
   /** Sessions already on that day for this goal (e.g. a flexible session placed there). */
   const sessionsOn = (d: ISODate) => data.sessions.filter((x) => x.date === d && x.status !== 'moved' && tasks.some((t) => t.action.id === x.action_id));
+  /** Everything for this goal on a date: fixed-day tasks plus sessions placed there. */
+  const itemsOn = (d: ISODate): DayItem[] => {
+    const fixed = goalOn(d).map((t) => ({
+      key: t.action.id,
+      title: t.action.title,
+      minutes: t.action.planned_minutes,
+      status: data.sessions.find((x) => x.action_id === t.action.id && x.date === d && x.status !== 'moved')?.status ?? 'planned',
+    }));
+    const extra = sessionsOn(d)
+      .filter((x) => !fixed.some((f) => f.key === x.action_id))
+      .map((x) => ({ key: x.id, title: x.title, minutes: x.planned_minutes, status: x.status }));
+    return [...fixed, ...extra];
+  };
   const dayTasks = goalOn(day);
   const placed = sessionsOn(day).filter((x) => !dayTasks.some((t) => t.action.id === x.action_id));
   const dayPast = day < today;
 
+  const dayIndex = days.indexOf(day);
+  const openDay = (d: ISODate) => {
+    setDay(d);
+    setView('day');
+  };
+
   return (
     <div className="stack-sm">
+      <div className="seg" role="tablist" aria-label="Daily tasks view">
+        <button role="tab" aria-selected={view === 'day'} onClick={() => setView('day')}>
+          Day
+        </button>
+        <button role="tab" aria-selected={view === 'week'} onClick={() => setView('week')}>
+          Whole week
+        </button>
+      </div>
+
+      {view === 'week' ? (
+        <WeekAgenda
+          days={days}
+          today={today}
+          color={goal.color}
+          itemsOn={itemsOn}
+          flexible={flexible.map((t) => `${t.action.title} ${t.schedule.per_week}×`)}
+          minutesOn={(d) => fixedTasksOn(data, d).reduce((sum, t) => sum + t.minutes, 0)}
+          capOn={(d) => available[isoWeekday(d) - 1] ?? 0}
+          onOpen={openDay}
+        />
+      ) : (
+      <>
       <div className="card tight" style={{ padding: '10px 8px' }}>
         <div className="day-strip" role="group" aria-label="Pick a day" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
           {days.map((d) => {
@@ -541,13 +583,21 @@ function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Pl
 
       <div className="card stack-sm" style={{ borderLeft: `4px solid ${goal.color}` }}>
         <div className="row-between">
-          <b>
-            {weekdayName(day)}, {shortDate(day)}
-            {day === today ? ' · Today' : ''}
-          </b>
-          <span className="xsmall muted">
-            {dayTasks.length + placed.length} task{dayTasks.length + placed.length === 1 ? '' : 's'}
-          </span>
+          <button className="btn small" aria-label="Previous day" disabled={dayIndex <= 0} onClick={() => setDay(days[dayIndex - 1]!)} style={{ minWidth: 44 }}>
+            ‹
+          </button>
+          <div style={{ textAlign: 'center' }}>
+            <b>
+              {weekdayName(day)}, {shortDate(day)}
+              {day === today ? ' · Today' : ''}
+            </b>
+            <div className="xsmall muted">
+              {dayTasks.length + placed.length} task{dayTasks.length + placed.length === 1 ? '' : 's'}
+            </div>
+          </div>
+          <button className="btn small" aria-label="Next day" disabled={dayIndex >= days.length - 1} onClick={() => setDay(days[dayIndex + 1]!)} style={{ minWidth: 44 }}>
+            ›
+          </button>
         </div>
         {dayTasks.length + placed.length === 0 && <span className="small muted">Nothing for this goal on this day.</span>}
         {dayTasks.map((t) => {
@@ -590,6 +640,9 @@ function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Pl
           </span>
         )}
       </div>
+
+      </>
+      )}
 
       <div className="row-between" style={{ marginTop: 4 }}>
         <span className="label">All tasks in {week.title}</span>
@@ -641,6 +694,107 @@ function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Pl
       {logging && <LogSheet session={data.sessions.find((x) => x.id === logging.id) ?? logging} onClose={() => setLogging(null)} />}
     </div>
   );
+}
+
+interface DayItem {
+  key: string;
+  title: string;
+  minutes: number;
+  status: Session['status'];
+}
+
+/** The whole week at once: one row per day with that day's tasks. Tap a day to open it. */
+function WeekAgenda({
+  days,
+  today,
+  color,
+  itemsOn,
+  flexible,
+  minutesOn,
+  capOn,
+  onOpen,
+}: {
+  days: ISODate[];
+  today: ISODate;
+  color: string;
+  itemsOn: (d: ISODate) => DayItem[];
+  flexible: string[];
+  minutesOn: (d: ISODate) => number;
+  capOn: (d: ISODate) => number;
+  onOpen: (d: ISODate) => void;
+}) {
+  return (
+    <div className="stack-sm">
+      {flexible.length > 0 && (
+        <div className="card tight xsmall muted" style={{ borderStyle: 'dashed' }}>
+          Any day this week: {flexible.join(', ')}
+        </div>
+      )}
+      {days.map((d) => {
+        const items = itemsOn(d);
+        const isToday = d === today;
+        const past = d < today;
+        const all = minutesOn(d);
+        const cap = capOn(d);
+        const goalMinutes = items.reduce((sum, i) => sum + i.minutes, 0);
+        return (
+          <button
+            key={d}
+            className="week-day"
+            onClick={() => onOpen(d)}
+            aria-label={`${weekdayName(d)} ${shortDate(d)}: ${items.length} task${items.length === 1 ? '' : 's'}. Open day`}
+            style={{ borderColor: isToday ? color : undefined, boxShadow: isToday ? `0 0 0 1px ${color}` : undefined, opacity: past ? 0.7 : 1 }}
+          >
+            <span className="week-day-date">
+              <b style={{ color: isToday ? color : undefined }}>{weekdayName(d).slice(0, 3)}</b>
+              <span className="num" style={{ fontSize: 20, lineHeight: 1.1 }}>
+                {d.slice(8)}
+              </span>
+              {isToday && (
+                <span className="xsmall strong" style={{ color }}>
+                  Today
+                </span>
+              )}
+            </span>
+            <span className="stack-sm" style={{ gap: 6, minWidth: 0, flex: 1 }}>
+              <span className="chips" style={{ gap: 5 }}>
+                {items.map((i) => (
+                  <span key={i.key} className="mini-chip" style={chipLook(i.status, color)}>
+                    {i.status === 'done' ? '✓ ' : i.status === 'skipped' ? '✕ ' : i.status === 'minimum' || i.status === 'partial' ? '– ' : ''}
+                    {i.title}
+                    {i.minutes ? <span style={{ fontWeight: 400, opacity: 0.8 }}> {i.minutes}</span> : null}
+                  </span>
+                ))}
+                {items.length === 0 && <span className="small muted">Nothing for this goal</span>}
+              </span>
+              <span className="xsmall" style={{ color: all > cap ? 'var(--amber-ink)' : 'var(--muted)', fontWeight: all > cap ? 600 : 400 }}>
+                {goalMinutes ? `${minutesText(goalMinutes)} for this goal · ` : ''}
+                {minutesText(all)} of {minutesText(cap)} planned overall{all > cap ? ' · over' : ''}
+              </span>
+            </span>
+            <span style={{ color: 'var(--muted)', display: 'flex', alignSelf: 'center' }}>
+              <Icon name="chevron" size={18} />
+            </span>
+          </button>
+        );
+      })}
+      <span className="xsmall muted">Done ✓ · minimum or partial – · skipped ✕ · dashed = still to do. Tap a day to change it.</span>
+    </div>
+  );
+}
+
+function chipLook(status: Session['status'], color: string): CSSProperties {
+  switch (status) {
+    case 'done':
+      return { background: `${color}22`, color: 'var(--ink)', border: `1px solid ${color}55` };
+    case 'minimum':
+    case 'partial':
+      return { background: 'var(--amber-soft)', color: 'var(--amber-ink)', border: '1px solid #e9c98f' };
+    case 'skipped':
+      return { background: 'var(--line-2)', color: 'var(--muted)', border: '1px solid var(--line)', textDecoration: 'line-through' };
+    default:
+      return { background: '#fff', color: 'var(--ink)', border: `1.5px dashed ${color}` };
+  }
 }
 
 function statusWord(status: Session['status']): string {
