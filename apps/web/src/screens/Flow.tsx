@@ -65,12 +65,20 @@ export function Flow({ goalId }: { goalId: string }) {
   const [qId, setQ] = useState<string | null>(null);
   const [mId, setM] = useState<string | null>(null);
   const [wId, setW] = useState<string | null>(null);
+  const [dayPick, setDayPick] = useState<ISODate | null>(null);
 
   const quarter = quarters.find((q) => q.id === qId) ?? stepAt(quarters, focus);
   const months = quarter ? childSteps(data, quarter.id) : [];
   const month = months.find((m) => m.id === mId) ?? stepAt(months, focus) ?? months[0];
   const weeks = month ? childSteps(data, month.id) : [];
   const week = weeks.find((w) => w.id === wId) ?? stepAt(weeks, focus) ?? weeks[0];
+  // The day shown in the Day level: the one you tapped, else today, else the week's first day.
+  const weekDays = week ? daysOfWeek(week) : [];
+  const day = dayPick && weekDays.includes(dayPick) ? dayPick : weekDays.includes(today) ? today : weekDays[0] ?? today;
+  const pickDay = (d: ISODate, scroll = false) => {
+    setDayPick(d);
+    if (scroll) window.setTimeout(() => document.getElementById('flow-day')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
 
   if (!goal) return <Empty title="Goal not found." />;
   if (!plan) return <Empty title="This goal isn't in a plan yet." />;
@@ -143,10 +151,29 @@ export function Flow({ goalId }: { goalId: string }) {
               ))}
             </div>
             {week && <StepEditor key={week.id} step={week} goal={goal} plan={plan} />}
+            {week && <DailyTasks slot="week" goal={goal} plan={plan} week={week} weeks={[]} day={day} onPickDay={(d) => pickDay(d, true)} onToast={toast} />}
           </Level>
 
-          <Level n={5} name="Daily tasks" dates={week ? `${week.title} · these show on Today` : ''} color={goal.color} last>
-            {week && <DailyTasks goal={goal} plan={plan} week={week} weeks={stepsForGoal(data, goal.id).filter((s) => s.level === 'week' && s.plan_id === plan.id)} onToast={toast} />}
+          <Level
+            n={5}
+            name="Daily tasks"
+            dates={week ? `${weekdayName(day)}, ${shortDate(day)}${day === today ? ' · Today' : ''}` : ''}
+            color={goal.color}
+            last
+            id="flow-day"
+          >
+            {week && (
+              <DailyTasks
+                slot="day"
+                goal={goal}
+                plan={plan}
+                week={week}
+                weeks={stepsForGoal(data, goal.id).filter((s) => s.level === 'week' && s.plan_id === plan.id)}
+                day={day}
+                onPickDay={(d) => pickDay(d)}
+                onToast={toast}
+              />
+            )}
           </Level>
         </div>
       )}
@@ -160,9 +187,9 @@ function dateRange(s: PlanStep) {
 
 // ---------- Layout: a numbered rail that connects each level to the next ----------
 
-function Level({ n, name, dates, color, last, children }: { n: number; name: string; dates: string; color: string; last?: boolean; children: ReactNode }) {
+function Level({ n, name, dates, color, last, id, children }: { n: number; name: string; dates: string; color: string; last?: boolean; id?: string; children: ReactNode }) {
   return (
-    <section className="flow-level" aria-label={name}>
+    <section className="flow-level" aria-label={name} id={id} style={{ scrollMarginTop: 12 }}>
       <div className="flow-rail" aria-hidden="true">
         <span className="flow-dot" style={{ borderColor: color, color }}>
           {n}
@@ -469,23 +496,43 @@ function placeholderFor(goal: Goal, step: PlanStep): string {
 
 type Toast = (m: string, undo?: () => void) => void;
 
-function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Plan; week: PlanStep; weeks: PlanStep[]; onToast: Toast }) {
+/** The calendar days of a week step (it may be a partial week at a month edge). */
+function daysOfWeek(week: PlanStep): ISODate[] {
+  return weekDates(addDays(week.start_date, 1 - isoWeekday(week.start_date))).filter((d) => d >= week.start_date && d <= week.end_date);
+}
+
+/**
+ * Daily tasks for one week, in two places:
+ * - slot "week": the whole week at once (in the Week level), tap a day to open it
+ * - slot "day": the selected day's tasks with editing, plus every task in the week
+ */
+function DailyTasks({
+  slot,
+  goal,
+  plan,
+  week,
+  weeks,
+  day,
+  onPickDay,
+  onToast,
+}: {
+  slot: 'week' | 'day';
+  goal: Goal;
+  plan: Plan;
+  week: PlanStep;
+  weeks: PlanStep[];
+  day: ISODate;
+  onPickDay: (d: ISODate) => void;
+  onToast: Toast;
+}) {
   const { data, today, commit } = useStore();
   const [editing, setEditing] = useState<{ task: WeekTask | null; initial?: Partial<TaskInput> } | null>(null);
   const [logging, setLogging] = useState<Session | null>(null);
   const range = dateRange(week);
   const tasks = tasksInRange(data, goal.id, range, week.id);
   const over = week.end_date < today;
-  const days = weekDates(addDays(week.start_date, 1 - isoWeekday(week.start_date))).filter((d) => d >= week.start_date && d <= week.end_date);
-  const [day, setDay] = useState<ISODate>(() => (days.includes(today) ? today : days[0]!));
-  const [view, setView] = useState<'day' | 'week'>('day');
-  useEffect(() => {
-    if (!days.includes(day)) setDay(days.includes(today) ? today : days[0]!);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [week.id]);
+  const days = daysOfWeek(week);
   const available = data.profile.available_minutes;
-  const prevWeek = weeks.filter((w) => w.end_date < week.start_date).at(-1);
-  const prevTasks = prevWeek ? tasksInRange(data, goal.id, dateRange(prevWeek), prevWeek.id).filter((t) => !tasks.some((x) => x.action.id === t.action.id)) : [];
   const flexible = tasks.filter((t) => t.schedule.rule === 'per_week');
 
   const runsOn = (t: WeekTask, d: ISODate) =>
@@ -506,84 +553,35 @@ function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Pl
       .map((x) => ({ key: x.id, title: x.title, minutes: x.planned_minutes, status: x.status }));
     return [...fixed, ...extra];
   };
+
+  if (slot === 'week') {
+    return (
+      <WeekAgenda
+        days={days}
+        today={today}
+        selected={day}
+        color={goal.color}
+        itemsOn={itemsOn}
+        flexible={flexible.map((t) => `${t.action.title} ${t.schedule.per_week}×`)}
+        minutesOn={(d) => fixedTasksOn(data, d).reduce((sum, t) => sum + t.minutes, 0)}
+        capOn={(d) => available[isoWeekday(d) - 1] ?? 0}
+        onOpen={onPickDay}
+      />
+    );
+  }
+
+  const prevWeek = weeks.filter((w) => w.end_date < week.start_date).at(-1);
+  const prevTasks = prevWeek ? tasksInRange(data, goal.id, dateRange(prevWeek), prevWeek.id).filter((t) => !tasks.some((x) => x.action.id === t.action.id)) : [];
   const dayTasks = goalOn(day);
   const placed = sessionsOn(day).filter((x) => !dayTasks.some((t) => t.action.id === x.action_id));
   const dayPast = day < today;
-
   const dayIndex = days.indexOf(day);
-  const openDay = (d: ISODate) => {
-    setDay(d);
-    setView('day');
-  };
 
   return (
     <div className="stack-sm">
-      <div className="seg" role="tablist" aria-label="Daily tasks view">
-        <button role="tab" aria-selected={view === 'day'} onClick={() => setView('day')}>
-          Day
-        </button>
-        <button role="tab" aria-selected={view === 'week'} onClick={() => setView('week')}>
-          Whole week
-        </button>
-      </div>
-
-      {view === 'week' ? (
-        <WeekAgenda
-          days={days}
-          today={today}
-          color={goal.color}
-          itemsOn={itemsOn}
-          flexible={flexible.map((t) => `${t.action.title} ${t.schedule.per_week}×`)}
-          minutesOn={(d) => fixedTasksOn(data, d).reduce((sum, t) => sum + t.minutes, 0)}
-          capOn={(d) => available[isoWeekday(d) - 1] ?? 0}
-          onOpen={openDay}
-        />
-      ) : (
-      <>
-      <div className="card tight" style={{ padding: '10px 8px' }}>
-        <div className="day-strip" role="group" aria-label="Pick a day" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
-          {days.map((d) => {
-            const mine = goalOn(d).length + sessionsOn(d).filter((x) => !goalOn(d).some((t) => t.action.id === x.action_id)).length;
-            const allMinutes = fixedTasksOn(data, d).reduce((sum, t) => sum + t.minutes, 0);
-            const cap = available[isoWeekday(d) - 1] ?? 0;
-            const selected = d === day;
-            return (
-              <button
-                key={d}
-                className="day-cell"
-                aria-pressed={selected}
-                aria-label={`${weekdayName(d)} ${shortDate(d)}: ${mine} task${mine === 1 ? '' : 's'}`}
-                onClick={() => setDay(d)}
-                style={{
-                  background: selected ? goal.color : undefined,
-                  color: selected ? '#fff' : undefined,
-                  outline: d === today && !selected ? `2px solid ${goal.color}` : undefined,
-                  opacity: d < today && !selected ? 0.6 : 1,
-                }}
-              >
-                <span className="xsmall strong">{weekdayName(d).slice(0, 3)}</span>
-                <span className="xsmall" style={{ opacity: 0.85 }}>{d.slice(8)}</span>
-                <span className="day-dots">
-                  {Array.from({ length: Math.min(mine, 4) }, (_, i) => (
-                    <span key={i} className="dot" style={{ background: selected ? '#fff' : goal.color, width: 7, height: 7 }} />
-                  ))}
-                  {mine === 0 && <span className="xsmall" style={{ opacity: 0.6 }}>–</span>}
-                </span>
-                <span className="xsmall" style={{ color: selected ? '#fff' : allMinutes > cap ? 'var(--amber-ink)' : 'var(--muted)', fontWeight: allMinutes > cap ? 600 : 400 }}>
-                  {allMinutes ? minutesText(allMinutes).replace(' min', 'm') : ''}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="xsmall muted" style={{ marginTop: 6 }}>
-          Tap a day to see and change its tasks. Minutes are everything planned that day across all goals; amber means over your available time.
-        </div>
-      </div>
-
       <div className="card stack-sm" style={{ borderLeft: `4px solid ${goal.color}` }}>
         <div className="row-between">
-          <button className="btn small" aria-label="Previous day" disabled={dayIndex <= 0} onClick={() => setDay(days[dayIndex - 1]!)} style={{ minWidth: 44 }}>
+          <button className="btn small" aria-label="Previous day" disabled={dayIndex <= 0} onClick={() => onPickDay(days[dayIndex - 1]!)} style={{ minWidth: 44 }}>
             ‹
           </button>
           <div style={{ textAlign: 'center' }}>
@@ -592,10 +590,10 @@ function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Pl
               {day === today ? ' · Today' : ''}
             </b>
             <div className="xsmall muted">
-              {dayTasks.length + placed.length} task{dayTasks.length + placed.length === 1 ? '' : 's'}
+              {dayTasks.length + placed.length} task{dayTasks.length + placed.length === 1 ? '' : 's'} · shows on Today that day
             </div>
           </div>
-          <button className="btn small" aria-label="Next day" disabled={dayIndex >= days.length - 1} onClick={() => setDay(days[dayIndex + 1]!)} style={{ minWidth: 44 }}>
+          <button className="btn small" aria-label="Next day" disabled={dayIndex >= days.length - 1} onClick={() => onPickDay(days[dayIndex + 1]!)} style={{ minWidth: 44 }}>
             ›
           </button>
         </div>
@@ -634,15 +632,7 @@ function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Pl
           </button>
         )}
         {dayPast && <span className="xsmall muted">This day has passed. Log or fix it from Today, or pick a later day.</span>}
-        {flexible.length > 0 && (
-          <span className="xsmall muted">
-            Any day this week: {flexible.map((t) => `${t.action.title} ${t.schedule.per_week}×`).join(', ')}. Place them on days from Today.
-          </span>
-        )}
       </div>
-
-      </>
-      )}
 
       <div className="row-between" style={{ marginTop: 4 }}>
         <span className="label">All tasks in {week.title}</span>
@@ -707,6 +697,7 @@ interface DayItem {
 function WeekAgenda({
   days,
   today,
+  selected,
   color,
   itemsOn,
   flexible,
@@ -716,6 +707,7 @@ function WeekAgenda({
 }: {
   days: ISODate[];
   today: ISODate;
+  selected: ISODate;
   color: string;
   itemsOn: (d: ISODate) => DayItem[];
   flexible: string[];
@@ -743,7 +735,13 @@ function WeekAgenda({
             className="week-day"
             onClick={() => onOpen(d)}
             aria-label={`${weekdayName(d)} ${shortDate(d)}: ${items.length} task${items.length === 1 ? '' : 's'}. Open day`}
-            style={{ borderColor: isToday ? color : undefined, boxShadow: isToday ? `0 0 0 1px ${color}` : undefined, opacity: past ? 0.7 : 1 }}
+            aria-pressed={d === selected}
+            style={{
+              borderColor: d === selected || isToday ? color : undefined,
+              boxShadow: d === selected ? `0 0 0 2px ${color}` : undefined,
+              background: d === selected ? `${color}12` : undefined,
+              opacity: past && d !== selected ? 0.7 : 1,
+            }}
           >
             <span className="week-day-date">
               <b style={{ color: isToday ? color : undefined }}>{weekdayName(d).slice(0, 3)}</b>
@@ -778,7 +776,7 @@ function WeekAgenda({
           </button>
         );
       })}
-      <span className="xsmall muted">Done ✓ · minimum or partial – · skipped ✕ · dashed = still to do. Tap a day to change it.</span>
+      <span className="xsmall muted">Done ✓ · minimum or partial – · skipped ✕ · dashed = still to do. Tap a day to open it below.</span>
     </div>
   );
 }

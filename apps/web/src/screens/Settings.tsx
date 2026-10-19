@@ -25,6 +25,8 @@ function toCsv(rows: Record<string, unknown>[]): string {
   return [cols.join(','), ...rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n');
 }
 
+declare const __APP_VERSION__: string;
+
 export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
   const { data, db, commit, today } = useStore();
   const toast = useToast();
@@ -171,7 +173,7 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
         </button>
       )}
       <p className="xsmall muted" style={{ textAlign: 'center' }}>
-        Six Months · v0.1
+        Six Months · v0.1 · build {typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev'}
       </p>
     </div>
   );
