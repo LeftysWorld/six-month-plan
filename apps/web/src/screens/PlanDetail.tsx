@@ -274,7 +274,7 @@ function RoadmapLane({
   }
 
   return (
-    <a className="card stack-sm" href={href(`/goals/${goal.id}`)} style={{ textDecoration: 'none', color: 'inherit' }}>
+    <a className="card stack-sm" href={href(`/flow/${goal.id}`)} style={{ textDecoration: 'none', color: 'inherit' }} aria-label={`${goal.title}: open breakdown`}>
       <div className="row-between">
         <span className="row-start" style={{ gap: 7, flexWrap: 'nowrap' }}>
           <span className="dot" style={{ background: goal.color }} />
@@ -316,7 +316,10 @@ function RoadmapLane({
             ))}
         </div>
       )}
-      <div className="small">{summary}</div>
+      <div className="row-between small" style={{ alignItems: 'flex-end' }}>
+        <span>{summary}</span>
+        <span className="xsmall strong" style={{ color: 'var(--accent)', whiteSpace: 'nowrap' }}>Breakdown ›</span>
+      </div>
     </a>
   );
 }

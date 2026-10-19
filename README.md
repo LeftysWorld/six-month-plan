@@ -8,6 +8,7 @@ A personal web app for a six-month plan: goals at the top, today's list at the b
 - **Today**: one-tap check-off with Undo, a log sheet (done, partial, minimum kept, skip, obstacles, note, move to another day), "not placed yet" sessions, quick-add tasks, and logging extra activity.
 - **Workout log** (sets × reps × weight, starts from your last workout) and **study timer** (survives reloads, manual minutes, milestones).
 - **Plans**: overlapping six-month plans, plan detail with horizon tabs, goals that can be shared between plans, archive instead of delete.
+- **Goal breakdown**: every goal flows 6 months → two 3-month stages → six months → weeks → daily tasks. Each level is connected and editable on its own (describe it, set a number target, spread a target down to the levels beneath). Daily tasks can be set days, times a week, or one day, and repeat for a week, a month, 3 months or the rest of the plan. They appear on Today automatically.
 - **Goals**: three types (reach a number, build a practice, finish something), suggested path in 4-week blocks you can edit, milestones, measurements, history of changes.
 - **Review**: hub with weekly, block, 3-month and retrospective reviews; a 5-step weekly review (look back, measure, reflect, adjust, plan next week) that saves in one database transaction; drafts survive interruptions.
 - **Welcome back** after 2+ days away (continue, make this week lighter, or review the plan).
@@ -29,7 +30,7 @@ Open http://localhost:5173. With no Supabase settings, the app runs in demo mode
 ## Connect Supabase (your real data)
 
 1. Create a free project at https://supabase.com.
-2. In the dashboard, open **SQL Editor**, paste the whole file `supabase/migrations/20261016000000_initial_schema.sql`, and run it. (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
+2. In the dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in order: first `20261016000000_initial_schema.sql`, then `20261019000000_goal_breakdown.sql`. (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
 3. **Authentication → URL Configuration**: set **Site URL** to where the app runs (`http://localhost:5173` for now) and add your deployed URL under **Redirect URLs** later.
 4. **Project Settings → API**: copy the project URL and the `anon` public key.
 5. Create `apps/web/.env.local`:
@@ -67,7 +68,7 @@ six-month-plan/
 ├── package.json                         npm workspaces + root scripts
 ├── packages/core/                       pure TypeScript rules, no UI, no database
 │   ├── src/dates.ts                     calendar dates, weeks, time zones
-│   ├── src/plan.ts                      weeks, 4-week blocks, 3-month checkpoint, suggested path
+│   ├── src/plan.ts                      weeks, blocks, 3-month checkpoint, suggested path, goal breakdown ranges
 │   ├── src/schedule.ts                  schedules → sessions, credit for done/partial/minimum
 │   ├── src/pace.ts                      plan vs actual, pace labels, number-goal status
 │   ├── src/suggest.ts                   weekly review suggestions
@@ -77,7 +78,7 @@ six-month-plan/
 │   ├── src/data/                        model, Supabase + demo backends, store, derived views
 │   ├── src/screens/                     one file per screen
 │   └── src/components/                  shared UI, weight chart, action form
-└── supabase/migrations/                 schema, row-level security, review function
+└── supabase/migrations/                 schema, row-level security, review function, goal breakdown
 ```
 
 ## How "on track" works

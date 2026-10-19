@@ -2,6 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addDays,
+  cascadeRanges,
+  isoWeekday as weekdayOf,
+  monthRanges,
+  weekRanges,
   blockIndex,
   blockRange,
   daysBetween,
@@ -52,6 +56,7 @@ function action(over: Partial<Action> = {}): Action {
     min_minutes: null,
     min_count: null,
     priority: false,
+    step_id: null,
     archived_at: null,
     ...over,
   };
@@ -273,4 +278,41 @@ test('review suggestions: lower frequency when short repeatedly, minimum when sh
   assert.equal(g?.kind, 'lower_frequency');
   assert.equal(g?.proposedPerWeek, 4);
   assert.equal(s?.kind, 'add_minimum');
+});
+
+test('breakdown: two 3-month stages, 3 months each, Monday–Sunday weeks', () => {
+  const tree = cascadeRanges(plan);
+  assert.equal(tree.length, 2);
+  assert.deepEqual([tree[0]!.start, tree[0]!.end], ['2026-10-02', '2026-12-31']);
+  assert.equal(tree[1]!.end, '2027-04-02');
+  const months = tree.flatMap((q) => q.children);
+  assert.equal(months.length, 6);
+  assert.deepEqual(months.map((m) => m.title), ['Month 1', 'Month 2', 'Month 3', 'Month 4', 'Month 5', 'Month 6']);
+  // months tile the plan with no gaps or overlaps
+  for (let i = 1; i < months.length; i++) assert.equal(addDays(months[i - 1]!.end, 1), months[i]!.start);
+  // inner month boundaries fall on Sundays
+  for (const m of months.slice(0, -1)) if (m.end !== tree[0]!.end) assert.equal(weekdayOf(m.end), 7);
+  const weeks = months.flatMap((m) => m.children);
+  assert.equal(weeks[0]!.start, '2026-10-02');
+  assert.equal(weeks[0]!.end, '2026-10-04'); // partial first week ends Sunday
+  assert.equal(weekdayOf(weeks[1]!.start), 1);
+  assert.equal(weeks.at(-1)!.end, '2027-04-02');
+  for (let i = 1; i < weeks.length; i++) assert.equal(addDays(weeks[i - 1]!.end, 1), weeks[i]!.start);
+  assert.equal(weeks.at(-1)!.title, `Week ${weeks.length}`);
+});
+
+test('breakdown helpers: week and month ranges', () => {
+  assert.deepEqual(weekRanges({ start: '2026-10-14', end: '2026-10-20' }), [
+    { start: '2026-10-14', end: '2026-10-18' },
+    { start: '2026-10-19', end: '2026-10-20' },
+  ]);
+  const months = monthRanges({ start: '2026-10-05', end: '2027-01-03' });
+  assert.equal(months.length, 3);
+  assert.ok(months.every((m) => daysBetween(m.start, m.end) >= 6));
+});
+
+test('schedules that start mid-week number their slots apart', () => {
+  const s = slotsForWeek(schedule({ days: [3, 5], effective_from: '2026-10-14' }), '2026-10-12');
+  assert.deepEqual(s.map((x) => x.slot), [60, 61]);
+  assert.deepEqual(slotsForWeek(schedule(), '2026-10-12').map((x) => x.slot), [0, 1, 2]);
 });

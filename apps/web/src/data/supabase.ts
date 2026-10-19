@@ -48,6 +48,7 @@ function numeric(rows: Record<string, unknown>[], fields: string[]): Record<stri
 const NUMERIC_FIELDS: Record<string, string[]> = {
   goals: ['baseline_value', 'target_value'],
   goal_targets: ['target_value'],
+  plan_steps: ['target_value'],
   measurements: ['value'],
   workout_sets: ['weight'],
   reviews: ['actions_done'],

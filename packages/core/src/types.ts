@@ -8,6 +8,7 @@ export type SessionStatus = 'planned' | 'done' | 'partial' | 'minimum' | 'skippe
 export type SessionOrigin = 'scheduled' | 'oneoff' | 'unplanned';
 export type ReviewKind = 'weekly' | 'block' | 'quarter' | 'retro';
 export type PaceLabel = 'ahead' | 'on_track' | 'behind' | 'none';
+export type StepLevel = 'quarter' | 'month' | 'week';
 
 export interface Profile {
   user_id?: string;
@@ -59,6 +60,28 @@ export interface GoalTarget {
   superseded_at: string | null;
 }
 
+/**
+ * One level of a goal's breakdown: a 3-month stage, a month, or a week.
+ * The 6-month level is the goal itself.
+ */
+export interface PlanStep {
+  id: string;
+  goal_id: string;
+  plan_id: string;
+  parent_id: string | null;
+  level: StepLevel;
+  /** Position among its siblings, 0-based. */
+  idx: number;
+  title: string;
+  start_date: ISODate;
+  end_date: ISODate;
+  /** For "reach a number" goals: where the value should be by end_date. */
+  target_value: number | null;
+  /** What this stage should look like, in your own words. */
+  target_note: string;
+  completed_at: string | null;
+}
+
 export interface Milestone {
   id: string;
   goal_id: string;
@@ -77,6 +100,8 @@ export interface Action {
   min_minutes: number | null;
   min_count: number | null;
   priority: boolean;
+  /** The breakdown step (usually a week) this task was planned in; null for ongoing actions. */
+  step_id?: string | null;
   archived_at: string | null;
 }
 

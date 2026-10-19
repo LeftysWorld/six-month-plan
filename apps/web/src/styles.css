@@ -182,3 +182,20 @@ h3 { font-size: 16px; font-weight: 600; }
 .table td { padding: 8px 4px; border-bottom: 1px solid var(--line-2); }
 .empty { text-align: center; padding: 28px 16px; color: var(--muted); }
 .center-screen { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+
+/* ---------- Goal breakdown (Flow) ---------- */
+.flow { display: flex; flex-direction: column; }
+.flow-level { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; }
+.flow-rail { display: flex; flex-direction: column; align-items: center; }
+.flow-dot { width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid; background: var(--surface); display: flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 700; font-size: 14px; flex: none; }
+.flow-line { width: 2.5px; flex: 1; border-radius: 2px; opacity: 0.45; margin-top: 4px; }
+.flow-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; min-height: 44px; min-width: 0; color: var(--ink); font: inherit; }
+.flow-card[aria-pressed='true'] { background: var(--surface); }
+.flow-editor { background: var(--surface-2); }
+.week-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.week-chip { flex: 1 0 64px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 6px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font: inherit; color: var(--ink); min-height: 48px; }
+.week-chip b { font-size: 14px; }
+.week-chip span { font-size: 11px; color: inherit; opacity: 0.8; }
+.day-strip { display: grid; gap: 4px; }
+.day-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border-radius: 10px; background: var(--surface-2); min-height: 74px; }
+.day-dots { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; min-height: 12px; align-items: center; }

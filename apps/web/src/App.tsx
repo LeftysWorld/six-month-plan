@@ -24,6 +24,7 @@ import { Settings } from './screens/Settings.tsx';
 import { WorkoutLog } from './screens/WorkoutLog.tsx';
 import { StudyLog } from './screens/StudyLog.tsx';
 import { WelcomeBack } from './screens/WelcomeBack.tsx';
+import { Flow } from './screens/Flow.tsx';
 
 const MODE_KEY = 'six.mode';
 
@@ -149,6 +150,9 @@ function Shell(props: ShellProps) {
       break;
     case 'review':
       screen = s1 === 'run' ? <WeeklyReview kind={route.query.get('kind') ?? 'weekly'} /> : <ReviewHub />;
+      break;
+    case 'flow':
+      screen = <Flow goalId={s1 ?? ''} />;
       break;
     case 'progress':
       screen = <Progress />;

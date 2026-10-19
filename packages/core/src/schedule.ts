@@ -1,4 +1,4 @@
-import { addDays, daysBetween, weekDates, type ISODate } from './dates.ts';
+import { addDays, daysBetween, isoWeekday, weekDates, type ISODate } from './dates.ts';
 import type { Action, ActionSchedule, Session } from './types.ts';
 
 /** The schedule row in force for an action at any point during the week starting `monday`. */
@@ -55,19 +55,22 @@ export function slotsForWeek(schedule: ActionSchedule, monday: ISODate): Planned
     (d) => d >= schedule.effective_from && (schedule.effective_to == null || d <= schedule.effective_to),
   );
   if (dates.length === 0) return [];
+  // A schedule that starts mid-week (an edit) numbers its slots apart from the
+  // sessions the previous schedule already created that week, so none collide.
+  const offset = schedule.effective_from > monday ? isoWeekday(schedule.effective_from) * 20 : 0;
   if (schedule.rule === 'days') {
     const days = [...new Set(schedule.days)].sort((a, b) => a - b);
     return days
       .map((day) => addDays(monday, day - 1))
       .filter((date) => dates.includes(date))
-      .map((date, slot) => ({ action_id: schedule.action_id, week_start: monday, slot, date }));
+      .map((date, slot) => ({ action_id: schedule.action_id, week_start: monday, slot: slot + offset, date }));
   }
   const perWeek = schedule.per_week ?? 0;
   const count = dates.length === 7 ? perWeek : Math.ceil((perWeek * dates.length) / 7);
   return Array.from({ length: count }, (_, slot) => ({
     action_id: schedule.action_id,
     week_start: monday,
-    slot,
+    slot: slot + offset,
     date: null,
   }));
 }

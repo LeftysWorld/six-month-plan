@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { addDays, suggestPath, type GoalType, type PathPoint } from '@six/core';
+import { addDays, cascadeRanges, shortDate, suggestPath, valueOnPath, type GoalType, type PathPoint } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, minutesText, useView } from '../data/derive.ts';
-import { opsCreateGoal, type ActionInput } from '../data/ops.ts';
+import { fmt, useView } from '../data/derive.ts';
+import { opsCreateGoal } from '../data/ops.ts';
 import { navigate } from '../router.ts';
-import { ActionFields, blankAction, weeklyMinutes } from '../components/ActionFields.tsx';
+import { opsCreateBreakdown, withOps } from '../data/breakdown.ts';
 import { BackLink, Empty, GOAL_COLORS, NumberInput, useToast } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
 
@@ -33,8 +33,6 @@ export function GoalNew({ planId }: { planId: string | null }) {
   const [why, setWhy] = useState('');
   const [doneMeans, setDoneMeans] = useState('');
   const [milestones, setMilestones] = useState([{ title: '', due_date: addDays(today, 28) }]);
-  const [withAction, setWithAction] = useState(true);
-  const [action, setAction] = useState<ActionInput>(blankAction());
   const color = GOAL_COLORS[existing.length % GOAL_COLORS.length]!;
 
   const startDate = today;
@@ -46,18 +44,10 @@ export function GoalNew({ planId }: { planId: string | null }) {
     }));
   }, [type, baseline, target, startDate, targetDate, plan, edits]);
 
-  // Capacity: average minutes a day already planned by active actions vs available.
-  const plannedPerDay = useMemo(() => {
-    let weekly = 0;
-    for (const a of data.actions.filter((x) => !x.archived_at)) {
-      const s = view.scheduleFor(a.id);
-      if (!s) continue;
-      weekly += (s.rule === 'per_week' ? s.per_week ?? 0 : s.days.length) * a.planned_minutes;
-    }
-    return weekly / 7;
-  }, [data.actions, view]);
-  const availablePerDay = data.profile.available_minutes.reduce((a, b) => a + b, 0) / 7;
-  const withNew = plannedPerDay + (withAction && action.title.trim() ? weeklyMinutes(action) / 7 : 0);
+  // What the goal flows into: two 3-month stages, three months each.
+  const preview = useMemo(() => (plan ? cascadeRanges(plan) : []), [plan]);
+  const startPoint = baseline != null ? { date: startDate, value: baseline } : null;
+  const targetAt = (d: string) => (type === 'number' && startPoint && path.length ? fmt(valueOnPath(startPoint, path, d)) : null);
 
   if (!plan) return <Empty title="Create a plan first." />;
 
@@ -82,13 +72,16 @@ export function GoalNew({ planId }: { planId: string | null }) {
         targetDate,
         path,
         milestones: type === 'finish' ? milestones : [],
-        action: withAction ? action : null,
+        action: null,
       },
       today,
     );
-    commit(ops);
-    toast(`Added ${title.trim()}`);
-    navigate(`/goals/${goalId}`);
+    // The goal flows straight into its breakdown: 3 months → months → weeks.
+    const next = withOps(data, ops);
+    const goal = next.goals.find((g) => g.id === goalId)!;
+    commit([...ops, ...opsCreateBreakdown(next, goal, plan)]);
+    toast(`Added ${title.trim()}. Now plan the stages and this week's tasks.`);
+    navigate(`/flow/${goalId}`);
   }
 
   return (
@@ -242,24 +235,54 @@ export function GoalNew({ planId }: { planId: string | null }) {
 
       {step === 3 && (
         <div className="stack">
-          <h1>What will you do regularly?</h1>
-          <label className="row-start small">
-            <input type="checkbox" checked={withAction} onChange={(e) => setWithAction(e.target.checked)} style={{ width: 20, height: 20 }} />
-            Add a regular action for this goal
-          </label>
-          {withAction && <ActionFields value={action} onChange={setAction} />}
-          <div className={`banner ${withNew > availablePerDay ? 'warn' : 'info'}`}>
-            <span>
-              Daily time planned: <b>{minutesText(Math.round(withNew))}</b> of {minutesText(Math.round(availablePerDay))} available
-              {withNew > availablePerDay ? '. That is more than you have; consider fewer sessions.' : ''}
-            </span>
+          <h1>Here's how it breaks down</h1>
+          <p className="muted small" style={{ margin: 0 }}>
+            Your 6-month goal flows into two 3-month stages, six months, and weekly steps. Next you'll describe each stage and add daily tasks; they show up on Today.
+          </p>
+          <div className="card stack-sm" style={{ borderLeft: `4px solid ${color}` }}>
+            <div className="row-between">
+              <b>6 months · {title.trim()}</b>
+              <span className="xsmall muted">
+                {shortDate(plan.start_date)} – {shortDate(plan.end_date)}
+              </span>
+            </div>
+            {type === 'number' && target != null && (
+              <span className="small">
+                {baseline != null ? `${fmt(baseline)} → ` : ''}
+                {fmt(target)} {unit}
+              </span>
+            )}
           </div>
+          {preview.map((q) => (
+            <div key={q.start} className="card tight stack-sm" style={{ marginLeft: 14, borderLeft: `3px solid ${color}88` }}>
+              <div className="row-between small">
+                <b>{q.title}</b>
+                <span className="xsmall muted">
+                  {shortDate(q.start)} – {shortDate(q.end)}
+                  {targetAt(q.end) ? ` · ${targetAt(q.end)} ${unit}` : ''}
+                </span>
+              </div>
+              <div className="grid-3" style={{ marginLeft: 6 }}>
+                {q.children.map((m) => (
+                  <div key={m.start} className="goal-chip" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                    <b>{m.title}</b>
+                    <span className="xsmall muted">{m.children.length} weeks</span>
+                    {targetAt(m.end) && (
+                      <span className="xsmall">
+                        {targetAt(m.end)} {unit}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
           <div className="btn-row">
             <button className="btn" onClick={() => setStep(2)}>
               Back
             </button>
-            <button className="btn primary" disabled={withAction && !action.title.trim()} onClick={save}>
-              Save goal
+            <button className="btn primary" onClick={save}>
+              Save and plan the stages
             </button>
           </div>
         </div>

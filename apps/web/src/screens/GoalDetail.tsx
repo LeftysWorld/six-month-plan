@@ -14,6 +14,7 @@ import {
 import { href, navigate } from '../router.ts';
 import { Empty, Icon, NumberInput, PacePill, useToast } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
+import { stepAt, stepsForGoal, tasksInRange } from '../data/breakdown.ts';
 
 export function GoalDetail({ id }: { id: string }) {
   const { data, today, commit } = useStore();
@@ -80,6 +81,8 @@ export function GoalDetail({ id }: { id: string }) {
           </>
         )}
       </div>
+
+      <BreakdownCard goalId={goal.id} planId={plan?.id ?? null} color={goal.color} />
 
       {goal.type === 'number' && pace.number && plan && (
         <div className="card stack-sm">
@@ -339,3 +342,41 @@ function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementTy
   );
 }
 
+
+/** Where this goal is right now in its breakdown: 3 months → month → week → today's tasks. */
+function BreakdownCard({ goalId, planId, color }: { goalId: string; planId: string | null; color: string }) {
+  const { data, today } = useStore();
+  const steps = stepsForGoal(data, goalId).filter((s) => s.plan_id === planId);
+  const at = (level: 'quarter' | 'month' | 'week') => stepAt(steps.filter((s) => s.level === level), today);
+  const q = at('quarter');
+  const m = at('month');
+  const w = at('week');
+  const tasks = w ? tasksInRange(data, goalId, { start: w.start_date, end: w.end_date }, w.id) : [];
+  return (
+    <a className="card stack-sm" href={href(`/flow/${goalId}`)} style={{ textDecoration: 'none', color: 'inherit' }}>
+      <div className="row-between">
+        <span className="label">Breakdown</span>
+        <span className="small strong" style={{ color: 'var(--accent)' }}>Open ›</span>
+      </div>
+      {steps.length === 0 ? (
+        <span className="small muted">Break this goal into 3-month, monthly and weekly steps with daily tasks.</span>
+      ) : (
+        <div className="stack-sm" style={{ gap: 6, borderLeft: `2.5px solid ${color}66`, paddingLeft: 12 }}>
+          {[q, m, w].map(
+            (s) =>
+              s && (
+                <div key={s.id} className="small">
+                  <b>{s.title}</b>
+                  <span className="muted"> · {s.target_note || (s.target_value != null ? `${fmt(s.target_value)} by ${shortDate(s.end_date)}` : 'not described yet')}</span>
+                </div>
+              ),
+          )}
+          <div className="small">
+            <b>Daily tasks</b>
+            <span className="muted"> · {tasks.length} this week</span>
+          </div>
+        </div>
+      )}
+    </a>
+  );
+}

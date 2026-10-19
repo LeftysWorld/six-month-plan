@@ -10,6 +10,7 @@ import type {
   Milestone,
   Plan,
   PlanGoal,
+  PlanStep,
   Profile,
   Review,
   Session,
@@ -24,6 +25,7 @@ export interface AppData {
   goals: Goal[];
   planGoals: PlanGoal[];
   goalTargets: GoalTarget[];
+  planSteps: PlanStep[];
   milestones: Milestone[];
   actions: Action[];
   actionGoals: ActionGoal[];
@@ -45,6 +47,7 @@ export const TABLES: Record<CollectionKey, string> = {
   goals: 'goals',
   planGoals: 'plan_goals',
   goalTargets: 'goal_targets',
+  planSteps: 'plan_steps',
   milestones: 'milestones',
   actions: 'actions',
   actionGoals: 'action_goals',
@@ -77,6 +80,7 @@ export function emptyData(): AppData {
     goals: [],
     planGoals: [],
     goalTargets: [],
+    planSteps: [],
     milestones: [],
     actions: [],
     actionGoals: [],

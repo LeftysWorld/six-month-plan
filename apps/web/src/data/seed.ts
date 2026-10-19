@@ -11,6 +11,7 @@ import {
   type SessionStatus,
 } from '@six/core';
 import { defaultProfile, emptyData, type AppData } from './model.ts';
+import { blankTask, opsAddTask, opsCreateBreakdown, stepAt, stepsForGoal, withOps } from './breakdown.ts';
 
 const id = () => crypto.randomUUID();
 
@@ -254,6 +255,52 @@ export function buildDemoData(): AppData {
       actions_planned: inWeek.length,
       completed_at: `${addDays(monday, 6)}T18:00:00.000Z`,
     });
+  }
+  // ---- Breakdown: 6 months → 3 months → months → weeks, with notes at each level ----
+  for (const [g, p] of [
+    [weight, plan],
+    [strength, plan],
+    [guitar, plan],
+    [splits, plan],
+    [career, plan],
+    [jhu, plan],
+    [aigp, plan2],
+  ] as const) {
+    Object.assign(data, withOps(data, opsCreateBreakdown(data, g, p)));
+  }
+  const notes: [Goal, string, string][] = [
+    [weight, 'First 3 months', 'Eating window 12–8, protein first, weigh in every morning'],
+    [weight, 'Month 1', 'Lock in the eating window; no weekday drinks'],
+    [strength, 'First 3 months', 'Bench 205 × 5, pull-ups +35 × 5, arm +0.5 in'],
+    [strength, 'Last 3 months', 'Bench 225 × 3, arm +1 in, chest +2 in'],
+    [strength, 'Month 1', 'Five sessions a week; learn the push/pull/legs split'],
+    [guitar, 'First 3 months', 'Record song 1 start to finish'],
+    [guitar, 'Last 3 months', 'Three songs, plus improvise over a backing track'],
+    [guitar, 'Month 1', 'Clean G–C–D–Em changes at 60 bpm'],
+    [guitar, 'Month 2', 'Song 1 verse and chorus, no stopping'],
+    [guitar, 'Month 3', 'Record song 1, share it with one person'],
+    [splits, 'First 3 months', '6 in from the floor'],
+    [splits, 'Month 1', '10 in from the floor, stretch after every workout'],
+    [career, 'First 3 months', '10+ interviews, 2 final rounds'],
+    [career, 'Month 1', 'Resume and LinkedIn rewritten for AI product roles; 60 applications'],
+    [jhu, 'First 3 months', 'Modules 1–6 passed'],
+  ];
+  for (const [g, title, note] of notes) {
+    const step = data.planSteps.find((x) => x.goal_id === g.id && x.title === title);
+    if (step) step.target_note = note;
+  }
+  const weekOf = (g: Goal) => stepAt(stepsForGoal(data, g.id).filter((x) => x.level === 'week'), today)!;
+  const guitarWeek = weekOf(guitar);
+  guitarWeek.target_note = 'G–C–D changes at 60 bpm; 5 minutes is enough on hard days';
+  const within = (d: string, w: { end_date: string }) => (d > w.end_date ? w.end_date : d);
+  const demoTasks: [Goal, Partial<ReturnType<typeof blankTask>>][] = [
+    [guitar, { title: 'Record a baseline video', kind: 'check', minutes: 15, when: 'once', date: within(addDays(today, 2), guitarWeek) }],
+    [weight, { title: 'Meal prep for the week', kind: 'minutes', minutes: 60, when: 'days', days: [7], through: data.planSteps.find((x) => x.goal_id === weight.id && x.title === 'Month 2')?.end_date ?? end }],
+    [career, { title: 'Coffee chat with a product manager', kind: 'check', minutes: 30, when: 'once', date: within(addDays(today, 3), weekOf(career)) }],
+  ];
+  for (const [g, patch] of demoTasks) {
+    const week = weekOf(g);
+    Object.assign(data, withOps(data, opsAddTask(data, g, week, { ...blankTask(week, today), ...patch }, today)));
   }
   return data;
 }
