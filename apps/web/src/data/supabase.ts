@@ -8,6 +8,15 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const supabaseConfigured = Boolean(url && anonKey);
 
+const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql';
+
+/** Set when the database is missing a newer migration; the app shows it as a banner. */
+export let schemaWarning: string | null = null;
+
+function isMissingBreakdown(message: string): boolean {
+  return /plan_steps|step_id/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+}
+
 let client: SupabaseClient | null = null;
 
 /** The shared Supabase client (null when not configured). */
@@ -57,6 +66,9 @@ const NUMERIC_FIELDS: Record<string, string[]> = {
 /** A network failure is worth retrying; a database refusal is not. */
 function toSaveError(error: { message: string; code?: string } | null): SaveError | null {
   if (!error) return null;
+  if (isMissingBreakdown(error.message)) {
+    return new SaveError(`${error.message}. Run ${BREAKDOWN_MIGRATION} in the Supabase SQL Editor, then reload.`, false);
+  }
   const retryable = !error.code || /fetch|network|timeout/i.test(error.message);
   return new SaveError(error.message, retryable);
 }
@@ -67,7 +79,19 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
 
     async loadAll(): Promise<AppData> {
       const data = emptyData();
-      const results = await Promise.all(COLLECTIONS.map((key) => selectAll(sb, TABLES[key])));
+      schemaWarning = null;
+      const results = await Promise.all(
+        COLLECTIONS.map((key) =>
+          selectAll(sb, TABLES[key]).catch((e: Error) => {
+            // A database set up before the goal breakdown existed: keep the app usable and say what to run.
+            if (key === 'planSteps' && isMissingBreakdown(e.message)) {
+              schemaWarning = `Your database needs the goal breakdown update. In Supabase → SQL Editor, run ${BREAKDOWN_MIGRATION}, then reload.`;
+              return [];
+            }
+            throw e;
+          }),
+        ),
+      );
       COLLECTIONS.forEach((key, i) => {
         const table = TABLES[key];
         const rows = numeric(results[i] ?? [], NUMERIC_FIELDS[table] ?? []);

@@ -14,6 +14,7 @@ import {
   type PaceLabel,
   type Plan,
   type PlanStep,
+  type Session,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, useView, type View } from '../data/derive.ts';
@@ -43,6 +44,7 @@ import {
 } from '../data/breakdown.ts';
 import { href } from '../router.ts';
 import { BackLink, Empty, Icon, PacePill, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
+import { LogSheet } from './LogSheet.tsx';
 
 /**
  * The goal breakdown, top to bottom:
@@ -465,64 +467,146 @@ function placeholderFor(goal: Goal, step: PlanStep): string {
 
 // ---------- Level 5: the daily tasks for the selected week ----------
 
-function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Plan; week: PlanStep; weeks: PlanStep[]; onToast: (m: string, undo?: () => void) => void }) {
+type Toast = (m: string, undo?: () => void) => void;
+
+function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Plan; week: PlanStep; weeks: PlanStep[]; onToast: Toast }) {
   const { data, today, commit } = useStore();
-  const [editing, setEditing] = useState<WeekTask | 'new' | null>(null);
+  const [editing, setEditing] = useState<{ task: WeekTask | null; initial?: Partial<TaskInput> } | null>(null);
+  const [logging, setLogging] = useState<Session | null>(null);
   const range = dateRange(week);
   const tasks = tasksInRange(data, goal.id, range, week.id);
   const over = week.end_date < today;
   const days = weekDates(addDays(week.start_date, 1 - isoWeekday(week.start_date))).filter((d) => d >= week.start_date && d <= week.end_date);
+  const [day, setDay] = useState<ISODate>(() => (days.includes(today) ? today : days[0]!));
+  useEffect(() => {
+    if (!days.includes(day)) setDay(days.includes(today) ? today : days[0]!);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [week.id]);
   const available = data.profile.available_minutes;
   const prevWeek = weeks.filter((w) => w.end_date < week.start_date).at(-1);
   const prevTasks = prevWeek ? tasksInRange(data, goal.id, dateRange(prevWeek), prevWeek.id).filter((t) => !tasks.some((x) => x.action.id === t.action.id)) : [];
   const flexible = tasks.filter((t) => t.schedule.rule === 'per_week');
 
-  const goalOn = (d: ISODate) =>
-    tasks.filter((t) => t.schedule.rule === 'days' && t.schedule.days.includes(isoWeekday(d)) && t.schedule.effective_from <= d && (t.schedule.effective_to == null || t.schedule.effective_to >= d));
+  const runsOn = (t: WeekTask, d: ISODate) =>
+    t.schedule.rule === 'days' && t.schedule.days.includes(isoWeekday(d)) && t.schedule.effective_from <= d && (t.schedule.effective_to == null || t.schedule.effective_to >= d);
+  const goalOn = (d: ISODate) => tasks.filter((t) => runsOn(t, d));
+  /** Sessions already on that day for this goal (e.g. a flexible session placed there). */
+  const sessionsOn = (d: ISODate) => data.sessions.filter((x) => x.date === d && x.status !== 'moved' && tasks.some((t) => t.action.id === x.action_id));
+  const dayTasks = goalOn(day);
+  const placed = sessionsOn(day).filter((x) => !dayTasks.some((t) => t.action.id === x.action_id));
+  const dayPast = day < today;
 
   return (
     <div className="stack-sm">
       <div className="card tight" style={{ padding: '10px 8px' }}>
-        <div className="day-strip" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+        <div className="day-strip" role="group" aria-label="Pick a day" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
           {days.map((d) => {
-            const mine = goalOn(d);
-            const allMinutes = fixedTasksOn(data, d).reduce((s, t) => s + t.minutes, 0);
+            const mine = goalOn(d).length + sessionsOn(d).filter((x) => !goalOn(d).some((t) => t.action.id === x.action_id)).length;
+            const allMinutes = fixedTasksOn(data, d).reduce((sum, t) => sum + t.minutes, 0);
             const cap = available[isoWeekday(d) - 1] ?? 0;
+            const selected = d === day;
             return (
-              <div key={d} className="day-cell" style={{ outline: d === today ? `2px solid ${goal.color}` : undefined, opacity: d < today ? 0.6 : 1 }}>
+              <button
+                key={d}
+                className="day-cell"
+                aria-pressed={selected}
+                aria-label={`${weekdayName(d)} ${shortDate(d)}: ${mine} task${mine === 1 ? '' : 's'}`}
+                onClick={() => setDay(d)}
+                style={{
+                  background: selected ? goal.color : undefined,
+                  color: selected ? '#fff' : undefined,
+                  outline: d === today && !selected ? `2px solid ${goal.color}` : undefined,
+                  opacity: d < today && !selected ? 0.6 : 1,
+                }}
+              >
                 <span className="xsmall strong">{weekdayName(d).slice(0, 3)}</span>
-                <span className="xsmall muted">{d.slice(8)}</span>
-                <span className="day-dots" aria-label={`${mine.length} task${mine.length === 1 ? '' : 's'} for this goal`}>
-                  {mine.slice(0, 4).map((t) => (
-                    <span key={t.action.id} className="dot" style={{ background: goal.color, width: 7, height: 7 }} />
+                <span className="xsmall" style={{ opacity: 0.85 }}>{d.slice(8)}</span>
+                <span className="day-dots">
+                  {Array.from({ length: Math.min(mine, 4) }, (_, i) => (
+                    <span key={i} className="dot" style={{ background: selected ? '#fff' : goal.color, width: 7, height: 7 }} />
                   ))}
-                  {mine.length === 0 && <span className="xsmall muted">–</span>}
+                  {mine === 0 && <span className="xsmall" style={{ opacity: 0.6 }}>–</span>}
                 </span>
-                <span className="xsmall" style={{ color: allMinutes > cap ? 'var(--amber-ink)' : 'var(--muted)', fontWeight: allMinutes > cap ? 600 : 400 }} title="Fixed-day minutes, all goals">
+                <span className="xsmall" style={{ color: selected ? '#fff' : allMinutes > cap ? 'var(--amber-ink)' : 'var(--muted)', fontWeight: allMinutes > cap ? 600 : 400 }}>
                   {allMinutes ? minutesText(allMinutes).replace(' min', 'm') : ''}
                 </span>
-              </div>
+              </button>
             );
           })}
         </div>
         <div className="xsmall muted" style={{ marginTop: 6 }}>
-          Dots = this goal's tasks that day. Minutes = everything planned that day across all goals; amber means over your available time.
-          {flexible.length > 0 && ` Plus ${flexible.map((t) => `${t.action.title} ${t.schedule.per_week}×`).join(', ')} on any days.`}
+          Tap a day to see and change its tasks. Minutes are everything planned that day across all goals; amber means over your available time.
         </div>
       </div>
 
+      <div className="card stack-sm" style={{ borderLeft: `4px solid ${goal.color}` }}>
+        <div className="row-between">
+          <b>
+            {weekdayName(day)}, {shortDate(day)}
+            {day === today ? ' · Today' : ''}
+          </b>
+          <span className="xsmall muted">
+            {dayTasks.length + placed.length} task{dayTasks.length + placed.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        {dayTasks.length + placed.length === 0 && <span className="small muted">Nothing for this goal on this day.</span>}
+        {dayTasks.map((t) => {
+          const session = data.sessions.find((x) => x.action_id === t.action.id && x.date === day && x.status !== 'moved');
+          return (
+            <DayTaskRow
+              key={t.action.id}
+              title={t.action.title}
+              detail={`${t.action.planned_minutes ? minutesText(t.action.planned_minutes) : ''}${session && session.status !== 'planned' ? ` · ${statusWord(session.status)}` : ''}`}
+              color={goal.color}
+              onEdit={over || dayPast ? undefined : () => setEditing({ task: t })}
+              onThisDay={session && !dayPast ? () => setLogging(session) : undefined}
+              thisDayLabel={session?.status === 'planned' ? 'Just this day' : 'Change log'}
+            />
+          );
+        })}
+        {placed.map((x) => {
+          const t = tasks.find((tt) => tt.action.id === x.action_id);
+          return (
+            <DayTaskRow
+              key={x.id}
+              title={x.title}
+              detail={`${x.planned_minutes ? minutesText(x.planned_minutes) : ''} · ${x.status === 'planned' ? 'placed on this day' : statusWord(x.status)}`}
+              color={goal.color}
+              onEdit={t && !over && !dayPast ? () => setEditing({ task: t }) : undefined}
+              onThisDay={!dayPast ? () => setLogging(x) : undefined}
+              thisDayLabel={x.status === 'planned' ? 'Just this day' : 'Change log'}
+            />
+          );
+        })}
+        {!over && !dayPast && (
+          <button className="btn small ghost" onClick={() => setEditing({ task: null, initial: { when: 'once', date: day } })}>
+            + Add a task on {weekdayName(day)}
+          </button>
+        )}
+        {dayPast && <span className="xsmall muted">This day has passed. Log or fix it from Today, or pick a later day.</span>}
+        {flexible.length > 0 && (
+          <span className="xsmall muted">
+            Any day this week: {flexible.map((t) => `${t.action.title} ${t.schedule.per_week}×`).join(', ')}. Place them on days from Today.
+          </span>
+        )}
+      </div>
+
+      <div className="row-between" style={{ marginTop: 4 }}>
+        <span className="label">All tasks in {week.title}</span>
+        <span className="xsmall muted">{tasks.length}</span>
+      </div>
       {tasks.length === 0 && <div className="card tight small muted">No daily tasks for {week.title} yet.</div>}
       {tasks.map((t) => (
-        <TaskRow key={t.action.id} task={t} week={week} goal={goal} readOnly={over} onEdit={() => setEditing(t)} />
+        <TaskRow key={t.action.id} task={t} week={week} goal={goal} readOnly={over} onEdit={() => setEditing({ task: t })} />
       ))}
 
       {over ? (
         <p className="xsmall muted" style={{ margin: 0 }}>
-          This week is over. Pick the current or a future week to plan tasks.
+          This week is over, so its tasks can't be changed. Pick the current or a future week to plan tasks.
         </p>
       ) : (
         <>
-          <button className="btn primary" onClick={() => setEditing('new')}>
+          <button className="btn primary" onClick={() => setEditing({ task: null })}>
             + Add a daily task
           </button>
           {prevWeek && prevTasks.some((t) => t.origin === 'here') && (
@@ -545,13 +629,43 @@ function DailyTasks({ goal, plan, week, weeks, onToast }: { goal: Goal; plan: Pl
           goal={goal}
           plan={plan}
           week={week}
-          task={editing === 'new' ? null : editing}
+          task={editing.task}
+          initial={editing.initial}
           onClose={() => setEditing(null)}
           onSaved={(m) => {
             onToast(m);
             setEditing(null);
           }}
         />
+      )}
+      {logging && <LogSheet session={data.sessions.find((x) => x.id === logging.id) ?? logging} onClose={() => setLogging(null)} />}
+    </div>
+  );
+}
+
+function statusWord(status: Session['status']): string {
+  return status === 'minimum' ? 'minimum kept' : status;
+}
+
+function DayTaskRow({ title, detail, color, onEdit, onThisDay, thisDayLabel }: { title: string; detail: string; color: string; onEdit?: () => void; onThisDay?: () => void; thisDayLabel: string }) {
+  return (
+    <div className="list-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+      <span className="dot" style={{ background: color }} />
+      <span className="grow">
+        <span className="strong small" style={{ display: 'block' }}>
+          {title}
+        </span>
+        {detail && <span className="xsmall muted">{detail}</span>}
+      </span>
+      {onThisDay && (
+        <button className="btn small" onClick={onThisDay} aria-label={`${thisDayLabel}: ${title}`}>
+          {thisDayLabel}
+        </button>
+      )}
+      {onEdit && (
+        <button className="btn small" onClick={onEdit} aria-label={`Edit ${title} on every day`}>
+          Edit
+        </button>
       )}
     </div>
   );
@@ -562,30 +676,28 @@ function TaskRow({ task, week, goal, readOnly, onEdit }: { task: WeekTask; week:
   const { action, schedule } = task;
   const once = isOnce(schedule);
   const when = once ? `${weekdayName(schedule.effective_from)} ${shortDate(schedule.effective_from)} only` : describeSchedule(schedule);
-  const through = !once && schedule.effective_to ? (schedule.effective_to === week.end_date ? 'this week' : `through ${shortDate(schedule.effective_to)}`) : !once ? 'ongoing' : '';
+  const through = once ? '' : schedule.effective_to == null ? 'no end date' : schedule.effective_to === week.end_date ? 'this week' : `through ${shortDate(schedule.effective_to)}`;
   const origin = task.origin === 'carried' ? `from ${data.planSteps.find((s) => s.id === action.step_id)?.title ?? 'an earlier week'}` : task.origin === 'ongoing' ? 'from goal setup' : '';
   return (
     <div className="task" style={{ paddingLeft: 12 }}>
       <span className="dot" style={{ background: goal.color, marginRight: 10 }} />
-      <button className="body" onClick={onEdit} disabled={readOnly} style={{ cursor: readOnly ? 'default' : 'pointer' }} aria-label={readOnly ? action.title : `Edit ${action.title}`}>
-        <span className="grow">
-          <span className="title" style={{ display: 'block' }}>
-            {action.title}
-            {action.planned_count ? ` ×${action.planned_count}` : ''}
-          </span>
-          <span className="meta">
-            {when}
-            {through ? ` · ${through}` : ''}
-            {origin ? ` · ${origin}` : ''}
-          </span>
+      <span className="grow" style={{ padding: '10px 0' }}>
+        <span className="title" style={{ display: 'block' }}>
+          {action.title}
+          {action.planned_count ? ` ×${action.planned_count}` : ''}
         </span>
-        <span className="min">{action.planned_minutes ? minutesText(action.planned_minutes) : ''}</span>
-        {!readOnly && (
-          <span style={{ color: 'var(--muted)', display: 'flex' }}>
-            <Icon name="chevron" size={18} />
-          </span>
-        )}
-      </button>
+        <span className="meta">
+          {when}
+          {through ? ` · ${through}` : ''}
+          {origin ? ` · ${origin}` : ''}
+          {action.planned_minutes ? ` · ${minutesText(action.planned_minutes)}` : ''}
+        </span>
+      </span>
+      {!readOnly && (
+        <button className="btn small" onClick={onEdit} aria-label={`Edit ${action.title}`} style={{ marginLeft: 8 }}>
+          Edit
+        </button>
+      )}
     </div>
   );
 }
@@ -598,31 +710,53 @@ const KINDS: { value: ActionKind; label: string }[] = [
   { value: 'study', label: 'Study' },
 ];
 
-function TaskSheet({ goal, plan, week, task, onClose, onSaved }: { goal: Goal; plan: Plan; week: PlanStep; task: WeekTask | null; onClose: () => void; onSaved: (m: string) => void }) {
+function TaskSheet({
+  goal,
+  plan,
+  week,
+  task,
+  initial,
+  onClose,
+  onSaved,
+}: {
+  goal: Goal;
+  plan: Plan;
+  week: PlanStep;
+  task: WeekTask | null;
+  initial?: Partial<TaskInput>;
+  onClose: () => void;
+  onSaved: (m: string) => void;
+}) {
   const { data, today, commit } = useStore();
-  const [v, setV] = useState<TaskInput>(() => (task ? inputFromTask(task, week) : blankTask(week, today)));
+  const [v, setV] = useState<TaskInput>(() => (task ? inputFromTask(task, week) : { ...blankTask(week, today), ...initial }));
   const set = (patch: Partial<TaskInput>) => setV((x) => ({ ...x, ...patch }));
   const from = applyFrom(week, today);
   const month = data.planSteps.find((s) => s.id === week.parent_id);
   const quarter = month ? data.planSteps.find((s) => s.id === month.parent_id) : undefined;
-  const throughOptions: [string, ISODate][] = [
+  const throughOptions: [string, ISODate | null][] = [
     ['This week', week.end_date],
     ...(month && month.end_date > week.end_date ? [[`End of ${month.title}`, month.end_date] as [string, ISODate]] : []),
     ...(quarter && quarter.end_date > (month?.end_date ?? week.end_date) ? [[`End of ${quarter.title.toLowerCase()}`, quarter.end_date] as [string, ISODate]] : []),
     ...(plan.end_date > (quarter?.end_date ?? week.end_date) ? [['End of plan', plan.end_date] as [string, ISODate]] : []),
+    ['No end date', null],
   ];
-  if (!throughOptions.some(([, d]) => d === v.through)) throughOptions.push([`Through ${shortDate(v.through)}`, v.through]);
-  const dayChoices = weekDates(addDays(week.start_date, 1 - isoWeekday(week.start_date))).filter((d) => d >= from && d <= week.end_date);
+  if (!throughOptions.some(([, d]) => d === v.through)) throughOptions.push([`Through ${shortDate(v.through!)}`, v.through]);
+  const originalDate = task && isOnce(task.schedule) ? task.schedule.effective_from : null;
+  const dayChoices = weekDates(addDays(week.start_date, 1 - isoWeekday(week.start_date))).filter(
+    (d) => d >= week.start_date && d <= week.end_date && (d >= from || d === originalDate),
+  );
   const valid = v.title.trim().length > 0 && (v.when !== 'days' || v.days.length > 0) && (v.when !== 'once' || dayChoices.includes(v.date));
 
   function save() {
     if (!valid) return;
     if (task) {
-      commit(opsEditTask(data, task.action, v, from, today));
-      onSaved(`${v.title.trim()} updated from ${shortDate(from)} on`);
+      // A one-day task on a day that has already passed only changes its details, not its date.
+      const editFrom = originalDate && originalDate < from && v.when === 'once' && v.date === originalDate ? originalDate : from;
+      commit(opsEditTask(data, task.action, v, editFrom, today));
+      onSaved(`${v.title.trim()} updated${editFrom > today ? ` from ${shortDate(editFrom)}` : ''}`);
     } else {
       commit(opsAddTask(data, goal, week, v, today));
-      onSaved(`Added ${v.title.trim()}${from <= today && week.start_date <= today ? '. It\'s on Today when due.' : ''}`);
+      onSaved(`Added ${v.title.trim()}${week.start_date <= today ? ". It's on Today when it's due." : ''}`);
     }
   }
 
@@ -645,17 +779,17 @@ function TaskSheet({ goal, plan, week, task, onClose, onSaved }: { goal: Goal; p
           <button role="tab" aria-selected={v.when === 'per_week'} onClick={() => set({ when: 'per_week' })}>
             Times a week
           </button>
-          <button role="tab" aria-selected={v.when === 'once'} onClick={() => set({ when: 'once', date: dayChoices[0] ?? v.date })}>
+          <button role="tab" aria-selected={v.when === 'once'} onClick={() => set({ when: 'once', date: dayChoices.includes(v.date) ? v.date : dayChoices[0] ?? v.date })}>
             One day
           </button>
         </div>
         {v.when === 'days' && (
           <div className="chips" role="group" aria-label="Days">
             {WEEKDAY_NAMES.map((d, i) => {
-              const day = i + 1;
-              const on = v.days.includes(day);
+              const dayNo = i + 1;
+              const on = v.days.includes(dayNo);
               return (
-                <button key={d} className="chip" aria-pressed={on} onClick={() => set({ days: on ? v.days.filter((x) => x !== day) : [...v.days, day].sort() })}>
+                <button key={d} className="chip" aria-pressed={on} onClick={() => set({ days: on ? v.days.filter((x) => x !== dayNo) : [...v.days, dayNo].sort() })}>
                   {d}
                 </button>
               );
@@ -685,10 +819,11 @@ function TaskSheet({ goal, plan, week, task, onClose, onSaved }: { goal: Goal; p
       {v.when !== 'once' && (
         <label className="field">
           Repeat
-          <select value={v.through} onChange={(e) => set({ through: e.target.value })}>
+          <select value={v.through ?? ''} onChange={(e) => set({ through: e.target.value || null })}>
             {throughOptions.map(([label, d]) => (
-              <option key={label} value={d}>
-                {label} ({shortDate(d)})
+              <option key={label} value={d ?? ''}>
+                {label}
+                {d ? ` (${shortDate(d)})` : ''}
               </option>
             ))}
           </select>
@@ -724,9 +859,10 @@ function TaskSheet({ goal, plan, week, task, onClose, onSaved }: { goal: Goal; p
         <input type="checkbox" checked={v.priority} onChange={(e) => set({ priority: e.target.checked })} style={{ width: 20, height: 20 }} />
         Show under Priorities on Today
       </label>
-      {task && task.origin !== 'here' && (
+      {task && (
         <p className="xsmall muted" style={{ margin: 0 }}>
-          Changes apply from {shortDate(from)} on. Earlier days keep the old version.
+          Changes apply from {from === today ? 'today' : shortDate(from)} on, on every day this task runs. Days already logged keep their history. To change only one day, tap that
+          day above and choose "Just this day".
         </p>
       )}
       <div className="btn-row">
@@ -735,14 +871,14 @@ function TaskSheet({ goal, plan, week, task, onClose, onSaved }: { goal: Goal; p
             className="btn danger"
             onClick={() => {
               commit(opsRemoveTask(data, task.action, from));
-              onSaved(`${task.action.title} removed from ${shortDate(from)} on`);
+              onSaved(`${task.action.title} removed from ${from === today ? 'today' : shortDate(from)} on`);
             }}
           >
             Remove
           </button>
         )}
         <button className="btn primary" disabled={!valid} onClick={save}>
-          {task ? 'Save' : 'Add task'}
+          {task ? 'Save changes' : 'Add task'}
         </button>
       </div>
     </Sheet>

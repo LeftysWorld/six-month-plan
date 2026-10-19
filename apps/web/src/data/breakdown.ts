@@ -224,8 +224,8 @@ export interface TaskInput {
   date: ISODate;
   days: number[];
   perWeek: number;
-  /** Last day the task repeats (ignored for one-day tasks). */
-  through: ISODate;
+  /** Last day the task repeats; null = keeps going with no end date (ignored for one-day tasks). */
+  through: ISODate | null;
   priority: boolean;
   minLabel: string;
 }
@@ -368,7 +368,8 @@ export function inputFromTask(t: WeekTask, week: PlanStep): TaskInput {
     date: once ? t.schedule.effective_from : week.start_date,
     days: t.schedule.rule === 'days' ? t.schedule.days : [1, 3, 5],
     perWeek: t.schedule.per_week ?? 3,
-    through: once ? week.end_date : t.schedule.effective_to ?? week.end_date,
+    // Keep an ongoing task ongoing: editing must never quietly give it an end date.
+    through: once ? week.end_date : t.schedule.effective_to,
     priority: t.action.priority,
     minLabel: t.action.min_label,
   };

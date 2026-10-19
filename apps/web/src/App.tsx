@@ -4,7 +4,7 @@ import type { Db } from './data/db.ts';
 import { createLocalDb } from './data/local.ts';
 import type { AppData } from './data/model.ts';
 import { StoreProvider, useStore } from './data/store.tsx';
-import { createSupabaseDb, getSupabase, supabaseConfigured } from './data/supabase.ts';
+import { createSupabaseDb, getSupabase, schemaWarning, supabaseConfigured } from './data/supabase.ts';
 import { useView } from './data/derive.ts';
 import { opsProfile } from './data/ops.ts';
 import { href, useRoute } from './router.ts';
@@ -187,6 +187,11 @@ function Shell(props: ShellProps) {
             <div className="banner info">
               <span>Demo mode: data stays in this browser.</span>
               <a href={href('/settings')}>Settings</a>
+            </div>
+          )}
+          {schemaWarning && !props.demo && (
+            <div className="banner warn" role="alert">
+              <span>{schemaWarning}</span>
             </div>
           )}
           {sync.offline && (
