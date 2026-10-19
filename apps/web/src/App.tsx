@@ -11,7 +11,7 @@ import { href, useRoute } from './router.ts';
 import { Icon, ToastProvider } from './components/ui.tsx';
 import { Login } from './screens/Login.tsx';
 import { Home } from './screens/Home.tsx';
-import { Today } from './screens/Today.tsx';
+import { QuickAdd, Today } from './screens/Today.tsx';
 import { Plans } from './screens/Plans.tsx';
 import { PlanDetail } from './screens/PlanDetail.tsx';
 import { GoalNew } from './screens/GoalNew.tsx';
@@ -125,6 +125,7 @@ function Shell(props: ShellProps) {
   const { sync, clearError, today, data, commit } = useStore();
   const view = useView();
   const [s0 = '', s1] = route.segments;
+  const [adding, setAdding] = useState(false);
 
   const away = view.daysAway();
   const showWelcome =
@@ -174,13 +175,19 @@ function Shell(props: ShellProps) {
 
   return (
     <div className="shell">
-      <nav className="nav" aria-label="Main">
-        <span className="brand">Six Months</span>
-        <NavLink to="/" icon="home" label="Home" current={tab === 'home'} />
-        <NavLink to="/today" icon="today" label="Today" current={tab === 'today'} />
-        <NavLink to="/plans" icon="plans" label="Plans" current={tab === 'plans'} />
-        <NavLink to="/review" icon="review" label="Review" current={tab === 'review'} />
-      </nav>
+      <div className="dock">
+        <nav className="nav" aria-label="Main">
+          <span className="brand">Six Months</span>
+          <NavLink to="/" icon="home" label="Home" current={tab === 'home'} />
+          <NavLink to="/today" icon="today" label="Today" current={tab === 'today'} />
+          <NavLink to="/plans" icon="plans" label="Plans" current={tab === 'plans'} />
+          <NavLink to="/review" icon="review" label="Review" current={tab === 'review'} />
+        </nav>
+        <button type="button" className="dock-add" aria-label="Add a task or log something unplanned" onClick={() => setAdding(true)}>
+          <Icon name="plus" size={24} stroke={2.4} />
+          <span className="dock-add-label">Add or log</span>
+        </button>
+      </div>
       <main className="main">
         <div className="stack">
           {props.demo && (
@@ -210,15 +217,16 @@ function Shell(props: ShellProps) {
           {showWelcome ? <WelcomeBack days={away!} onDone={dismissWelcome} /> : screen}
         </div>
       </main>
+      {adding && <QuickAdd date={today} onClose={() => setAdding(false)} />}
     </div>
   );
 }
 
 function NavLink({ to, icon, label, current }: { to: string; icon: string; label: string; current: boolean }) {
   return (
-    <a href={href(to)} aria-current={current ? 'page' : undefined}>
-      <Icon name={icon} size={22} />
-      {label}
+    <a href={href(to)} aria-current={current ? 'page' : undefined} aria-label={label}>
+      <Icon name={icon} size={current ? 20 : 22} stroke={current ? 2 : 1.9} />
+      <span className="nav-label">{label}</span>
     </a>
   );
 }

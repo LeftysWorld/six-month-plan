@@ -32,7 +32,7 @@ const TOP = 16;
 const BOTTOM = 146;
 
 /** The weight path: dashed plan line, daily readings, 7-day trend and a "today" marker. */
-export function WeightChart({ start, path, readings, range, today, unit, color = '#2B63A6', markers = [] }: Props) {
+export function WeightChart({ start, path, readings, range, today, unit, color = '#5B8CFF', markers = [] }: Props) {
   const span = Math.max(1, daysBetween(range.start, range.end));
   const x = (d: ISODate) => LEFT + ((RIGHT - LEFT) * daysBetween(range.start, d)) / span;
 

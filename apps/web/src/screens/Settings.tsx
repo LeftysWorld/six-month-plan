@@ -4,6 +4,7 @@ import { opsProfile } from '../data/ops.ts';
 import { resetDemo } from '../data/local.ts';
 import { BackLink, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import type { ShellProps } from '../App.tsx';
+import { getTheme, setTheme, type Theme } from '../theme.ts';
 
 function download(name: string, content: string, type: string) {
   const blob = new Blob([content], { type });
@@ -86,6 +87,7 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
   const p = data.profile;
   const [name, setName] = useState(p.display_name);
   const [startOver, setStartOver] = useState(false);
+  const [theme, setThemeState] = useState<Theme>(getTheme);
   const zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [p.timezone];
 
   return (
@@ -116,6 +118,23 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
             <option value="kg">Kilograms and centimetres</option>
           </select>
         </label>
+      </div>
+
+      <div className="section-label">Appearance</div>
+      <div className="seg" role="tablist" aria-label="Appearance">
+        {(['system', 'dark', 'light'] as Theme[]).map((t) => (
+          <button
+            key={t}
+            role="tab"
+            aria-selected={theme === t}
+            onClick={() => {
+              setTheme(t);
+              setThemeState(t);
+            }}
+          >
+            {t === 'system' ? 'Match device' : t === 'dark' ? 'Dark' : 'Light'}
+          </button>
+        ))}
       </div>
 
       <div className="section-label">Time available each day</div>

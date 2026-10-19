@@ -74,7 +74,7 @@ export function buildDemoData(): AppData {
   const weight = goal({
     title: 'Lose 30 lb',
     type: 'number',
-    color: '#2B63A6',
+    color: '#5B8CFF',
     unit: 'lb',
     baseline_value: 212.2,
     baseline_date: start,
@@ -85,12 +85,12 @@ export function buildDemoData(): AppData {
     measurement_type_id: weightType.id,
   });
   weightType.goal_id = weight.id;
-  const strength = goal({ title: 'Bigger arms, chest and lats', type: 'practice', color: '#0E6B61', why: 'Look and feel strong.', done_means: 'Arm +1 in, chest +2 in' });
-  const guitar = goal({ title: 'Comfortable on guitar', type: 'practice', color: '#B04A1E', why: 'Play for myself at the end of the day.', done_means: '3 songs recorded start to finish' });
-  const splits = goal({ title: 'Near full splits', type: 'practice', color: '#A0336A', why: 'Move without stiffness.', done_means: 'Under 3 in from the floor' });
-  const career = goal({ title: 'Land a product role', type: 'practice', color: '#6A4AA0', why: 'Work on AI products I care about.', done_means: 'Signed offer' });
-  const jhu = goal({ title: 'JHU AI certificate', type: 'finish', color: '#7A6416', why: 'Credibility for AI product roles.', done_means: 'All modules passed' });
-  const aigp = goal({ title: 'Pass the AIGP exam', type: 'finish', color: '#7A6416', why: 'AI governance credibility.', done_means: 'Exam passed' });
+  const strength = goal({ title: 'Bigger arms, chest and lats', type: 'practice', color: '#22B07D', why: 'Look and feel strong.', done_means: 'Arm +1 in, chest +2 in' });
+  const guitar = goal({ title: 'Comfortable on guitar', type: 'practice', color: '#FF7A45', why: 'Play for myself at the end of the day.', done_means: '3 songs recorded start to finish' });
+  const splits = goal({ title: 'Near full splits', type: 'practice', color: '#E8559B', why: 'Move without stiffness.', done_means: 'Under 3 in from the floor' });
+  const career = goal({ title: 'Land a product role', type: 'practice', color: '#8B6CF6', why: 'Work on AI products I care about.', done_means: 'Signed offer' });
+  const jhu = goal({ title: 'JHU AI certificate', type: 'finish', color: '#C9A227', why: 'Credibility for AI product roles.', done_means: 'All modules passed' });
+  const aigp = goal({ title: 'Pass the AIGP exam', type: 'finish', color: '#C9A227', why: 'AI governance credibility.', done_means: 'Exam passed' });
   data.goals = [weight, strength, guitar, splits, career, jhu, aigp];
   data.planGoals = [
     ...[weight, strength, guitar, splits, career, jhu].map((g) => ({ id: id(), plan_id: plan.id, goal_id: g.id })),

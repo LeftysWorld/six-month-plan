@@ -318,7 +318,7 @@ function RoadmapLane({
       )}
       <div className="row-between small" style={{ alignItems: 'flex-end' }}>
         <span>{summary}</span>
-        <span className="xsmall strong" style={{ color: 'var(--accent)', whiteSpace: 'nowrap' }}>Breakdown ›</span>
+        <span className="xsmall strong" style={{ color: 'var(--accent-ink)', whiteSpace: 'nowrap' }}>Breakdown ›</span>
       </div>
     </a>
   );
@@ -461,7 +461,7 @@ function QuarterView({ plan, goals, refDate, view }: ViewProps) {
 
 function CheckpointCard({ goal, label, children }: { goal: Goal; label: Parameters<typeof PacePill>[0]['label']; children: ReactNode }) {
   return (
-    <div className="card stack-sm" style={{ borderLeft: `4px solid ${goal.color}` }}>
+    <div className="card stack-sm">
       <div className="row-between">
         <a href={href(`/goals/${goal.id}`)} className="strong" style={{ textDecoration: 'none', color: 'var(--ink)', fontSize: 15 }}>
           {goal.title}
@@ -550,7 +550,7 @@ function BlockView({ plan, goals, refDate, view }: ViewProps) {
         const startVal = valueOnPath(n.start, path, b.start);
         const endVal = valueOnPath(n.start, path, b.end);
         return (
-          <div key={g.id} className="card stack-sm" style={{ borderLeft: `4px solid ${g.color}` }}>
+          <div key={g.id} className="card stack-sm">
             <div className="row-between">
               <b>{g.title} · this block</b>
               <PacePill label={pace.label} />
@@ -744,7 +744,7 @@ function WeekView({ plan, refDate, view }: { plan: Plan; refDate: ISODate; view:
 function chipStyle(status: Session['status'], color: string): CSSProperties {
   switch (status) {
     case 'done':
-      return { background: `${color}1f`, border: `1px solid ${color}55`, color: 'var(--ink)' };
+      return { background: `color-mix(in srgb, ${color} 14%, transparent)`, border: `1px solid color-mix(in srgb, ${color} 40%, transparent)`, color: 'var(--ink)' };
     case 'minimum':
     case 'partial':
       return { background: 'var(--amber-soft)', border: '1px solid var(--amber-line)', color: 'var(--amber-ink)' };

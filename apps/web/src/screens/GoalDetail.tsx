@@ -46,13 +46,20 @@ export function GoalDetail({ id }: { id: string }) {
 
   return (
     <div className="stack">
-      <div className="card stack-sm" style={{ background: goal.color, borderColor: goal.color, color: '#fff' }}>
-        <button type="button" className="back" style={{ color: '#fff' }} onClick={() => (plan ? navigate(`/plans/${plan.id}`) : navigate('/plans'))}>
+      <div aria-hidden="true" style={{ position: 'fixed', top: -170, right: -150, width: 440, height: 440, borderRadius: '50%', background: `radial-gradient(closest-side, ${goal.color}30, transparent)`, pointerEvents: 'none', zIndex: -1 }} />
+      <div className="topbar">
+        <button type="button" className="back" onClick={() => (plan ? navigate(`/plans/${plan.id}`) : navigate('/plans'))}>
           <Icon name="back" />
           {plan?.name ?? 'Plans'}
         </button>
-        <h1 style={{ color: '#fff' }}>{goal.title}</h1>
-        {chain.length > 0 && <div className="small" style={{ opacity: 0.95, lineHeight: 1.45 }}>{chain.join(' → ')}</div>}
+      </div>
+      <div className="stack-sm" style={{ gap: 8 }}>
+        <span className="mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span className="dot" style={{ width: 7, height: 7, background: goal.color, boxShadow: `0 0 10px ${goal.color}` }} />
+          6-month goal
+        </span>
+        <h1>{goal.title}</h1>
+        {chain.length > 0 && <div className="small" style={{ color: 'var(--ink-2)', lineHeight: 1.5 }}>{chain.join(' → ')}</div>}
       </div>
 
       <div className="card stack-sm">
@@ -356,7 +363,7 @@ function BreakdownCard({ goalId, planId, color }: { goalId: string; planId: stri
     <a className="card stack-sm" href={href(`/flow/${goalId}`)} style={{ textDecoration: 'none', color: 'inherit' }}>
       <div className="row-between">
         <span className="label">Breakdown</span>
-        <span className="small strong" style={{ color: 'var(--accent)' }}>Open ›</span>
+        <span className="small strong" style={{ color: 'var(--accent-ink)' }}>Open ›</span>
       </div>
       {steps.length === 0 ? (
         <span className="small muted">Break this goal into 3-month, monthly and weekly steps with daily tasks.</span>

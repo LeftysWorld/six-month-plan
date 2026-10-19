@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
+  addDays,
   blockIndex,
   blockRange,
   longDate,
@@ -27,27 +28,28 @@ export function Home() {
   const { data, today } = useStore();
   const plan = view.mainPlan;
   const name = data.profile.display_name || '';
+  const initial = (name || 'You').trim().charAt(0).toUpperCase();
+  const started = plan && plan.start_date <= today;
 
   return (
-    <div className="stack">
-      <div className="row-between">
-        <div>
-          <div className="small muted">
-            {longDate(today)}
-            {plan && plan.start_date <= today && ` · Week ${planWeekNumber(plan, today)} of ${planTotalWeeks(plan)}`}
-          </div>
-          <h1 style={{ marginTop: 2 }}>
-            {greeting()}
-            {name ? `, ${name}` : ''}
-          </h1>
-        </div>
-        <a href={href('/settings')} aria-label="Settings" style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>
-          <Icon name="gear" />
+    <div className="stack rise">
+      <div className="topbar">
+        <span className="mono">
+          {started ? `Week ${planWeekNumber(plan, today)} of ${planTotalWeeks(plan)} · Day ${planDayNumber(plan, today)}` : longDate(today)}
+        </span>
+        <a className="avatar" href={href('/settings')} aria-label="Settings">
+          {initial}
         </a>
       </div>
+      <h1 style={{ marginTop: -4 }}>
+        {greeting()}
+        {name ? ',' : ''}
+        {name && <br />}
+        {name}
+      </h1>
       {!plan && <FirstPlan />}
       {plan && plan.start_date > today && <Upcoming plan={plan} />}
-      {plan && plan.start_date <= today && <Dashboard plan={plan} view={view} />}
+      {plan && started && <Dashboard plan={plan} view={view} />}
     </div>
   );
 }
@@ -61,7 +63,7 @@ function FirstPlan() {
   return (
     <>
       <div className="card dark stack-sm">
-        <h2 style={{ color: 'var(--hero-ink)' }}>Start with one plan and one goal.</h2>
+        <h2>Start with one plan and one goal.</h2>
         <p className="muted small" style={{ margin: 0 }}>
           Six months from today, what do you want to be true? Add one goal now; add the rest over your first week.
         </p>
@@ -86,8 +88,37 @@ function Upcoming({ plan }: { plan: Plan }) {
   );
 }
 
+/** A progress ring. value 0..1. */
+function Ring({ size, stroke, value, color, children }: { size: number; stroke: number; value: number; color: string; children?: ReactNode }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const v = Math.max(0, Math.min(1, value));
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true" style={{ flex: 'none' }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" style={{ stroke: 'var(--track)' }} strokeWidth={stroke} />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        style={{ stroke: color, transition: 'stroke-dashoffset 0.8s cubic-bezier(0.2,0.8,0.2,1)' }}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={c}
+        strokeDashoffset={c * (1 - v)}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      {children}
+    </svg>
+  );
+}
+
+const paceColor = (label: string) => (label === 'behind' ? 'var(--amber)' : label === 'ahead' ? 'var(--blue)' : 'var(--accent)');
+const paceInk = (label: string) => (label === 'behind' ? 'var(--amber-ink)' : label === 'ahead' ? 'var(--blue-ink)' : label === 'none' ? 'var(--muted)' : 'var(--accent-ink)');
+const paceWord = (label: string) => (label === 'behind' ? 'Behind' : label === 'ahead' ? 'Ahead' : label === 'none' ? 'Not yet' : 'On pace');
+
 function Dashboard({ plan, view }: { plan: Plan; view: View }) {
-  const { today } = useStore();
+  const { today, data } = useStore();
   const goals = view.goalsForPlan(plan.id);
   const early = view.tooEarly(plan);
   const block = blockRange(plan, blockIndex(plan, today));
@@ -106,109 +137,185 @@ function Dashboard({ plan, view }: { plan: Plan; view: View }) {
   const aheadLabels = blockPaces.filter((p) => p.label === 'ahead' || p.label === 'on_track');
   const status =
     early || judged.length === 0
-      ? { title: 'Nothing to judge yet. Just start.', sentence: 'Pace shows up after your first week. Today counts if you do one thing on the list.', behind: false }
+      ? { title: 'Nothing to judge yet. Just start.', sentence: 'Pace shows up after your first week. Today counts if you do one thing on the list.' }
       : {
           title: onPace.length === judged.length ? 'On track' : onPace.length >= judged.length / 2 ? 'Mostly on track' : 'Behind, and fixable',
-          sentence: statusSentence(aheadLabels, behindLabels),
-          behind: onPace.length < judged.length,
+          sentence: shortSentence(aheadLabels.length, blockPaces.filter((p) => p.label !== 'none').length, behindLabels),
         };
+
+  const ringOf = (key: string) => horizons.find((h) => h.key === key);
+  const rings = (['plan', 'quarter', 'block'] as const).map((k) => ringOf(k)).filter(Boolean) as typeof horizons;
+  const frac = (p: { actual: number; planned: number }) => (p.planned ? p.actual / p.planned : 0);
+  const weekH = ringOf('week');
+
+  // Check-ins: days with anything logged, the last 14 days, and the current run.
+  const logged = new Set(data.sessions.filter((s) => s.date && s.status !== 'planned' && s.status !== 'skipped' && s.status !== 'moved').map((s) => s.date!));
+  const last14 = Array.from({ length: 14 }, (_, i) => addDays(today, i - 13));
+  let run = 0;
+  for (let d = logged.has(today) ? today : addDays(today, -1); logged.has(d); d = addDays(d, -1)) run++;
 
   return (
     <>
-      <div className="card dark stack">
-        <div className="row-start" style={{ gap: 10 }}>
-          <span className={`status-dot ${status.behind ? 'behind' : ''}`} />
-          <h2 style={{ color: 'var(--hero-ink)', fontSize: 20 }}>{status.title}</h2>
-          {!early && judged.length > 0 && (
-            <span className="xsmall muted" style={{ marginLeft: 'auto' }}>
-              {onPace.length} of {judged.length} horizons
-            </span>
-          )}
-        </div>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.45, color: 'var(--hero-muted)' }}>{status.sentence}</p>
-        <a className="up-next" href={href('/today')}>
-          <span className="small">
-            {next ? (
-              <>
-                <b>Up next:</b> {next.title} · {minutesText(next.planned_minutes)}
-              </>
-            ) : todaySessions.length ? (
-              <b>Today's list is done.</b>
-            ) : (
-              <b>Nothing planned today.</b>
-            )}
-          </span>
-          <span className="small muted" style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--muted)' }}>
-            {left.length > 0 && `${left.length} left`} <Icon name="chevron" size={16} />
-          </span>
-        </a>
-      </div>
-
-      {numberGoal && <WeightCard goal={numberGoal} plan={plan} view={view} />}
-
-      <div className="card">
-        <div className="row-between" style={{ marginBottom: 6 }}>
-          <span className="label">Plan vs actual</span>
-          <span className="xsmall muted" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 2, height: 11, background: 'var(--ink)', display: 'inline-block' }} />
-            should be here today
-          </span>
-        </div>
-        {horizons.map((h) => (
-          <a key={h.key} className="horizon" href={href(h.key === 'today' ? '/today' : h.key === 'week' ? '/review' : h.key === 'plan' ? '/plans' : `/plans/${plan.id}`)} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              {h.name} <span className="xsmall muted" style={{ fontWeight: 400 }}>· {h.detail}</span>
+      <div className="bento" style={{ marginTop: 8 }}>
+        <div className="tile wide">
+          <div className="row-between" style={{ alignItems: 'center', gap: 16 }}>
+            <div className="grow stack-sm" style={{ gap: 8 }}>
+              <span className="label">Plan pace</span>
+              <span style={{ fontSize: 26, lineHeight: 1.08, fontWeight: 600, letterSpacing: '-0.035em' }}>{status.title}</span>
+              <span className="small" style={{ color: 'var(--ink-2)', lineHeight: 1.4 }}>{status.sentence}</span>
             </div>
-            <div className="row-start" style={{ flexWrap: 'nowrap' }}>
-              <span className="num" style={{ fontSize: 14 }}>
-                {fmt(h.progress.actual)} / {h.progress.planned}
-              </span>
-              <PacePill
-                label={h.progress.label}
-                text={h.progress.label === 'behind' ? `Behind ${fmt(h.progress.expected - h.progress.actual)}` : undefined}
-              />
-            </div>
-            <PaceBar progress={h.progress} />
-          </a>
-        ))}
-      </div>
-
-      {blockPaces.length > 0 && (
-        <div className="card stack-sm">
-          <div className="row-between">
-            <span className="label">Goals · pace this block</span>
-            <a href={href('/progress')} className="small strong" style={{ textDecoration: 'none', minHeight: 36, display: 'flex', alignItems: 'center' }}>
-              All progress ›
-            </a>
-          </div>
-          <div className="grid-2">
-            {blockPaces.map((p) => (
-              <a key={p.goal.id} className="goal-chip" href={href(`/goals/${p.goal.id}`)}>
-                <span className="dot" style={{ background: p.goal.color }} />
-                <div style={{ minWidth: 0 }}>
-                  <b>{p.goal.title}</b>
-                  <PacePill label={p.label} />
+            <div
+              role="img"
+              aria-label={rings.map((h) => `${h.name} ${Math.round(frac(h.progress) * 100)}% done, ${paceWord(h.progress.label).toLowerCase()}`).join('; ')}
+              style={{ position: 'relative', width: 112, height: 112, flex: 'none' }}
+            >
+              {rings.map((h, i) => (
+                <div key={h.key} style={{ position: 'absolute', inset: i * 13 }}>
+                  <Ring size={112 - i * 26} stroke={9} value={frac(h.progress)} color={paceColor(h.progress.label)} />
                 </div>
+              ))}
+            </div>
+          </div>
+          <div className="row-start" style={{ gap: 14 }}>
+            {rings.map((h) => (
+              <span key={h.key} className="mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10.5 }}>
+                <span className="dot" style={{ width: 6, height: 6, background: paceColor(h.progress.label) }} />
+                {h.key === 'plan' ? `Goals ${fmt(h.progress.actual)}/${h.progress.planned}` : `${h.key === 'quarter' ? '3 mo' : 'Block'} ${Math.round(frac(h.progress) * 100)}%`}
+              </span>
+            ))}
+          </div>
+          <a className="up-next" href={href('/today')} style={{ marginTop: 2 }}>
+            <span className="small">
+              {next ? (
+                <>
+                  <b>Up next</b> · {next.title}
+                  {next.planned_minutes ? ` · ${minutesText(next.planned_minutes)}` : ''}
+                </>
+              ) : todaySessions.length ? (
+                <b>Today's list is done.</b>
+              ) : (
+                <b>Nothing planned today.</b>
+              )}
+            </span>
+            <span className="small" style={{ display: 'flex', alignItems: 'center', gap: 4, opacity: 0.7, whiteSpace: 'nowrap' }}>
+              {left.length > 0 && `${left.length} left`} <Icon name="chevron" size={16} />
+            </span>
+          </a>
+        </div>
+
+        {numberGoal && <WeightCard goal={numberGoal} plan={plan} view={view} />}
+
+        <a className="tile" href={href('/review')}>
+          <span className="label">This week</span>
+          <div className="row-start" style={{ gap: 12, flexWrap: 'nowrap' }}>
+            <Ring size={54} stroke={7} value={weekH ? frac(weekH.progress) : 0} color="var(--accent)" />
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span className="num" style={{ fontSize: 26, lineHeight: 1 }}>
+                {weekH ? fmt(weekH.progress.actual) : 0}
+                <span style={{ color: 'var(--muted)', fontSize: 17 }}>/{weekH?.progress.planned ?? 0}</span>
+              </span>
+              <span className="xsmall" style={{ color: 'var(--ink-2)' }}>sessions</span>
+            </div>
+          </div>
+        </a>
+
+        <div className="tile">
+          <span className="label">Check-ins</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span className="num" style={{ fontSize: 26, lineHeight: 1 }}>{run}</span>
+            <span className="xsmall" style={{ color: 'var(--ink-2)' }}>day{run === 1 ? '' : 's'} running</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }} role="img" aria-label={`Logged on ${last14.filter((d) => logged.has(d)).length} of the last 14 days`}>
+            {last14.map((d) => (
+              <span
+                key={d}
+                style={{
+                  aspectRatio: '1',
+                  borderRadius: 4,
+                  background: logged.has(d) ? 'var(--accent)' : d === today ? 'transparent' : 'var(--track)',
+                  boxShadow: d === today && !logged.has(d) ? 'inset 0 0 0 1.5px var(--accent-ink)' : undefined,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {blockPaces.length > 0 && (
+          <div className="tile wide" style={{ padding: '8px 20px' }}>
+            <div className="row-between" style={{ minHeight: 40 }}>
+              <span className="label">Goals · this block</span>
+              <a href={href('/progress')} className="label" style={{ textDecoration: 'none', color: 'var(--ink-2)' }}>
+                All progress ›
+              </a>
+            </div>
+            {blockPaces.map((p) => {
+              const whole = view.goalPace(p.goal, plan).progress;
+              const pct = whole && whole.planned ? Math.min(1, whole.actual / whole.planned) : 0;
+              return (
+                <a key={p.goal.id} href={href(`/goals/${p.goal.id}`)} className="list-row" style={{ gap: 12, minHeight: 50, padding: '8px 0' }}>
+                  <span className="dot" style={{ width: 9, height: 9, background: p.goal.color, boxShadow: `0 0 12px ${p.goal.color}` }} />
+                  <span className="grow" style={{ fontSize: 15, fontWeight: 520, letterSpacing: '-0.015em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {p.goal.title}
+                  </span>
+                  <span style={{ width: 56, height: 4, borderRadius: 2, background: 'var(--track)', position: 'relative', flex: 'none' }}>
+                    <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 2, width: `${Math.max(4, pct * 100)}%`, background: p.goal.color }} />
+                  </span>
+                  <span style={{ width: 58, textAlign: 'right', fontSize: 12.5, fontWeight: 550, color: paceInk(p.label) }}>{paceWord(p.label)}</span>
+                </a>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="tile wide">
+          <div className="row-between">
+            <span className="label">Plan vs actual</span>
+            <span className="mono" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10 }}>
+              <span style={{ width: 2, height: 11, background: 'var(--ink)', display: 'inline-block' }} />
+              where you should be
+            </span>
+          </div>
+          <div>
+            {horizons.map((h) => (
+              <a key={h.key} className="horizon" href={href(h.key === 'today' ? '/today' : h.key === 'week' ? '/review' : h.key === 'plan' ? '/plans' : `/plans/${plan.id}`)} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <div style={{ fontSize: 14.5, fontWeight: 600, letterSpacing: '-0.01em' }}>
+                  {h.name} <span className="xsmall muted" style={{ fontWeight: 400 }}>· {h.detail}</span>
+                </div>
+                <div className="row-start" style={{ flexWrap: 'nowrap' }}>
+                  <span className="num" style={{ fontSize: 14 }}>
+                    {fmt(h.progress.actual)}/{h.progress.planned}
+                  </span>
+                  <PacePill label={h.progress.label} text={h.progress.label === 'behind' ? `Behind ${fmt(h.progress.expected - h.progress.actual)}` : undefined} />
+                </div>
+                <PaceBar progress={h.progress} />
               </a>
             ))}
           </div>
-          <span className="xsmall muted">Block {blockIndex(plan, today) + 1}: {shortDate(block.start)} – {shortDate(block.end)}</span>
         </div>
-      )}
+      </div>
 
       {goals.length === 0 && (
         <a className="btn primary" href={href(`/goals/new?plan=${plan.id}`)}>
           Add your first goal
         </a>
       )}
-      <p className="xsmall muted" style={{ textAlign: 'center' }}>
+      <p className="mono" style={{ textAlign: 'center', margin: '6px 0 0' }}>
         Day {planDayNumber(plan, today)} of {planTotalDays(plan)}
       </p>
     </>
   );
 }
 
-function statusSentence(onPace: GoalPace[], behind: GoalPace[]): string {
+/** One or two short lines for the pace tile, e.g. "4 of 6 goals on pace. Guitar and splits slipped this block." */
+function shortSentence(onPace: number, judged: number, behind: GoalPace[]): string {
+  const first = judged ? `${onPace} of ${judged} goals on pace.` : '';
+  if (behind.length === 0) return `${first} Keep showing up.`.trim();
+  const names = behind.slice(0, 2).map((p) => p.goal.title);
+  const list = names.length === 2 ? `${names[0]} and ${names[1]}` : names[0];
+  return `${first} ${list}${behind.length > 2 ? ` and ${behind.length - 2} more` : ''} slipped this block.`.trim();
+}
+
+export function statusSentence(onPace: GoalPace[], behind: GoalPace[]): string {
   const names = (list: GoalPace[]) => {
     const t = list.slice(0, 2).map((p) => p.goal.title);
     return t.length === 2 ? `${t[0]} and ${t[1]}` : t[0] ?? '';
@@ -243,16 +350,16 @@ function WeightCard({ goal, plan, view }: { goal: Goal; plan: Plan; view: View }
   const toCheckpoint = status.trend != null ? Math.abs(status.trend - valueOnPath(status.start, path, checkpointDate)) : null;
 
   return (
-    <div className="card stack-sm">
+    <div className="tile wide" style={{ gap: 8 }}>
       <div className="row-between">
-        <div className="row-start" style={{ gap: 7, flexWrap: 'nowrap', minWidth: 0 }}>
-          <span className="dot" style={{ background: goal.color }} />
+        <div className="row-start" style={{ gap: 8, flexWrap: 'nowrap', minWidth: 0 }}>
+          <span className="dot" style={{ width: 7, height: 7, background: goal.color, boxShadow: `0 0 10px ${goal.color}` }} />
           <a
             className="label"
             href={href(`/goals/${goal.id}`)}
-            style={{ color: 'var(--ink)', textDecoration: 'none', minHeight: 36, display: 'block', lineHeight: '36px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            style={{ textDecoration: 'none', minHeight: 36, display: 'block', lineHeight: '36px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
           >
-            {goal.title} · path ›
+            {goal.title}
           </a>
         </div>
         <div
@@ -268,11 +375,11 @@ function WeightCard({ goal, plan, view }: { goal: Goal; plan: Plan; view: View }
           ))}
         </div>
       </div>
-      <div className="row-between" style={{ alignItems: 'flex-end' }}>
+      <div className="row-between" style={{ alignItems: 'flex-end', flexWrap: 'wrap', rowGap: 10 }}>
         <div>
-          <div className="num" style={{ fontSize: 34, lineHeight: 1 }}>
+          <div className="hero-num" style={{ fontSize: 60, lineHeight: 0.95, whiteSpace: 'nowrap' }}>
             {status.latest != null ? fmt(status.latest) : '–'}
-            <span style={{ fontSize: 15, color: 'var(--muted)', fontWeight: 500 }}> {unit}</span>
+            <span style={{ fontSize: 17, color: 'var(--muted)', fontWeight: 500, letterSpacing: 0 }}> {unit}</span>
           </div>
           <div className="xsmall muted" style={{ marginTop: 4 }}>
             {status.trend != null ? `7-day trend ${fmt(status.trend)} · path today ${fmt(status.pathToday)}` : 'Log a reading to start the line'}

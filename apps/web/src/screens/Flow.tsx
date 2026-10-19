@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   addDays,
   describeSchedule,
@@ -66,6 +66,7 @@ export function Flow({ goalId }: { goalId: string }) {
   const [mId, setM] = useState<string | null>(null);
   const [wId, setW] = useState<string | null>(null);
   const [dayPick, setDayPick] = useState<ISODate | null>(null);
+  const [zoom, setZoom] = useState<ZoomKey>('week');
 
   const quarter = quarters.find((q) => q.id === qId) ?? stepAt(quarters, focus) ?? quarters.at(-1);
   const months = quarter ? childSteps(data, quarter.id) : [];
@@ -93,21 +94,51 @@ export function Flow({ goalId }: { goalId: string }) {
     setW(null);
   };
 
+  const pace = view.goalPace(goal, plan);
+  const start = pace.number?.start;
+  const fmtTarget = (st: PlanStep | undefined, fallback: string) => (st?.target_value != null ? fmt(st.target_value) : st ? st.title.replace('First 3 months', 'First 3').replace('Last 3 months', 'Last 3') : fallback);
+  const zoomTo = (key: ZoomKey) => {
+    setZoom(key);
+    document.getElementById(`flow-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const zooms: { key: ZoomKey; k: string; v: string }[] = [
+    { key: 'goal', k: '6 mo', v: goal.type === 'number' && goal.target_value != null ? fmt(goal.target_value) : 'Goal' },
+    { key: 'quarter', k: '3 mo', v: fmtTarget(quarter, '–') },
+    { key: 'month', k: 'Month', v: fmtTarget(month, '–') },
+    { key: 'week', k: 'Week', v: fmtTarget(week, '–') },
+  ];
+
   return (
     <div className="stack">
-      <div className="row-between">
+      <div aria-hidden="true" style={{ position: 'fixed', top: -170, right: -150, width: 440, height: 440, borderRadius: '50%', background: `radial-gradient(closest-side, ${goal.color}30, transparent)`, pointerEvents: 'none', zIndex: -1 }} />
+      <div className="topbar">
         <BackLink label={plan.name} fallback={`/plans/${plan.id}`} />
-        <a className="small strong" href={href(`/goals/${goal.id}`)} style={{ textDecoration: 'none', minHeight: 40, display: 'flex', alignItems: 'center' }}>
+        <a className="label" href={href(`/goals/${goal.id}`)} style={{ textDecoration: 'none', color: 'var(--ink-2)', minHeight: 40, display: 'flex', alignItems: 'center' }}>
           Goal details ›
         </a>
       </div>
-      <div>
-        <div className="small muted row-start" style={{ gap: 6 }}>
-          <span className="dot" style={{ background: goal.color }} />
-          Breakdown
-        </div>
+      <div className="stack-sm" style={{ gap: 6 }}>
+        <span className="mono">6-month goal · {rangeLabel({ start: plan.start_date, end: plan.end_date })}</span>
         <h1>{goal.title}</h1>
+        <div className="row-start" style={{ gap: 10, marginTop: 4 }}>
+          {goal.type === 'number' && start && (
+            <span className="num" style={{ fontSize: 22, fontWeight: 550 }}>
+              {fmt(start.value)} <span style={{ color: 'var(--muted)' }}>→</span> {fmt(goal.target_value)} <span className="small muted" style={{ fontWeight: 400 }}>{goal.unit}</span>
+            </span>
+          )}
+          {pace.label !== 'none' && <PacePill label={pace.label} />}
+        </div>
       </div>
+      {steps.length > 0 && (
+        <div className="zoom" role="group" aria-label="Zoom level">
+          {zooms.map((z) => (
+            <button key={z.key} type="button" aria-pressed={zoom === z.key} onClick={() => zoomTo(z.key)}>
+              <span>{z.k.toUpperCase()}</span>
+              <span>{z.v}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {steps.length === 0 ? (
         <div className="card stack-sm">
@@ -122,11 +153,11 @@ export function Flow({ goalId }: { goalId: string }) {
         </div>
       ) : (
         <div className="flow">
-          <Level n={1} name="6 months" dates={rangeLabel({ start: plan.start_date, end: plan.end_date })} color={goal.color}>
+          <Level n={1} name="6 months" dates={rangeLabel({ start: plan.start_date, end: plan.end_date })} color={goal.color} id="flow-goal" active={zoom === 'goal'}>
             <GoalLevel goal={goal} plan={plan} />
           </Level>
 
-          <Level n={2} name="3 months" dates={quarter ? rangeLabel(dateRange(quarter)) : ''} color={goal.color}>
+          <Level n={2} name="3 months" dates={quarter ? rangeLabel(dateRange(quarter)) : ''} color={goal.color} id="flow-quarter" active={zoom === 'quarter'}>
             <div className="grid-2">
               {quarters.map((q) => (
                 <StepCard key={q.id} step={q} goal={goal} plan={plan} selected={q.id === quarter?.id} onSelect={() => pickQuarter(q)} />
@@ -135,7 +166,7 @@ export function Flow({ goalId }: { goalId: string }) {
             {quarter && <StepEditor key={quarter.id} step={quarter} goal={goal} plan={plan} childName="months and weeks" />}
           </Level>
 
-          <Level n={3} name="1 month" dates={month ? rangeLabel(dateRange(month)) : ''} color={goal.color}>
+          <Level n={3} name="1 month" dates={month ? rangeLabel(dateRange(month)) : ''} color={goal.color} id="flow-month" active={zoom === 'month'}>
             <div className="grid-3">
               {months.map((m) => (
                 <StepCard key={m.id} step={m} goal={goal} plan={plan} selected={m.id === month?.id} onSelect={() => pickMonth(m)} compact />
@@ -144,7 +175,7 @@ export function Flow({ goalId }: { goalId: string }) {
             {month && <StepEditor key={month.id} step={month} goal={goal} plan={plan} childName="weeks" />}
           </Level>
 
-          <Level n={4} name="Week" dates={week ? rangeLabel(dateRange(week)) : ''} color={goal.color}>
+          <Level n={4} name="Week" dates={week ? rangeLabel(dateRange(week)) : ''} color={goal.color} id="flow-week" active={zoom === 'week'}>
             <div className="week-strip" role="group" aria-label="Weeks in this month">
               {weeks.map((w) => (
                 <WeekChip key={w.id} step={w} selected={w.id === week?.id} today={today} color={goal.color} onSelect={() => setW(w.id)} />
@@ -187,19 +218,19 @@ function dateRange(s: PlanStep) {
 
 // ---------- Layout: a numbered rail that connects each level to the next ----------
 
-function Level({ n, name, dates, color, last, id, children }: { n: number; name: string; dates: string; color: string; last?: boolean; id?: string; children: ReactNode }) {
+type ZoomKey = 'goal' | 'quarter' | 'month' | 'week';
+
+function Level({ n, name, dates, last, id, active, children }: { n: number; name: string; dates: string; color: string; last?: boolean; id?: string; active?: boolean; children: ReactNode }) {
   return (
-    <section className="flow-level" aria-label={name} id={id} style={{ scrollMarginTop: 12 }}>
+    <section className={`flow-level${active ? ' active' : ''}`} aria-label={name} id={id}>
       <div className="flow-rail" aria-hidden="true">
-        <span className="flow-dot" style={{ borderColor: color, color }}>
-          {n}
-        </span>
-        {!last && <span className="flow-line" style={{ background: color }} />}
+        <span className="flow-dot">{String(n).padStart(2, '0')}</span>
+        {!last && <span className="flow-line" />}
       </div>
-      <div className="stack-sm" style={{ minWidth: 0, paddingBottom: last ? 0 : 18 }}>
+      <div className="stack-sm" style={{ minWidth: 0, paddingBottom: last ? 0 : 26, gap: 10 }}>
         <div className="row-between" style={{ minHeight: 30 }}>
-          <h2 style={{ fontSize: 17 }}>{name}</h2>
-          <span className="xsmall muted">{dates}</span>
+          <h2 style={{ fontSize: 18 }}>{name}</h2>
+          <span className="mono" style={{ fontSize: 10.5 }}>{dates}</span>
         </div>
         {children}
       </div>
@@ -233,7 +264,7 @@ function GoalLevel({ goal, plan }: { goal: Goal; plan: Plan }) {
   }
 
   return (
-    <div className="card stack-sm" style={{ borderLeft: `4px solid ${goal.color}` }}>
+    <div className="card stack-sm">
       {editing ? (
         <>
           <label className="field">
@@ -355,11 +386,11 @@ function StepCard({ step, goal, plan, selected, onSelect, compact }: { step: Pla
       className="flow-card"
       aria-pressed={selected}
       onClick={onSelect}
-      style={{ borderColor: selected ? goal.color : undefined, boxShadow: selected ? `0 0 0 1px ${goal.color}` : undefined, opacity: status.state === 'past' && !selected ? 0.75 : 1 }}
+      style={{ opacity: status.state === 'past' && !selected ? 0.7 : 1 }}
     >
       <span className="row-between" style={{ width: '100%', gap: 4 }}>
         <b style={{ fontSize: compact ? 13 : 14 }}>{step.title}</b>
-        {status.state === 'current' && <span className="xsmall strong" style={{ color: goal.color }}>Now</span>}
+        {status.state === 'current' && <span className="mono" style={{ color: 'var(--accent-ink)', fontSize: 10 }}>Now</span>}
         {status.state === 'past' && <Icon name="check" size={14} stroke={2.6} />}
       </span>
       <span className="xsmall muted">{rangeLabel(dateRange(step))}</span>
@@ -389,15 +420,10 @@ function WeekChip({ step, selected, today, color, onSelect }: { step: PlanStep; 
       className="week-chip"
       aria-pressed={selected}
       onClick={onSelect}
-      style={{
-        borderColor: selected ? color : state === 'current' ? color : undefined,
-        background: selected ? color : undefined,
-        color: selected ? '#fff' : undefined,
-      }}
     >
       <b>{step.title.replace('Week ', 'W')}</b>
       <span>{shortDate(step.start_date)}</span>
-      {state === 'current' && !selected && <span style={{ color, fontWeight: 600 }}>Now</span>}
+      {state === 'current' && !selected && <span style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>Now</span>}
     </button>
   );
 }
@@ -579,7 +605,7 @@ function DailyTasks({
 
   return (
     <div className="stack-sm">
-      <div className="card stack-sm" style={{ borderLeft: `4px solid ${goal.color}` }}>
+      <div className="card stack-sm">
         <div className="row-between">
           <button className="btn small" aria-label="Previous day" disabled={dayIndex <= 0} onClick={() => onPickDay(days[dayIndex - 1]!)} style={{ minWidth: 44 }}>
             ‹
@@ -693,7 +719,7 @@ interface DayItem {
   status: Session['status'];
 }
 
-/** The whole week at once: one row per day with that day's tasks. Tap a day to open it. */
+/** The whole week at once: seven columns with a bar per task. Tap a day to open it below. */
 function WeekAgenda({
   days,
   today,
@@ -715,84 +741,48 @@ function WeekAgenda({
   capOn: (d: ISODate) => number;
   onOpen: (d: ISODate) => void;
 }) {
+  const bar = (status: Session['status']) =>
+    status === 'done' ? 'var(--accent)' : status === 'minimum' || status === 'partial' ? 'var(--amber-bar)' : status === 'skipped' ? 'var(--border-strong)' : color;
   return (
-    <div className="stack-sm">
-      {flexible.length > 0 && (
-        <div className="card tight xsmall muted" style={{ borderStyle: 'dashed' }}>
-          Any day this week: {flexible.join(', ')}
-        </div>
-      )}
-      {days.map((d) => {
-        const items = itemsOn(d);
-        const isToday = d === today;
-        const past = d < today;
-        const all = minutesOn(d);
-        const cap = capOn(d);
-        const goalMinutes = items.reduce((sum, i) => sum + i.minutes, 0);
-        return (
-          <button
-            key={d}
-            className="week-day"
-            onClick={() => onOpen(d)}
-            aria-label={`${weekdayName(d)} ${shortDate(d)}: ${items.length} task${items.length === 1 ? '' : 's'}. Open day`}
-            aria-pressed={d === selected}
-            style={{
-              borderColor: d === selected || isToday ? color : undefined,
-              boxShadow: d === selected ? `0 0 0 2px ${color}` : undefined,
-              background: d === selected ? `${color}12` : undefined,
-              opacity: past && d !== selected ? 0.7 : 1,
-            }}
-          >
-            <span className="week-day-date">
-              <b style={{ color: isToday ? color : undefined }}>{weekdayName(d).slice(0, 3)}</b>
-              <span className="num" style={{ fontSize: 20, lineHeight: 1.1 }}>
-                {d.slice(8)}
-              </span>
-              {isToday && (
-                <span className="xsmall strong" style={{ color }}>
-                  Today
-                </span>
-              )}
-            </span>
-            <span className="stack-sm" style={{ gap: 6, minWidth: 0, flex: 1 }}>
-              <span className="chips" style={{ gap: 5 }}>
-                {items.map((i) => (
-                  <span key={i.key} className="mini-chip" style={chipLook(i.status, color)}>
-                    {i.status === 'done' ? '✓ ' : i.status === 'skipped' ? '✕ ' : i.status === 'minimum' || i.status === 'partial' ? '– ' : ''}
-                    {i.title}
-                    {i.minutes ? <span style={{ fontWeight: 400, opacity: 0.8 }}> {i.minutes}</span> : null}
-                  </span>
+    <div className="stack-sm" style={{ gap: 10 }}>
+      <div className="week-grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+        {days.map((d) => {
+          const items = itemsOn(d);
+          const isToday = d === today;
+          const all = minutesOn(d);
+          const cap = capOn(d);
+          return (
+            <button
+              key={d}
+              className={`week-day${isToday ? ' is-today' : ''}${d < today ? ' past' : ''}`}
+              onClick={() => onOpen(d)}
+              aria-label={`${weekdayName(d)} ${shortDate(d)}: ${items.length} task${items.length === 1 ? '' : 's'}. Open day`}
+              aria-pressed={d === selected}
+            >
+              <span className="week-day-name">{weekdayName(d).charAt(0)}</span>
+              <span className="week-day-num">{Number(d.slice(8))}</span>
+              {isToday && <span className="visually-hidden">Today</span>}
+              <span className="week-day-bars" aria-hidden="true">
+                {items.slice(0, 4).map((i) => (
+                  <span key={i.key} style={{ background: bar(i.status), opacity: i.status === 'planned' ? 0.85 : 1 }} />
                 ))}
-                {items.length === 0 && <span className="small muted">Nothing for this goal</span>}
               </span>
-              <span className="xsmall" style={{ color: all > cap ? 'var(--amber-ink)' : 'var(--muted)', fontWeight: all > cap ? 600 : 400 }}>
-                {goalMinutes ? `${minutesText(goalMinutes)} for this goal · ` : ''}
-                {minutesText(all)} of {minutesText(cap)} planned overall{all > cap ? ' · over' : ''}
+              <span className={`week-day-load${all > cap ? ' over' : ''}`} title={`${minutesText(all)} of ${minutesText(cap)} planned across all goals`}>
+                {all ? minutesText(all).replace(' min', 'm').replace(/ /g, '') : '–'}
               </span>
-            </span>
-            <span style={{ color: 'var(--muted)', display: 'flex', alignSelf: 'center' }}>
-              <Icon name="chevron" size={18} />
-            </span>
-          </button>
-        );
-      })}
-      <span className="xsmall muted">Done ✓ · minimum or partial – · skipped ✕ · dashed = still to do. Tap a day to open it below.</span>
+            </button>
+          );
+        })}
+      </div>
+      {flexible.length > 0 && <span className="xsmall muted">Any day this week: {flexible.join(', ')}</span>}
+      <span className="mono" style={{ fontSize: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 4, borderRadius: 2, background: color }} />To do</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 4, borderRadius: 2, background: 'var(--accent)' }} />Done</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 4, borderRadius: 2, background: 'var(--amber-bar)' }} />Partly</span>
+        <span>Number = minutes planned, all goals</span>
+      </span>
     </div>
   );
-}
-
-function chipLook(status: Session['status'], color: string): CSSProperties {
-  switch (status) {
-    case 'done':
-      return { background: `${color}22`, color: 'var(--ink)', border: `1px solid ${color}55` };
-    case 'minimum':
-    case 'partial':
-      return { background: 'var(--amber-soft)', color: 'var(--amber-ink)', border: '1px solid var(--amber-line)' };
-    case 'skipped':
-      return { background: 'var(--line-2)', color: 'var(--muted)', border: '1px solid var(--line)', textDecoration: 'line-through' };
-    default:
-      return { background: 'var(--surface)', color: 'var(--ink)', border: `1.5px dashed ${color}` };
-  }
 }
 
 function statusWord(status: Session['status']): string {

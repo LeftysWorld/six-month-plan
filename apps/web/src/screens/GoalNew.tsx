@@ -239,7 +239,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
           <p className="muted small" style={{ margin: 0 }}>
             Your 6-month goal flows into two 3-month stages, six months, and weekly steps. Next you'll describe each stage and add daily tasks; they show up on Today.
           </p>
-          <div className="card stack-sm" style={{ borderLeft: `4px solid ${color}` }}>
+          <div className="card stack-sm">
             <div className="row-between">
               <b>6 months · {title.trim()}</b>
               <span className="xsmall muted">
@@ -254,7 +254,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
             )}
           </div>
           {preview.map((q) => (
-            <div key={q.start} className="card tight stack-sm" style={{ marginLeft: 14, borderLeft: `3px solid ${color}88` }}>
+            <div key={q.start} className="card tight stack-sm" style={{ marginLeft: 14, borderLeft: `1.5px solid ${color}88` }}>
               <div className="row-between small">
                 <b>{q.title}</b>
                 <span className="xsmall muted">

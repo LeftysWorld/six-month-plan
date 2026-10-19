@@ -6,25 +6,27 @@ import { goBack } from '../router.ts';
 // ---------- Icons (inline stroke SVG, inherit currentColor) ----------
 
 const paths: Record<string, ReactNode> = {
-  home: <path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" />,
+  home: <path d="M4 10.5L12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" />,
   today: (
     <>
       <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      <path d="M12 2.5v2M12 19.5v2M4.6 4.6L6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4" />
     </>
   ),
   plans: (
     <>
-      <path d="M12 3l9 5-9 5-9-5 9-5z" />
-      <path d="M3 13l9 5 9-5" />
+      <path d="M12 3.5l8.5 4.7L12 13 3.5 8.2z" />
+      <path d="M3.5 12.6L12 17.4l8.5-4.8" />
     </>
   ),
   review: (
     <>
-      <rect x="3" y="5" width="18" height="16" rx="2" />
-      <path d="M8 3v4M16 3v4M8 14l3 3 5-6" />
+      <rect x="3.5" y="5" width="17" height="15.5" rx="3" />
+      <path d="M8 3v4M16 3v4M8.5 13.5l2.5 2.5 4.5-5" />
     </>
   ),
+  sparkle: <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />,
+  edit: <path d="M4 20h4L19 9l-4-4L4 16z" />,
   plus: <path d="M12 5v14M5 12h14" />,
   check: <path d="M5 12l5 5 9-10" />,
   minus: <path d="M6 12h12" />,
@@ -224,6 +226,6 @@ export function NumberInput({
 export const WEEKDAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 export const WEEKDAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-export const GOAL_COLORS = ['#2B63A6', '#0E6B61', '#B04A1E', '#A0336A', '#6A4AA0', '#7A6416'];
+export const GOAL_COLORS = ['#5B8CFF', '#22B07D', '#FF7A45', '#E8559B', '#8B6CF6', '#C9A227'];
 
 export const OBSTACLES = ['Time', 'Energy', 'Schedule', 'Unclear task'];
