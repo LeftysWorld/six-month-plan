@@ -152,6 +152,8 @@ function PlanOverview({ plan }: { plan: Plan }) {
   const weekH = horizons.find((h) => h.key === 'week');
   const attention = started ? needsAttention(view, data, plan, goals, today) : [];
   const events = comingUp(data, plan, goals, today);
+  const setup = setupSteps(view, data, plan, goals);
+  const setupLeft = setup.filter((x) => !x.done).length;
 
   return (
     <>
@@ -169,11 +171,11 @@ function PlanOverview({ plan }: { plan: Plan }) {
         </div>
         <PlanTimeline plan={plan} today={today} checkpoint={checkpoint} />
         <div className="grid-3" style={{ gap: 10, borderTop: '1px solid var(--line)', paddingTop: 14 }}>
-          <Stat
-            label="Goals on pace"
-            value={goalsH && goalsH.progress.label !== 'none' ? `${fmt(goalsH.progress.actual)}/${goalsH.progress.planned}` : `${goals.length}`}
-            sub={goalsH && goalsH.progress.label !== 'none' ? '' : goals.length === 1 ? 'goal' : 'goals'}
-          />
+          {goalsH && goalsH.progress.label !== 'none' ? (
+            <Stat label="Goals on pace" value={`${fmt(goalsH.progress.actual)}/${goalsH.progress.planned}`} sub="" />
+          ) : (
+            <Stat label="Goals" value={`${goals.length}`} sub={goals.length === 0 ? 'add 3–4' : started ? 'pace after week 1' : 'ready to start'} />
+          )}
           <Stat label="This week" value={weekH ? `${fmt(weekH.progress.actual)}/${weekH.progress.planned}` : '–'} sub="sessions" />
           <Stat
             label="Checkpoint"
@@ -182,6 +184,43 @@ function PlanOverview({ plan }: { plan: Plan }) {
           />
         </div>
       </div>
+
+      {setupLeft > 0 && (
+        <div className="tile" style={{ gap: 12 }}>
+          <div className="row-between">
+            <span className="label" style={{ color: 'var(--accent-ink)' }}>Get this plan ready</span>
+            <span className="label">
+              {setup.length - setupLeft} of {setup.length}
+            </span>
+          </div>
+          <div className="segments" style={{ gridTemplateColumns: `repeat(${setup.length}, minmax(0, 1fr))` }} aria-hidden="true">
+            {setup.map((x) => (
+              <span key={x.key} className={x.done ? 'on' : ''} />
+            ))}
+          </div>
+          <div>
+            {setup.map((x, i) => {
+              const isNext = !x.done && setup.findIndex((y) => !y.done) === i;
+              return (
+                <div key={x.key} className="list-row" style={{ gap: 12, opacity: x.done ? 0.6 : 1 }}>
+                  <span className={`ring ${x.done ? 'done' : ''}`} style={{ width: 24, height: 24, animation: 'none' }}>
+                    {x.done && <Icon name="check" size={12} stroke={3} />}
+                  </span>
+                  <span className="grow" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontSize: 15, fontWeight: 550, letterSpacing: '-0.01em', textDecoration: x.done ? 'line-through' : undefined }}>{x.title}</span>
+                    {isNext && <span className="xsmall muted">{x.detail}</span>}
+                  </span>
+                  {isNext && (
+                    <a className="btn small primary" href={href(x.to)} style={{ flex: 'none' }}>
+                      {x.action}
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {started && goals.length > 0 && (
         <>
@@ -219,6 +258,11 @@ function PlanOverview({ plan }: { plan: Plan }) {
         <span className="label">Goals · tap to open the breakdown</span>
         <span className="label">{goals.length}</span>
       </div>
+      {goals.length === 0 && (
+        <div className="card tight small" style={{ color: 'var(--ink-2)' }}>
+          No goals yet. Six months from now, what do you want to be true? Most people start with 3–4: a number to reach, a habit to build, something to finish.
+        </div>
+      )}
       {goals.map((g) => (
         <GoalRow key={g.id} goal={g} plan={plan} />
       ))}
@@ -468,3 +512,56 @@ function comingUp(data: AppData, plan: Plan, goals: Goal[], today: ISODate): Upc
   if (inWindow(plan.end_date)) out.push({ key: 'end', date: plan.end_date, title: `${plan.name} ends`, to: `/plans/${plan.id}` });
   return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)).slice(0, 6);
 }
+
+interface SetupStep {
+  key: string;
+  title: string;
+  detail: string;
+  action: string;
+  to: string;
+  done: boolean;
+}
+
+/** What a new plan needs before it runs itself: goals, breakdowns, daily tasks, a first check-in. */
+function setupSteps(view: View, data: AppData, plan: Plan, goals: Goal[]): SetupStep[] {
+  const first = goals[0];
+  const unbroken = goals.find((g) => !stepsForGoal(data, g.id).some((st) => st.plan_id === plan.id));
+  const noTasks = goals.find((g) => view.actionsForGoal(g.id).length === 0);
+  const actionIds = new Set(goals.flatMap((g) => view.actionsForGoal(g.id, true).map((a) => a.id)));
+  const checkedIn = data.sessions.some((x) => x.action_id && actionIds.has(x.action_id) && x.status !== 'planned' && x.status !== 'moved');
+  return [
+    {
+      key: 'goals',
+      title: goals.length >= 3 ? `${goals.length} goals added` : goals.length ? `Add more goals (${goals.length} so far)` : 'Add your first goal',
+      detail: 'A number to reach, a habit to build or something to finish. 3–4 is a good start.',
+      action: 'Add goal',
+      to: `/goals/new?plan=${plan.id}`,
+      done: goals.length >= 3,
+    },
+    {
+      key: 'breakdown',
+      title: unbroken ? `Break down ${unbroken.title}` : goals.length ? 'Every goal broken down' : 'Break each goal down',
+      detail: 'Split it into two 3-month stages, months and weeks, and say what each should look like.',
+      action: 'Break down',
+      to: unbroken ? `/flow/${unbroken.id}` : first ? `/flow/${first.id}` : `/goals/new?plan=${plan.id}`,
+      done: goals.length > 0 && !unbroken,
+    },
+    {
+      key: 'tasks',
+      title: noTasks ? `Add daily tasks for ${noTasks.title}` : goals.length ? 'Daily tasks for every goal' : 'Add daily tasks',
+      detail: 'The breakdown’s Daily tasks level puts them on your Today list.',
+      action: 'Add tasks',
+      to: noTasks ? `/flow/${noTasks.id}` : first ? `/flow/${first.id}` : `/goals/new?plan=${plan.id}`,
+      done: goals.length > 0 && !noTasks,
+    },
+    {
+      key: 'checkin',
+      title: checkedIn ? 'First check-in done' : 'Do your first check-in',
+      detail: 'Tick one thing off on Today. That starts the habit and the pace tracking.',
+      action: 'Open Today',
+      to: '/today',
+      done: checkedIn,
+    },
+  ];
+}
+
