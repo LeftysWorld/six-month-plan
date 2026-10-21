@@ -7,15 +7,12 @@ import { StoreProvider, useStore } from './data/store.tsx';
 import { createSupabaseDb, getSupabase, schemaWarning, supabaseConfigured } from './data/supabase.ts';
 import { useView } from './data/derive.ts';
 import { opsProfile } from './data/ops.ts';
-import { href, useRoute } from './router.ts';
+import { href, navigate, useRoute } from './router.ts';
 import { Icon, ToastProvider } from './components/ui.tsx';
 import { Login } from './screens/Login.tsx';
-import { Home } from './screens/Home.tsx';
 import { QuickAdd, Today } from './screens/Today.tsx';
 import { Plans } from './screens/Plans.tsx';
-import { PlanDetail } from './screens/PlanDetail.tsx';
 import { GoalNew } from './screens/GoalNew.tsx';
-import { GoalDetail } from './screens/GoalDetail.tsx';
 import { ActionEdit } from './screens/ActionEdit.tsx';
 import { ReviewHub } from './screens/ReviewHub.tsx';
 import { WeeklyReview } from './screens/WeeklyReview.tsx';
@@ -23,6 +20,7 @@ import { Progress } from './screens/Progress.tsx';
 import { Settings } from './screens/Settings.tsx';
 import { WorkoutLog } from './screens/WorkoutLog.tsx';
 import { StudyLog } from './screens/StudyLog.tsx';
+import { setAppBadge } from './push.ts';
 import { WelcomeBack } from './screens/WelcomeBack.tsx';
 import { Flow } from './screens/Flow.tsx';
 
@@ -129,31 +127,56 @@ function Shell(props: ShellProps) {
 
   const away = view.daysAway();
   const showWelcome =
-    away != null && away >= 2 && data.profile.welcome_dismissed_on !== today && (s0 === '' || s0 === 'today');
+    away != null && away >= 2 && data.profile.welcome_dismissed_on !== today && (s0 === '' || s0 === 'today' || s0 === 'home');
   const dismissWelcome = () => commit(opsProfile({ welcome_dismissed_on: today }));
+
+  // Today's open tasks: shown in the browser tab and on the home-screen icon.
+  const openToday = view.sessionsOn(today).filter((x) => x.status === 'planned').length;
+  useEffect(() => {
+    document.title = openToday ? `(${openToday}) Six Months` : 'Six Months';
+    setAppBadge(openToday);
+  }, [openToday]);
+
+  // Keyboard shortcuts on a computer: N add, T today, G goals, R review.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
+      if (document.querySelector('.sheet')) return;
+      const k = e.key.toLowerCase();
+      if (k === 'n') {
+        e.preventDefault();
+        setAdding(true);
+      } else if (k === 't') navigate('/today');
+      else if (k === 'g') navigate('/goals');
+      else if (k === 'r') navigate('/review');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   let screen: ReactElement;
   switch (s0) {
     case '':
-      screen = <Home />;
-      break;
     case 'today':
+    case 'home':
       screen = <Today />;
       break;
     case 'plans':
-      screen = s1 ? <PlanDetail id={s1} /> : <Plans />;
-      break;
     case 'goals':
-      screen = s1 === 'new' || !s1 ? <GoalNew planId={route.query.get('plan')} /> : <GoalDetail id={s1} />;
+      if (s0 === 'goals' && s1 === 'new') screen = <GoalNew planId={route.query.get('plan')} />;
+      else if (s0 === 'goals' && s1) screen = <Flow goalId={s1} />;
+      else screen = <Plans planId={s0 === 'plans' ? s1 ?? null : route.query.get('plan')} />;
+      break;
+    case 'flow':
+      screen = <Flow goalId={s1 ?? ''} />;
       break;
     case 'actions':
       screen = <ActionEdit id={s1 === 'new' ? null : s1 ?? null} goalId={route.query.get('goal')} />;
       break;
     case 'review':
       screen = s1 === 'run' ? <WeeklyReview kind={route.query.get('kind') ?? 'weekly'} /> : <ReviewHub />;
-      break;
-    case 'flow':
-      screen = <Flow goalId={s1 ?? ''} />;
       break;
     case 'progress':
       screen = <Progress />;
@@ -165,22 +188,22 @@ function Shell(props: ShellProps) {
       screen = <WorkoutLog id={s1 ?? ''} />;
       break;
     case 'study':
+    case 'focus':
       screen = <StudyLog id={s1 ?? ''} />;
       break;
     default:
-      screen = <Home />;
+      screen = <Today />;
   }
 
-  const tab = s0 === '' || s0 === 'progress' || s0 === 'settings' ? 'home' : s0 === 'today' || s0 === 'workout' || s0 === 'study' ? 'today' : s0 === 'review' ? 'review' : 'plans';
+  const tab = s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'flow' || s0 === 'actions' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
 
   return (
     <div className="shell">
       <div className="dock">
         <nav className="nav" aria-label="Main">
           <span className="brand">Six Months</span>
-          <NavLink to="/" icon="home" label="Home" current={tab === 'home'} />
           <NavLink to="/today" icon="today" label="Today" current={tab === 'today'} />
-          <NavLink to="/plans" icon="plans" label="Plans" current={tab === 'plans'} />
+          <NavLink to="/goals" icon="plans" label="Goals" current={tab === 'goals'} />
           <NavLink to="/review" icon="review" label="Review" current={tab === 'review'} />
         </nav>
         <button type="button" className="dock-add" aria-label="Add a task or log something unplanned" onClick={() => setAdding(true)}>

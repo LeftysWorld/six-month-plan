@@ -127,7 +127,16 @@ export function opsCreateBreakdown(data: AppData, goal: Goal, plan: Plan): Op[] 
   return [{ kind: 'insert', collection: 'planSteps', rows: rows(steps) }];
 }
 
-function makeStep(goal: Goal, plan: Plan, parent: string | null, level: PlanStep['level'], idx: number, title: string, range: DateRange, target: number | null): PlanStep {
+/** The value a number goal's path reaches on a date (rounded), or null for other goal types. */
+export function suggestedTarget(data: AppData, goal: Goal, plan: Plan, end: ISODate): number | null {
+  if (goal.type !== 'number') return null;
+  const start = startPoint(data, goal, plan);
+  const path = currentTargets(data.goalTargets, goal.id).map((t) => ({ date: t.target_date, value: Number(t.target_value) }));
+  if (!start || (!path.length && goal.target_value == null)) return null;
+  return round1(valueOnPath(start, path.length ? path : [{ date: goal.target_date ?? plan.end_date, value: Number(goal.target_value) }], end));
+}
+
+export function makeStep(goal: Goal, plan: Plan, parent: string | null, level: PlanStep['level'], idx: number, title: string, range: DateRange, target: number | null): PlanStep {
   return {
     id: newId(),
     goal_id: goal.id,
@@ -228,6 +237,8 @@ export interface TaskInput {
   through: ISODate | null;
   priority: boolean;
   minLabel: string;
+  /** "After coffee, at my desk": when the task happens (optional). */
+  cue: string;
 }
 
 function scheduleFor(actionId: string, input: TaskInput, from: ISODate): ActionSchedule {
@@ -269,6 +280,8 @@ export function opsAddTask(data: AppData, goal: Goal, step: PlanStep, input: Tas
     priority: input.priority,
     step_id: step.id,
     archived_at: null,
+    // Only sent when used, so a database without the cue column still works.
+    ...(input.cue.trim() ? { cue: input.cue.trim() } : {}),
   };
   const schedule = scheduleFor(action.id, input, applyFrom(step, today));
   const ops: Op[] = [
@@ -300,6 +313,7 @@ export function opsEditTask(data: AppData, action: Action, input: TaskInput, fro
         planned_count: input.kind === 'count' ? Math.max(1, input.count ?? 1) : null,
         min_label: input.minLabel.trim(),
         priority: input.priority,
+        ...(input.cue.trim() || action.cue ? { cue: input.cue.trim() } : {}),
       },
     },
   ];
@@ -372,6 +386,7 @@ export function inputFromTask(t: WeekTask, week: PlanStep): TaskInput {
     through: once ? week.end_date : t.schedule.effective_to,
     priority: t.action.priority,
     minLabel: t.action.min_label,
+    cue: t.action.cue ?? '',
   };
 }
 
@@ -389,5 +404,6 @@ export function blankTask(week: PlanStep, today: ISODate): TaskInput {
     through: week.end_date,
     priority: false,
     minLabel: '',
+    cue: '',
   };
 }

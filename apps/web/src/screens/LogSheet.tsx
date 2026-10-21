@@ -3,7 +3,7 @@ import { addDays, shortDate, weekDates, weekStart, weekdayName, type Session, ty
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/derive.ts';
 import { opsLogSession, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
-import { href } from '../router.ts';
+import { href, navigate } from '../router.ts';
 import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
 
 /** Log an item beyond a one-tap check: amount, state, obstacles, note, or move it. */
@@ -48,7 +48,7 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
   function moveTo(date: string | null) {
     const before = session;
     commit(opsMoveSession(session, date));
-    toast(date ? `Moved to ${weekdayName(date)} ${shortDate(date)}` : 'Moved to not placed yet', () => commit(opsRestoreSession(before)));
+    toast(date ? `Moved to ${weekdayName(date)} ${shortDate(date)}` : 'Moved to any day this week', () => commit(opsRestoreSession(before)));
     onClose();
   }
 
@@ -61,11 +61,23 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
         <div className="row-start small muted" style={{ marginTop: -8 }}>
           <span className="dot" style={{ background: goal.color }} />
           Supports: {goal.title}
+          {action?.cue ? ` · ${action.cue}` : ''}
         </div>
+      )}
+      {session.status === 'planned' && (session.date ?? today) <= today && !moving && (
+        <button
+          className="btn"
+          onClick={() => {
+            onClose();
+            navigate(action?.kind === 'workout' ? `/workout/${session.id}` : `/focus/${session.id}`);
+          }}
+        >
+          Start a timer{session.planned_minutes ? ` · ${session.planned_minutes} min` : ''}
+        </button>
       )}
       {moving ? (
         <div className="stack-sm">
-          <div className="small muted">Move this session only. To change how often it happens, edit its schedule.</div>
+          <div className="small muted">Move this one only. To change how often it happens, edit the task on its goal page.</div>
           <div className="grid-3">
             {moveDates.map((d) => (
               <button key={d} className="btn small" onClick={() => moveTo(d)}>
@@ -75,12 +87,12 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
           </div>
           {session.origin === 'scheduled' && (
             <button className="btn small" onClick={() => moveTo(null)}>
-              Back to "not placed yet"
+              Back to "any day this week"
             </button>
           )}
-          {action && (
-            <a className="small" href={href(`/actions/${action.id}`)} onClick={onClose}>
-              Change the recurring schedule instead
+          {goal && (
+            <a className="small" href={href(`/goals/${goal.id}`)} onClick={onClose}>
+              Change how often it happens instead
             </a>
           )}
           <button className="link-btn" onClick={() => setMoving(false)}>

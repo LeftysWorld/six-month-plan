@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
 import {
+  chainAt,
   addDays,
-  blockIndex,
-  blockRange,
   currentTargets,
   daysSince,
   goalsOnPace,
@@ -41,7 +40,7 @@ export interface GoalPace {
 }
 
 export interface Horizon {
-  key: 'today' | 'week' | 'block' | 'quarter' | 'plan';
+  key: 'today' | 'week' | 'month' | 'quarter' | 'plan';
   name: string;
   detail: string;
   progress: Progress;
@@ -191,7 +190,7 @@ export class View {
     return {
       goal,
       label: progress.planned ? progress.label : 'none',
-      summary: progress.planned ? `${fmt(progress.actual)} of ${fmt(progress.expected)} expected` : 'No sessions yet',
+      summary: progress.planned ? `${fmt(progress.actual, 0)} done, ${fmt(progress.expected, 0)} expected by now` : 'No tasks yet',
       progress,
       number: null,
     };
@@ -222,7 +221,7 @@ export class View {
     const inPlan = (s: Session) => !s.action_id || actionIds.has(s.action_id);
     const milestones = this.data.milestones.filter((m) => goalIds.has(m.goal_id));
     const monday = weekStart(this.today);
-    const block = blockRange(plan, blockIndex(plan, this.today));
+    const month = chainAt(plan, this.today).month;
     const quarter = quarterRange(plan, this.today);
     const labels = goals.map((g) => this.goalPace(g, plan).label);
     return [
@@ -239,10 +238,10 @@ export class View {
         progress: progressFor(this.data.sessions, { start: monday, end: addDays(monday, 6) }, { ...opts, dayFraction: 0 }),
       },
       {
-        key: 'block',
-        name: 'Block',
-        detail: `${short(block.start)}–${short(block.end)}`,
-        progress: progressFor(this.projectedSessions(block).filter(inPlan), block, { ...opts, dayFraction: 0, tooEarly: early }, milestones),
+        key: 'month',
+        name: 'This month',
+        detail: `${short(month.start)}–${short(month.end)}`,
+        progress: progressFor(this.projectedSessions(month).filter(inPlan), month, { ...opts, dayFraction: 0, tooEarly: early }, milestones),
       },
       {
         key: 'quarter',

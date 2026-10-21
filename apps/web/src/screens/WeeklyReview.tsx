@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   addDays,
-  blockIndex,
-  blockRange,
+  chainAt,
   missingSessionsForWeek,
   quarterRange,
   reviewSuggestions,
@@ -21,6 +20,9 @@ import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, useView } from '../data/derive.ts';
 import type { ReviewPayload } from '../data/model.ts';
 import { opsCompleteReview } from '../data/ops.ts';
+import { chainFor, isSet, opsSetLevel, type ChainLevel } from '../data/chain.ts';
+import { withOps } from '../data/breakdown.ts';
+import type { Op } from '../data/model.ts';
 import { navigate, useRoute } from '../router.ts';
 import { BackLink, NumberInput, OBSTACLES, PacePill, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { weekToReview } from './ReviewHub.tsx';
@@ -42,9 +44,11 @@ interface Draft {
   choices: Record<string, Choice>;
   /** Day chosen for each next-week session, keyed by "actionId:slot". */
   placements: Record<string, ISODate | null>;
+  /** Next period's goals typed in the plan step, keyed by "goalId:level". */
+  nextGoals?: Record<string, string>;
 }
 
-const STEPS = ['Look back', 'Measure', 'Reflect', 'Adjust', 'Plan'];
+const STEPS = ['Look back', 'Reflect', 'Plan'];
 const slotKey = (s: Pick<Session, 'action_id' | 'slot'>) => `${s.action_id}:${s.slot}`;
 
 export function WeeklyReview({ kind: kindParam }: { kind: string }) {
@@ -90,7 +94,7 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
   // ---- Look back ----
   const period: DateRange =
     kind === 'block' && plan
-      ? blockRange(plan, blockIndex(plan, today))
+      ? chainAt(plan, today).month
       : kind === 'quarter' && plan
         ? quarterRange(plan, today)
         : kind === 'retro' && plan
@@ -170,19 +174,61 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
     () => missingSessionsForWeek(data.actions, schedulesAfter, existingNext, nextMonday, () => crypto.randomUUID()),
     [data.actions, schedulesAfter, existingNext, nextMonday],
   );
-  const nextSessions = [...existingNext, ...generated].map((s) => {
-    const key = slotKey(s);
-    return key in draft.placements && s.status === 'planned' ? { ...s, date: draft.placements[key] ?? null } : s;
-  });
   const days = weekDates(nextMonday);
   const available = data.profile.available_minutes;
+  // "Any day" tasks get a suggested day: the lightest day that doesn't already have the same task.
+  const suggested = useMemo(() => {
+    const out: Record<string, ISODate> = {};
+    const all = [...existingNext, ...generated];
+    const load = days.map((d) => all.filter((s) => s.date === d).reduce((sum, s) => sum + s.planned_minutes, 0));
+    const has = days.map((d) => new Set(all.filter((s) => s.date === d).map((s) => s.action_id)));
+    for (const s of all.filter((x) => !x.date && x.status === 'planned' && x.action_id)) {
+      let best = -1;
+      for (let i = 0; i < days.length; i++) {
+        if (has[i]!.has(s.action_id)) continue;
+        const room = (available[i] ?? 0) - load[i]!;
+        if (best === -1 || room > (available[best] ?? 0) - load[best]!) best = i;
+      }
+      if (best === -1) best = load.indexOf(Math.min(...load));
+      out[slotKey(s)] = days[best]!;
+      load[best]! += s.planned_minutes;
+      has[best]!.add(s.action_id);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingNext, generated, nextMonday]);
+  const placements: Record<string, ISODate | null> = { ...suggested, ...draft.placements };
+  const nextSessions = [...existingNext, ...generated].map((s) => {
+    const key = slotKey(s);
+    return key in placements && s.status === 'planned' ? { ...s, date: placements[key] ?? null } : s;
+  });
   const plannedByDay = days.map((d) => nextSessions.filter((s) => s.date === d).reduce((sum, s) => sum + s.planned_minutes, 0));
   const plannedTotal = nextSessions.reduce((sum, s) => sum + s.planned_minutes, 0);
   const availableTotal = available.reduce((a, b) => a + b, 0);
   const tray = nextSessions.filter((s) => !s.date && s.status === 'planned');
 
+  // Plan step: one line per goal for next week, plus next month / 3 months when they start next week and aren't set.
+  const nextGoalFields: { key: string; goal: (typeof goals)[number]; level: ChainLevel; label: string; current: string }[] = [];
+  if (plan && nextMonday <= plan.end_date && kind === 'weekly') {
+    for (const g of goals) {
+      const chain = chainFor(data, g, plan, nextMonday);
+      for (const level of ['quarter', 'month', 'week'] as ChainLevel[]) {
+        const link = chain[level];
+        const startsNext = link.node.start >= nextMonday;
+        if (level !== 'week' && (!startsNext || isSet(link))) continue;
+        nextGoalFields.push({
+          key: `${g.id}:${level}`,
+          goal: g,
+          level,
+          label: level === 'week' ? `${link.node.title} (${shortDate(link.node.start)})` : level === 'month' ? `${link.node.title} starts ${shortDate(link.node.start)}` : `${link.node.title} start ${shortDate(link.node.start)}`,
+          current: link.step?.target_note ?? '',
+        });
+      }
+    }
+  }
+
   function finish() {
-    const changedExisting = existingNext.filter((s) => s.status === 'planned' && slotKey(s) in draft.placements && draft.placements[slotKey(s)] !== s.date);
+    const changedExisting = existingNext.filter((s) => s.status === 'planned' && slotKey(s) in placements && placements[slotKey(s)] !== s.date);
     const payload: ReviewPayload = {
       review: {
         id: crypto.randomUUID(),
@@ -205,24 +251,37 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
       action_changes: actionChanges,
       week_plan: { id: crypto.randomUUID(), week_start: nextMonday, available_minutes: availableTotal, planned_minutes: plannedTotal, saved_at: new Date().toISOString() },
       sessions: [
-        ...generated.map((s) => ({ ...s, date: slotKey(s) in draft.placements ? draft.placements[slotKey(s)] ?? null : s.date })),
-        ...changedExisting.map((s) => ({ ...s, date: draft.placements[slotKey(s)] ?? null })),
+        ...generated.map((s) => ({ ...s, date: slotKey(s) in placements ? placements[slotKey(s)] ?? null : s.date })),
+        ...changedExisting.map((s) => ({ ...s, date: placements[slotKey(s)] ?? null })),
       ],
     };
     commit(opsCompleteReview(payload));
+    // Next week's (and, at a boundary, next month's) goals typed in the plan step.
+    if (plan) {
+      let next = data;
+      const goalOps: Op[] = [];
+      for (const f of nextGoalFields) {
+        const text = (draft.nextGoals ?? {})[f.key]?.trim();
+        if (!text || text === f.current) continue;
+        const ops = opsSetLevel(next, f.goal, plan, chainFor(next, f.goal, plan, nextMonday), f.level, { target_note: text });
+        goalOps.push(...ops);
+        next = withOps(next, ops);
+      }
+      if (goalOps.length) commit(goalOps);
+    }
     localStorage.removeItem(draftKey);
     toast(kind === 'weekly' ? `Review saved. ${shortDate(nextMonday)} week is planned.` : 'Review saved.');
     navigate('/review');
   }
 
-  const step = draft.step;
+  const step = Math.min(draft.step, STEPS.length - 1);
   return (
     <div className="stack">
       <div className="row-between">
         <BackLink label="Review" fallback="/review" />
         <span className="xsmall muted">Draft saved</span>
       </div>
-      <div className="steps" aria-label={`Step ${step + 1} of 5`}>
+      <div className="steps" aria-label={`Step ${step + 1} of ${STEPS.length}`}>
         {STEPS.map((s, i) => (
           <div key={s} className={i <= step ? 'on' : ''} />
         ))}
@@ -239,16 +298,16 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
       {step === 0 && (
         <>
           <h1>
-            {kind === 'weekly' ? 'Week of' : kind === 'block' ? 'Block ending' : kind === 'quarter' ? '3 months to' : 'Plan ending'}{' '}
+            {kind === 'weekly' ? 'Week of' : kind === 'block' ? 'Month ending' : kind === 'quarter' ? '3 months to' : 'Plan ending'}{' '}
             {shortDate(kind === 'weekly' ? monday : period.end)}
           </h1>
           <div className="grid-3">
-            <Tile label="Actions" value={`${fmt(credit)} of ${weekSessions.length}`} />
+            <Tile label="Tasks done" value={`${fmt(credit, 0)} of ${weekSessions.length}`} />
             <Tile label="Study logged" value={minutesText(studyMinutes)} />
             <Tile label="Measurements due" value={String(due.length)} />
           </div>
           <div className="card stack-sm">
-            <span className="label">Goals this period</span>
+            <span className="label">Goals this {kind === 'weekly' ? 'week' : 'period'}</span>
             {paces.map((p) => (
               <div key={p.goal.id} className="list-row">
                 <span className="dot" style={{ background: p.goal.color }} />
@@ -263,31 +322,26 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
             ))}
             {paces.length === 0 && <span className="small muted">No goals in the current plan.</span>}
           </div>
+          {due.length > 0 && (
+            <div className="card stack-sm">
+              <span className="label">Record results</span>
+              {due.map((t) => {
+                const last = view.measurementsFor(t.id).at(-1);
+                return (
+                  <NumberInput
+                    key={t.id}
+                    label={`${t.name} (${t.unit})${last ? ` · last ${fmt(last.value)} on ${shortDate(last.measured_on)}` : ''}`}
+                    value={draft.measurements[t.id] ?? null}
+                    onChange={(v) => set({ measurements: { ...draft.measurements, [t.id]: v } })}
+                  />
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 
       {step === 1 && (
-        <>
-          <h1>Record results</h1>
-          {due.length === 0 && <p className="muted">Nothing is due this week. Skip ahead.</p>}
-          <div className="card stack-sm">
-            {due.map((t) => {
-              const last = view.measurementsFor(t.id).at(-1);
-              return (
-                <NumberInput
-                  key={t.id}
-                  label={`${t.name} (${t.unit})${last ? ` · last ${fmt(last.value)} on ${shortDate(last.measured_on)}` : ''}`}
-                  value={draft.measurements[t.id] ?? null}
-                  onChange={(v) => set({ measurements: { ...draft.measurements, [t.id]: v } })}
-                />
-              );
-            })}
-          </div>
-          <p className="xsmall muted">Only measurements that are due show up here. Log others any time from the goal page.</p>
-        </>
-      )}
-
-      {step === 2 && (
         <>
           <h1>Reflect</h1>
           <div className="stack-sm">
@@ -314,20 +368,10 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
             <textarea value={draft.wentWell} onChange={(e) => set({ wentWell: e.target.value })} />
           </label>
           <label className="field">
-            What got in the way?
-            <textarea value={draft.gotInWay} onChange={(e) => set({ gotInWay: e.target.value })} />
-          </label>
-          <label className="field">
             What should change next week?
             <textarea value={draft.changeNext} onChange={(e) => set({ changeNext: e.target.value })} />
           </label>
-        </>
-      )}
-
-      {step === 3 && (
-        <>
-          <h1>What should change?</h1>
-          {suggestions.length === 0 && <div className="card tight small">Everything is on track. Nothing to change.</div>}
+          {suggestions.length > 0 && <span className="label" style={{ marginTop: 6 }}>Suggested changes</span>}
           {suggestions.map((s) => {
             const action = view.action(s.actionId);
             const goal = view.goalsForAction(s.actionId)[0];
@@ -341,9 +385,7 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
                 </div>
                 <p style={{ margin: 0, fontSize: 14 }}>
                   {s.reason}.{' '}
-                  {s.kind === 'lower_frequency'
-                    ? `Lower the target to ${s.proposedPerWeek} a week?`
-                    : 'Add a minimum version for hard days?'}
+                  {s.kind === 'lower_frequency' ? `Lower it to ${s.proposedPerWeek} a week?` : 'Add a minimum version for hard days?'}
                 </p>
                 <div className="btn-row">
                   <button className={`btn small ${choice.kind === 'keep' ? 'dark' : ''}`} onClick={() => pick({ kind: 'keep' })}>
@@ -375,20 +417,41 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
         </>
       )}
 
-      {step === 4 && (
+      {step === 2 && (
         <>
           <h1>
             Plan {shortDate(nextMonday)} – {shortDate(addDays(nextMonday, 6))}
           </h1>
+          {nextGoalFields.length > 0 && (
+            <div className="card stack">
+              <span className="label">Next week's goals</span>
+              {nextGoalFields.map((f) => (
+                <label key={f.key} className="field">
+                  <span className="row-start" style={{ gap: 6 }}>
+                    <span className="dot" style={{ width: 7, height: 7, background: f.goal.color }} />
+                    {f.goal.title} · {f.label}
+                  </span>
+                  <input
+                    value={(draft.nextGoals ?? {})[f.key] ?? f.current}
+                    onChange={(e) => set({ nextGoals: { ...(draft.nextGoals ?? {}), [f.key]: e.target.value } })}
+                    placeholder={f.level === 'week' ? 'What should be true by Sunday?' : 'What should be true by the end?'}
+                  />
+                </label>
+              ))}
+            </div>
+          )}
           <div className={`banner ${plannedTotal > availableTotal ? 'warn' : 'info'}`}>
             <span>
               <b>{minutesText(plannedTotal)}</b> planned · {minutesText(availableTotal)} available
-              {plannedTotal > availableTotal ? `. ${minutesText(plannedTotal - availableTotal)} over: move, shorten, or keep it.` : ''}
+              {plannedTotal > availableTotal ? `. ${minutesText(plannedTotal - availableTotal)} more than you have: tap a task to move it, or keep it.` : ''}
             </span>
           </div>
+          {Object.keys(suggested).length > 0 && (
+            <span className="xsmall muted">"Any day" tasks are placed on your lightest days. Tap a task to move it to the next day.</span>
+          )}
           {tray.length > 0 && (
             <div className="card tight stack-sm">
-              <span className="xsmall muted">Not placed yet: pick a day for each</span>
+              <span className="xsmall muted">Not on a day yet</span>
               {tray.map((s) => (
                 <div key={slotKey(s)} className="row-between">
                   <span className="row-start small" style={{ flexWrap: 'nowrap' }}>
@@ -426,17 +489,20 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
                     </span>
                   </div>
                   <div className="chips" style={{ gap: 4 }}>
-                    {list.map((s) => (
-                      <button
-                        key={s.id}
-                        className="mini-chip"
-                        style={{ background: `${view.colorFor(s)}22`, color: 'var(--ink)', border: 0, cursor: s.status === 'planned' && s.action_id ? 'pointer' : 'default' }}
-                        title={s.status === 'planned' ? 'Tap to unplace' : undefined}
-                        onClick={() => s.status === 'planned' && s.action_id && set({ placements: { ...draft.placements, [slotKey(s)]: null } })}
-                      >
-                        {s.title} {s.planned_minutes}
-                      </button>
-                    ))}
+                    {list.map((s) => {
+                      const movable = s.status === 'planned' && !!s.action_id;
+                      return (
+                        <button
+                          key={s.id}
+                          className="mini-chip"
+                          style={{ background: `color-mix(in srgb, ${view.colorFor(s)} 16%, transparent)`, color: 'var(--ink)', border: 0, cursor: movable ? 'pointer' : 'default' }}
+                          aria-label={movable ? `${s.title} on ${weekdayName(d)}. Move to ${weekdayName(days[(i + 1) % 7]!)}` : s.title}
+                          onClick={() => movable && set({ placements: { ...draft.placements, [slotKey(s)]: days[(i + 1) % 7]! } })}
+                        >
+                          {s.title} {s.planned_minutes}
+                        </button>
+                      );
+                    })}
                     {list.length === 0 && <span className="xsmall muted">Rest</span>}
                   </div>
                   <div className="xsmall" style={{ textAlign: 'right', color: over ? 'var(--amber-ink)' : 'var(--muted)', fontWeight: over ? 600 : 400 }}>
@@ -446,7 +512,6 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
               );
             })}
           </div>
-          <p className="xsmall muted">Tap a session on a day to send it back to "not placed".</p>
         </>
       )}
 
@@ -456,11 +521,11 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
             Back
           </button>
         ) : (
-          <button className="btn" onClick={() => set({ step: 1 })}>
-            Skip to measure
-          </button>
+          <a className="btn" href="#/review">
+            Cancel
+          </a>
         )}
-        {step < 4 ? (
+        {step < STEPS.length - 1 ? (
           <button className="btn primary" onClick={() => set({ step: step + 1 })}>
             Next: {STEPS[step + 1]?.toLowerCase()}
           </button>

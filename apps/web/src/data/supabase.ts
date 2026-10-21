@@ -8,13 +8,13 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const supabaseConfigured = Boolean(url && anonKey);
 
-const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql';
+const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql and 20261021000000_reminders_and_cues.sql';
 
 /** Set when the database is missing a newer migration; the app shows it as a banner. */
 export let schemaWarning: string | null = null;
 
 function isMissingBreakdown(message: string): boolean {
-  return /plan_steps|step_id/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
 }
 
 let client: SupabaseClient | null = null;

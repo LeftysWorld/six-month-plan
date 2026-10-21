@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import {
   addDays,
+  currentTargets,
   describeSchedule,
   isoWeekday,
   progressFor,
@@ -20,502 +21,317 @@ import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, useView, type View } from '../data/derive.ts';
 import type { AppData } from '../data/model.ts';
 import { opsUpdateGoal } from '../data/ops.ts';
+import { CHAIN_LEVELS, catchUp, chainFor, isSet, opsEnsureStep, opsSetLevel, stepFor, type Chain, type ChainLevel, type ChainLink } from '../data/chain.ts';
+import { GoalExtras } from './GoalDetail.tsx';
 import {
   applyFrom,
   blankTask,
-  childSteps,
   fixedTasksOn,
   inputFromTask,
   isOnce,
   opsAddTask,
   opsCopyTasks,
-  opsCreateBreakdown,
   opsEditTask,
   opsRemoveTask,
-  opsRespread,
-  opsSyncPath,
-  opsUpdateStep,
-  stepAt,
   stepsForGoal,
   tasksInRange,
   withOps,
   type TaskInput,
   type WeekTask,
 } from '../data/breakdown.ts';
-import { href } from '../router.ts';
 import { BackLink, Empty, Icon, PacePill, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
 
 /**
- * The goal breakdown, top to bottom:
- * 6 months (the goal) → 3 months → 1 month → week → daily tasks.
- * Each level is connected to the one above it and can be edited on its own.
+ * One page per goal: the goal chain, top to bottom, then this week's daily tasks.
+ *   6 months (the goal) → this 3-month goal → this month's goal → this week's goal → daily tasks
+ * Only the current period of each level is shown; when a month or week ends you set the next one.
  */
 export function Flow({ goalId }: { goalId: string }) {
-  const { data, today, commit } = useStore();
+  const { data, today } = useStore();
   const view = useView();
   const toast = useToast();
   const goal = view.goal(goalId);
   const plans = goal ? view.plansForGoal(goal.id) : [];
   const plan = plans.find((p) => p.start_date <= today && p.end_date >= today) ?? plans[0] ?? null;
-  const steps = goal && plan ? stepsForGoal(data, goal.id).filter((s) => s.plan_id === plan.id) : [];
-  const quarters = steps.filter((s) => s.level === 'quarter');
-
-  const focus = plan ? (today < plan.start_date ? plan.start_date : today > plan.end_date ? plan.end_date : today) : today;
-  const [qId, setQ] = useState<string | null>(null);
-  const [mId, setM] = useState<string | null>(null);
-  const [wId, setW] = useState<string | null>(null);
   const [dayPick, setDayPick] = useState<ISODate | null>(null);
-  const [zoom, setZoom] = useState<ZoomKey>('week');
+  const [editing, setEditing] = useState<ChainLevel | 'goal' | null>(null);
 
-  const quarter = quarters.find((q) => q.id === qId) ?? stepAt(quarters, focus) ?? quarters.at(-1);
-  const months = quarter ? childSteps(data, quarter.id) : [];
-  const month = months.find((m) => m.id === mId) ?? stepAt(months, focus) ?? months[0];
-  const weeks = month ? childSteps(data, month.id) : [];
-  const week = weeks.find((w) => w.id === wId) ?? stepAt(weeks, focus) ?? weeks[0];
-  // The day shown in the Day level: the one you tapped, else today, else the week's first day.
-  const weekDays = week ? daysOfWeek(week) : [];
+  if (!goal) return <Empty title="Goal not found." />;
+  if (!plan) {
+    return (
+      <div className="stack">
+        <BackLink label="Goals" fallback="/goals" />
+        <h1>{goal.title}</h1>
+        <Empty title="This goal isn't in a plan yet." />
+        <GoalExtras goal={goal} plan={null} />
+      </div>
+    );
+  }
+
+  const focus = today < plan.start_date ? plan.start_date : today > plan.end_date ? plan.end_date : today;
+  const chain = chainFor(data, goal, plan, focus);
+  const week = stepFor(goal, plan, chain, 'week');
+  const weekDays = daysOfWeek(week);
   const day = dayPick && weekDays.includes(dayPick) ? dayPick : weekDays.includes(today) ? today : weekDays[0] ?? today;
   const pickDay = (d: ISODate, scroll = false) => {
     setDayPick(d);
     if (scroll) window.setTimeout(() => document.getElementById('flow-day')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
-
-  if (!goal) return <Empty title="Goal not found." />;
-  if (!plan) return <Empty title="This goal isn't in a plan yet." />;
-
-  const pickQuarter = (q: PlanStep) => {
-    setQ(q.id);
-    setM(null);
-    setW(null);
-  };
-  const pickMonth = (m: PlanStep) => {
-    setM(m.id);
-    setW(null);
-  };
-
   const pace = view.goalPace(goal, plan);
   const start = pace.number?.start;
-  const fmtTarget = (st: PlanStep | undefined, fallback: string) => (st?.target_value != null ? fmt(st.target_value) : st ? st.title.replace('First 3 months', 'First 3').replace('Last 3 months', 'Last 3') : fallback);
-  const zoomTo = (key: ZoomKey) => {
-    setZoom(key);
-    document.getElementById(`flow-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-  const zooms: { key: ZoomKey; k: string; v: string }[] = [
-    { key: 'goal', k: '6 mo', v: goal.type === 'number' && goal.target_value != null ? fmt(goal.target_value) : 'Goal' },
-    { key: 'quarter', k: '3 mo', v: fmtTarget(quarter, '–') },
-    { key: 'month', k: 'Month', v: fmtTarget(month, '–') },
-    { key: 'week', k: 'Week', v: fmtTarget(week, '–') },
-  ];
+  const fix = catchUp(view, data, goal, plan, today);
+  const weeks = stepsForGoal(data, goal.id).filter((s) => s.level === 'week' && s.plan_id === plan.id);
 
   return (
     <div className="stack">
       <div aria-hidden="true" style={{ position: 'fixed', top: -170, right: -150, width: 440, height: 440, borderRadius: '50%', background: `radial-gradient(closest-side, ${goal.color}30, transparent)`, pointerEvents: 'none', zIndex: -1 }} />
       <div className="topbar">
-        <BackLink label={plan.name} fallback={`/plans/${plan.id}`} />
-        <a className="label" href={href(`/goals/${goal.id}`)} style={{ textDecoration: 'none', color: 'var(--ink-2)', minHeight: 40, display: 'flex', alignItems: 'center' }}>
-          Goal details ›
-        </a>
+        <BackLink label="Goals" fallback="/goals" />
+        <span className="mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span className="dot" style={{ width: 7, height: 7, background: goal.color, boxShadow: `0 0 10px ${goal.color}` }} />
+          {plan.name}
+        </span>
       </div>
-      <div className="stack-sm" style={{ gap: 6 }}>
-        <span className="mono">6-month goal · {rangeLabel({ start: plan.start_date, end: plan.end_date })}</span>
+      <div className="stack-sm" style={{ gap: 8 }}>
         <h1>{goal.title}</h1>
-        <div className="row-start" style={{ gap: 10, marginTop: 4 }}>
+        <div className="row-start" style={{ gap: 10 }}>
           {goal.type === 'number' && start && (
-            <span className="num" style={{ fontSize: 22, fontWeight: 550 }}>
-              {fmt(start.value)} <span style={{ color: 'var(--muted)' }}>→</span> {fmt(goal.target_value)} <span className="small muted" style={{ fontWeight: 400 }}>{goal.unit}</span>
+            <span className="num" style={{ fontSize: 20, fontWeight: 550 }}>
+              {fmt(start.value)} <span style={{ color: 'var(--muted)' }}>→</span>{' '}
+              {pace.number?.latest != null && (
+                <>
+                  {fmt(pace.number.latest)} now <span style={{ color: 'var(--muted)' }}>→</span>{' '}
+                </>
+              )}
+              {fmt(goal.target_value)}{' '}
+              <span className="small muted" style={{ fontWeight: 400 }}>{goal.unit}</span>
             </span>
           )}
+          {goal.type !== 'number' && <span className="small" style={{ color: 'var(--ink-2)' }}>{pace.summary}</span>}
           {pace.label !== 'none' && <PacePill label={pace.label} />}
         </div>
-      </div>
-      {steps.length > 0 && (
-        <div className="zoom" role="group" aria-label="Zoom level">
-          {zooms.map((z) => (
-            <button key={z.key} type="button" aria-pressed={zoom === z.key} onClick={() => zoomTo(z.key)}>
-              <span>{z.k.toUpperCase()}</span>
-              <span>{z.v}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {steps.length === 0 ? (
-        <div className="card stack-sm">
-          <h2>Break this goal down</h2>
-          <p className="small muted" style={{ margin: 0 }}>
-            Split {rangeLabel({ start: plan.start_date, end: plan.end_date })} into two 3-month stages, six months and weekly steps. You fill in what each one looks like and
-            add the daily tasks.
+        {fix && (
+          <p className="coach" style={{ padding: 0 }}>
+            <Icon name="sparkle" size={16} />
+            <span>{fix}</span>
           </p>
-          <button className="btn primary" onClick={() => commit(opsCreateBreakdown(data, goal, plan))}>
-            Create the breakdown
-          </button>
+        )}
+      </div>
+
+      <div className="goal-grid">
+        <div className="stack goal-chain">
+          <div className="chain" role="list" aria-label="Goal chain">
+            <ChainCard
+              n={1}
+              name="6 months"
+              dates={rangeLabel({ start: plan.start_date, end: plan.end_date })}
+              text={goal.done_means || goal.title}
+              target={goal.type === 'number' && goal.target_value != null ? `${fmt(goal.target_value)} ${goal.unit ?? ''} by ${shortDate(goal.target_date ?? plan.end_date)}` : null}
+              status={null}
+              onEdit={() => setEditing('goal')}
+            />
+            {CHAIN_LEVELS.map((level, i) => {
+              const link = chain[level];
+              const set = isSet(link);
+              const target = goal.type === 'number' ? link.step?.target_value ?? link.suggested : null;
+              return (
+                <ChainCard
+                  key={level}
+                  n={i + 2}
+                  name={level === 'quarter' ? link.node.title : level === 'month' ? `This month · ${link.node.title}` : `This week · ${link.node.title}`}
+                  dates={rangeLabel(link.node)}
+                  text={set ? link.step!.target_note : null}
+                  target={target != null ? `${fmt(target)} ${goal.unit ?? ''} by ${shortDate(link.node.end)}` : null}
+                  status={periodStatus(view, data, goal, plan, link, today)}
+                  prompt={`What should be true by ${shortDate(link.node.end)}?`}
+                  current={level === 'week'}
+                  onEdit={() => setEditing(level)}
+                />
+              );
+            })}
+          </div>
         </div>
-      ) : (
-        <div className="flow">
-          <Level n={1} name="6 months" dates={rangeLabel({ start: plan.start_date, end: plan.end_date })} color={goal.color} id="flow-goal" active={zoom === 'goal'}>
-            <GoalLevel goal={goal} plan={plan} />
-          </Level>
 
-          <Level n={2} name="3 months" dates={quarter ? rangeLabel(dateRange(quarter)) : ''} color={goal.color} id="flow-quarter" active={zoom === 'quarter'}>
-            <div className="grid-2">
-              {quarters.map((q) => (
-                <StepCard key={q.id} step={q} goal={goal} plan={plan} selected={q.id === quarter?.id} onSelect={() => pickQuarter(q)} />
-              ))}
+        <div className="stack goal-tasks">
+          <section className="stack-sm" aria-label="Week">
+            <div className="row-between">
+              <h2 style={{ fontSize: 18 }}>Daily tasks</h2>
+              <span className="mono" style={{ fontSize: 10.5 }}>{rangeLabel(dateRange(week))}</span>
             </div>
-            {quarter && <StepEditor key={quarter.id} step={quarter} goal={goal} plan={plan} childName="months and weeks" />}
-          </Level>
-
-          <Level n={3} name="1 month" dates={month ? rangeLabel(dateRange(month)) : ''} color={goal.color} id="flow-month" active={zoom === 'month'}>
-            <div className="grid-3">
-              {months.map((m) => (
-                <StepCard key={m.id} step={m} goal={goal} plan={plan} selected={m.id === month?.id} onSelect={() => pickMonth(m)} compact />
-              ))}
-            </div>
-            {month && <StepEditor key={month.id} step={month} goal={goal} plan={plan} childName="weeks" />}
-          </Level>
-
-          <Level n={4} name="Week" dates={week ? rangeLabel(dateRange(week)) : ''} color={goal.color} id="flow-week" active={zoom === 'week'}>
-            <div className="week-strip" role="group" aria-label="Weeks in this month">
-              {weeks.map((w) => (
-                <WeekChip key={w.id} step={w} selected={w.id === week?.id} today={today} color={goal.color} onSelect={() => setW(w.id)} />
-              ))}
-            </div>
-            {week && <StepEditor key={week.id} step={week} goal={goal} plan={plan} />}
-            {week && <DailyTasks slot="week" goal={goal} plan={plan} week={week} weeks={[]} day={day} onPickDay={(d) => pickDay(d, true)} onToast={toast} />}
-          </Level>
-
-          <Level
-            n={5}
-            name="Daily tasks"
-            dates={week ? `${weekdayName(day)}, ${shortDate(day)}${day === today ? ' · Today' : ''}` : ''}
-            color={goal.color}
-            last
-            id="flow-day"
-          >
-            {week && (
-              <DailyTasks
-                slot="day"
-                goal={goal}
-                plan={plan}
-                week={week}
-                weeks={stepsForGoal(data, goal.id).filter((s) => s.level === 'week' && s.plan_id === plan.id)}
-                day={day}
-                onPickDay={(d) => pickDay(d)}
-                onToast={toast}
-              />
-            )}
-          </Level>
+            <DailyTasks slot="week" goal={goal} plan={plan} week={week} weeks={[]} day={day} onPickDay={(d) => pickDay(d, true)} onToast={toast} />
+          </section>
+          <section className="stack-sm" aria-label="Daily tasks" id="flow-day" style={{ scrollMarginTop: 12 }}>
+            <DailyTasks slot="day" goal={goal} plan={plan} week={week} weeks={weeks} day={day} onPickDay={(d) => pickDay(d)} onToast={toast} />
+          </section>
         </div>
-      )}
+      </div>
+
+      <GoalExtras goal={goal} plan={plan} />
+
+      {editing === 'goal' && <GoalSheet goal={goal} plan={plan} onClose={() => setEditing(null)} />}
+      {editing && editing !== 'goal' && <ChainSheet goal={goal} plan={plan} chain={chain} level={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }
 
-function dateRange(s: PlanStep) {
+function dateRange(s: { start_date: ISODate; end_date: ISODate }) {
   return { start: s.start_date, end: s.end_date };
 }
 
-// ---------- Layout: a numbered rail that connects each level to the next ----------
+/** How the current period is going, in a few words: "3 of 5 done", "207.9 now · aiming for 207.8". */
+function periodStatus(view: View, data: AppData, goal: Goal, plan: Plan, link: ChainLink, today: ISODate): { text: string; label: PaceLabel } | null {
+  const node = link.node;
+  if (node.start > today) return { text: `Starts ${shortDate(node.start)}`, label: 'none' };
+  if (goal.type === 'number') {
+    const n = view.goalPace(goal, plan).number;
+    const target = link.step?.target_value ?? link.suggested;
+    if (!n || n.latest == null || target == null) return null;
+    return { text: `${fmt(n.trend ?? n.latest)} now · aiming for ${fmt(Number(target))}`, label: n.label };
+  }
+  if (goal.type === 'finish') {
+    const ms = data.milestones.filter((m) => m.goal_id === goal.id && m.due_date >= node.start && m.due_date <= node.end);
+    if (ms.length) return { text: `${ms.filter((m) => m.completed_at).length} of ${ms.length} milestones`, label: 'none' };
+  }
+  const p = progressFor(view.projectedSessions(node).filter((s) => view.goalsForAction(s.action_id).some((g) => g.id === goal.id)), node, { today, dayFraction: 0 });
+  if (p.planned === 0) return { text: 'No tasks yet', label: 'none' };
+  return { text: `${fmt(p.actual, 0)} of ${p.planned} done`, label: p.label };
+}
 
-type ZoomKey = 'goal' | 'quarter' | 'month' | 'week';
-
-function Level({ n, name, dates, last, id, active, children }: { n: number; name: string; dates: string; color: string; last?: boolean; id?: string; active?: boolean; children: ReactNode }) {
+/** One level of the chain: its goal (or a prompt to set one) and how the period is going. */
+function ChainCard({
+  n,
+  name,
+  dates,
+  text,
+  target,
+  status,
+  prompt,
+  current,
+  onEdit,
+}: {
+  n: number;
+  name: string;
+  dates: string;
+  text: string | null;
+  target: string | null;
+  status: { text: string; label: PaceLabel } | null;
+  prompt?: string;
+  current?: boolean;
+  onEdit: () => void;
+}) {
+  const empty = !text && !target;
   return (
-    <section className={`flow-level${active ? ' active' : ''}`} aria-label={name} id={id}>
-      <div className="flow-rail" aria-hidden="true">
+    <div className={`chain-link${current ? ' current' : ''}`} role="listitem">
+      <div className="chain-rail" aria-hidden="true">
         <span className="flow-dot">{String(n).padStart(2, '0')}</span>
-        {!last && <span className="flow-line" />}
+        <span className="flow-line" />
       </div>
-      <div className="stack-sm" style={{ minWidth: 0, paddingBottom: last ? 0 : 26, gap: 10 }}>
-        <div className="row-between" style={{ minHeight: 30 }}>
-          <h2 style={{ fontSize: 18 }}>{name}</h2>
-          <span className="mono" style={{ fontSize: 10.5 }}>{dates}</span>
-        </div>
-        {children}
-      </div>
-    </section>
+      <button type="button" className={`chain-card${empty ? ' empty' : ''}`} onClick={onEdit} aria-label={`${name}: ${empty ? 'set a goal' : 'edit'}`}>
+        <span className="row-between" style={{ width: '100%', gap: 8 }}>
+          <span className="mono" style={{ fontSize: 10.5, color: current ? 'var(--accent-ink)' : undefined }}>{name}</span>
+          <span className="mono" style={{ fontSize: 10 }}>{dates}</span>
+        </span>
+        {text ? (
+          <span style={{ fontSize: 16, fontWeight: 550, letterSpacing: '-0.015em', lineHeight: 1.35 }}>{text}</span>
+        ) : (
+          <span style={{ fontSize: 15, color: 'var(--ink-2)' }}>{prompt ?? 'Set a goal'}</span>
+        )}
+        {target && <span className="num" style={{ fontSize: 17 }}>{target}</span>}
+        <span className="row-between" style={{ width: '100%', gap: 8 }}>
+          <span className="xsmall" style={{ color: status?.label === 'behind' ? 'var(--amber-ink)' : 'var(--muted)' }}>{status?.text ?? ''}</span>
+          <span className="xsmall strong" style={{ color: empty ? 'var(--accent-ink)' : 'var(--ink-2)' }}>{empty ? 'Set it ›' : 'Edit'}</span>
+        </span>
+      </button>
+    </div>
   );
 }
 
-// ---------- Level 1: the goal itself ----------
+function placeholderFor(goal: Goal, level: ChainLevel): string {
+  if (goal.type === 'number') return level === 'week' ? 'e.g. Eating window every day, no weekday drinks' : 'e.g. Lock in the eating window';
+  if (goal.type === 'finish') return level === 'week' ? 'e.g. Finish the module 4 quiz' : 'e.g. Modules 1–4 passed';
+  return level === 'week' ? 'e.g. G–C–D changes at 60 bpm' : 'e.g. Record song 1 start to finish';
+}
 
-function GoalLevel({ goal, plan }: { goal: Goal; plan: Plan }) {
-  const { data, today, commit } = useStore();
-  const view = useView();
+/** Set or change the goal for the current 3 months, month or week. */
+function ChainSheet({ goal, plan, chain, level, onClose }: { goal: Goal; plan: Plan; chain: Chain; level: ChainLevel; onClose: () => void }) {
+  const { data, commit } = useStore();
   const toast = useToast();
-  const [editing, setEditing] = useState(false);
+  const link = chain[level];
+  const [note, setNote] = useState(link.step?.target_note ?? '');
+  const [target, setTarget] = useState<number | null>(link.step?.target_value ?? link.suggested);
+  const title = level === 'quarter' ? `${link.node.title}` : level === 'month' ? `This month · ${link.node.title}` : `This week · ${link.node.title}`;
+  return (
+    <Sheet title={title} onClose={onClose}>
+      <div className="row-start small muted" style={{ marginTop: -8 }}>
+        <span className="dot" style={{ background: goal.color }} />
+        {goal.title} · {rangeLabel(link.node)}
+      </div>
+      <label className="field">
+        What should be true by {shortDate(link.node.end)}?
+        <textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder={placeholderFor(goal, level)} />
+      </label>
+      {goal.type === 'number' && (
+        <label className="field">
+          Target by {shortDate(link.node.end)} ({goal.unit})
+          <input type="number" inputMode="decimal" value={target ?? ''} onChange={(e) => setTarget(e.target.value === '' ? null : Number(e.target.value))} />
+          {link.suggested != null && <span className="xsmall muted">Your path says {fmt(link.suggested)} by then.</span>}
+        </label>
+      )}
+      <button
+        className="btn primary"
+        onClick={() => {
+          commit(opsSetLevel(data, goal, plan, chain, level, { target_note: note.trim(), ...(goal.type === 'number' ? { target_value: target } : {}) }));
+          toast(`${level === 'quarter' ? '3-month' : level === 'month' ? "This month's" : "This week's"} goal saved`);
+          onClose();
+        }}
+      >
+        Save
+      </button>
+    </Sheet>
+  );
+}
+
+/** Edit the 6-month goal itself. A new target for a number goal redraws its path straight to the new value. */
+function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: () => void }) {
+  const { data, commit } = useStore();
+  const toast = useToast();
   const [title, setTitle] = useState(goal.title);
   const [done, setDone] = useState(goal.done_means);
   const [target, setTarget] = useState<number | null>(goal.target_value);
-  const pace = view.goalPace(goal, plan);
-  const start = pace.number?.start;
-
-  function save() {
-    let ops = opsUpdateGoal(goal, { title: title.trim() || goal.title, done_means: done.trim(), target_value: goal.type === 'number' ? target : goal.target_value });
-    if (goal.type === 'number' && target != null && target !== goal.target_value) {
-      ops = [...ops, ...opsSpreadAll(withOps(data, ops), { ...goal, target_value: target }, plan, today)];
-      toast('Goal saved and spread across every level');
-    } else {
-      toast('Goal saved');
-    }
-    commit(ops);
-    setEditing(false);
-  }
-
   return (
-    <div className="card stack-sm">
-      {editing ? (
-        <>
-          <label className="field">
-            Goal
-            <input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </label>
-          {goal.type === 'number' && (
-            <label className="field">
-              Target by {shortDate(goal.target_date ?? plan.end_date)} ({goal.unit})
-              <input type="number" inputMode="decimal" value={target ?? ''} onChange={(e) => setTarget(e.target.value === '' ? null : Number(e.target.value))} />
-            </label>
-          )}
-          <label className="field">
-            Done means
-            <input value={done} onChange={(e) => setDone(e.target.value)} />
-          </label>
-          {goal.type === 'number' && <span className="xsmall muted">Changing the target re-spreads every 3-month, month and week target below.</span>}
-          <div className="btn-row">
-            <button className="btn small" onClick={() => setEditing(false)}>
-              Cancel
-            </button>
-            <button className="btn primary small" onClick={save}>
-              Save
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="row-between">
-            <b style={{ fontSize: 16 }}>{goal.title}</b>
-            <div className="row-start" style={{ flexWrap: 'nowrap' }}>
-              <PacePill label={pace.label} />
-              <button className="link-btn small" onClick={() => setEditing(true)} aria-label="Edit the 6-month goal">
-                Edit
-              </button>
-            </div>
-          </div>
-          {goal.type === 'number' && start && (
-            <div className="num" style={{ fontSize: 22 }}>
-              {fmt(start.value)} → {fmt(goal.target_value)} <span className="small muted" style={{ fontWeight: 400 }}>{goal.unit}</span>
-            </div>
-          )}
-          {goal.done_means && <div className="small">Done means: {goal.done_means}</div>}
-          {goal.why && <div className="xsmall muted" style={{ fontStyle: 'italic' }}>"{goal.why}"</div>}
-          <div className="xsmall muted">{pace.summary}</div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** For number goals: set each 3-month target on the straight line to the goal, then spread each into months and weeks. */
-function opsSpreadAll(data: AppData, goal: Goal, plan: Plan, today: ISODate) {
-  const quarters = stepsForGoal(data, goal.id).filter((s) => s.level === 'quarter' && s.plan_id === plan.id);
-  const startStep = quarters[0];
-  if (!startStep || goal.target_value == null) return [];
-  const startVal = Number(goal.baseline_value ?? data.measurements.find((m) => m.type_id === goal.measurement_type_id)?.value ?? goal.target_value);
-  const total = Math.max(1, (Date.parse(plan.end_date) - Date.parse(addDays(plan.start_date, -1))) / 864e5);
-  let next = data;
-  let ops: ReturnType<typeof opsUpdateStep> = [];
-  for (const q of quarters) {
-    const t = (Date.parse(q.end_date) - Date.parse(addDays(plan.start_date, -1))) / 864e5 / total;
-    const value = Math.round((startVal + (Number(goal.target_value) - startVal) * t) * 10) / 10;
-    const upd = opsUpdateStep(q, { target_value: value });
-    next = withOps(next, upd);
-    const spread = opsRespread(next, goal, { ...q, target_value: value }, plan);
-    next = withOps(next, spread);
-    ops = [...ops, ...upd, ...spread];
-  }
-  return [...ops, ...opsSyncPath(next, goal, plan, today)];
-}
-
-// ---------- Levels 2–4: a selectable card per step, and an editor for the selected one ----------
-
-interface StepStatus {
-  state: 'past' | 'current' | 'upcoming';
-  label: PaceLabel;
-  text: string;
-}
-
-function stepStatus(view: View, data: AppData, goal: Goal, plan: Plan, step: PlanStep, today: ISODate): StepStatus {
-  const state = step.end_date < today ? 'past' : step.start_date > today ? 'upcoming' : 'current';
-  if (state === 'upcoming') return { state, label: 'none', text: `Starts ${shortDate(step.start_date)}` };
-  if (goal.type === 'number') {
-    const readings = view.measurementsFor(goal.measurement_type_id).filter((m) => m.measured_on <= step.end_date && m.measured_on <= today);
-    const recent = readings.filter((m) => m.measured_on >= addDays(readings.at(-1)?.measured_on ?? step.end_date, -6));
-    const value = recent.length ? recent.reduce((s, m) => s + Number(m.value), 0) / recent.length : null;
-    if (value == null || step.target_value == null) return { state, label: 'none', text: 'No readings yet' };
-    if (state === 'current') {
-      const pace = view.goalPace(goal, plan);
-      return { state, label: pace.label, text: `Now ${fmt(value)} · aiming for ${fmt(step.target_value)}` };
-    }
-    const direction = Math.sign(Number(goal.target_value ?? step.target_value) - Number(goal.baseline_value ?? value)) || -1;
-    const hit = (Number(step.target_value) - value) * direction <= 0.05;
-    return { state, label: hit ? 'on_track' : 'behind', text: `Ended at ${fmt(value)} · target ${fmt(step.target_value)}` };
-  }
-  if (goal.type === 'finish') {
-    const ms = data.milestones.filter((m) => m.goal_id === goal.id && m.due_date >= step.start_date && m.due_date <= step.end_date);
-    if (ms.length) {
-      const done = ms.filter((m) => m.completed_at).length;
-      const due = ms.filter((m) => m.due_date <= today).length;
-      return { state, label: due === 0 ? 'none' : done >= due ? 'on_track' : 'behind', text: `${done} of ${ms.length} milestones` };
-    }
-  }
-  const end = step.end_date < today ? step.end_date : addDays(today, -1);
-  const sessions = view.sessionsForGoal(goal.id);
-  if (end < step.start_date) return { state, label: 'none', text: 'Just started' };
-  const p = progressFor(sessions, { start: step.start_date, end }, { today, dayFraction: 0 });
-  if (p.planned === 0) return { state, label: 'none', text: 'No tasks yet' };
-  return { state, label: p.label, text: `${fmt(p.actual)} of ${fmt(p.expected)} done` };
-}
-
-function StepCard({ step, goal, plan, selected, onSelect, compact }: { step: PlanStep; goal: Goal; plan: Plan; selected: boolean; onSelect: () => void; compact?: boolean }) {
-  const { data, today } = useStore();
-  const view = useView();
-  const status = stepStatus(view, data, goal, plan, step, today);
-  return (
-    <button
-      className="flow-card"
-      aria-pressed={selected}
-      onClick={onSelect}
-      style={{ opacity: status.state === 'past' && !selected ? 0.7 : 1 }}
-    >
-      <span className="row-between" style={{ width: '100%', gap: 4 }}>
-        <b style={{ fontSize: compact ? 13 : 14 }}>{step.title}</b>
-        {status.state === 'current' && <span className="mono" style={{ color: 'var(--accent-ink)', fontSize: 10 }}>Now</span>}
-        {status.state === 'past' && <Icon name="check" size={14} stroke={2.6} />}
-      </span>
-      <span className="xsmall muted">{rangeLabel(dateRange(step))}</span>
-      {step.target_value != null && (
-        <span className="num" style={{ fontSize: compact ? 15 : 18 }}>
-          {fmt(step.target_value)} <span className="xsmall muted" style={{ fontWeight: 400 }}>{goal.unit}</span>
-        </span>
-      )}
-      {step.target_note ? (
-        <span className="xsmall" style={{ color: 'var(--ink-2)', display: '-webkit-box', WebkitLineClamp: compact ? 3 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-          {step.target_note}
-        </span>
-      ) : (
-        <span className="xsmall muted" style={{ fontStyle: 'italic' }}>
-          {step.target_value != null ? '' : 'Not described yet'}
-        </span>
-      )}
-      {status.label !== 'none' && !compact && <PacePill label={status.label} />}
-    </button>
-  );
-}
-
-function WeekChip({ step, selected, today, color, onSelect }: { step: PlanStep; selected: boolean; today: ISODate; color: string; onSelect: () => void }) {
-  const state = step.end_date < today ? 'past' : step.start_date > today ? 'upcoming' : 'current';
-  return (
-    <button
-      className="week-chip"
-      aria-pressed={selected}
-      onClick={onSelect}
-    >
-      <b>{step.title.replace('Week ', 'W')}</b>
-      <span>{shortDate(step.start_date)}</span>
-      {state === 'current' && !selected && <span style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>Now</span>}
-    </button>
-  );
-}
-
-/** Edit what a step should look like (and its number target), then optionally spread it downward. */
-function StepEditor({ step, goal, plan, childName }: { step: PlanStep; goal: Goal; plan: Plan; childName?: string }) {
-  const { data, today, commit } = useStore();
-  const view = useView();
-  const toast = useToast();
-  const [note, setNote] = useState(step.target_note);
-  const [target, setTarget] = useState<number | null>(step.target_value);
-  const [spread, setSpread] = useState(true);
-  useEffect(() => {
-    setNote(step.target_note);
-    setTarget(step.target_value);
-  }, [step.target_note, step.target_value]);
-  const status = stepStatus(view, data, goal, plan, step, today);
-  const dirty = note !== step.target_note || target !== step.target_value;
-  const levelWord = step.level === 'quarter' ? 'these 3 months' : step.level === 'month' ? 'this month' : 'this week';
-  const milestones = useMemo(
-    () => data.milestones.filter((m) => m.goal_id === goal.id && m.due_date >= step.start_date && m.due_date <= step.end_date).sort((a, b) => (a.due_date < b.due_date ? -1 : 1)),
-    [data.milestones, goal.id, step.start_date, step.end_date],
-  );
-
-  function save() {
-    let ops = opsUpdateStep(step, { target_note: note.trim(), target_value: goal.type === 'number' ? target : null });
-    const targetChanged = goal.type === 'number' && target != null && target !== step.target_value;
-    let next = withOps(data, ops);
-    if (targetChanged && spread && childName) {
-      const more = opsRespread(next, goal, { ...step, target_value: target }, plan);
-      ops = [...ops, ...more];
-      next = withOps(next, more);
-    }
-    if (targetChanged) ops = [...ops, ...opsSyncPath(next, goal, plan, today)];
-    commit(ops);
-    toast(targetChanged && spread && childName ? `${step.title} saved and spread to its ${childName}` : `${step.title} saved`);
-  }
-
-  return (
-    <div className="card stack-sm flow-editor">
-      <div className="row-between">
-        <span className="label">
-          {step.title} · {rangeLabel(dateRange(step))}
-        </span>
-        {status.label !== 'none' ? <PacePill label={status.label} /> : <span className="xsmall muted">{status.text}</span>}
-      </div>
-      {status.label !== 'none' && <span className="xsmall muted">{status.text}</span>}
+    <Sheet title="6-month goal" onClose={onClose}>
+      <label className="field">
+        Goal
+        <input value={title} onChange={(e) => setTitle(e.target.value)} />
+      </label>
       {goal.type === 'number' && (
         <label className="field">
-          Target by {shortDate(step.end_date)} ({goal.unit})
-          <input type="number" inputMode="decimal" step="0.1" value={target ?? ''} onChange={(e) => setTarget(e.target.value === '' ? null : Number(e.target.value))} />
+          Target by {shortDate(goal.target_date ?? plan.end_date)} ({goal.unit})
+          <input type="number" inputMode="decimal" value={target ?? ''} onChange={(e) => setTarget(e.target.value === '' ? null : Number(e.target.value))} />
         </label>
       )}
       <label className="field">
-        What should be true by the end of {levelWord}?
-        <textarea rows={2} value={note} placeholder={placeholderFor(goal, step)} onChange={(e) => setNote(e.target.value)} />
+        Done means
+        <input value={done} onChange={(e) => setDone(e.target.value)} placeholder="How you'll know it's done" />
       </label>
-      {milestones.length > 0 && (
-        <div className="xsmall muted">
-          Milestones in {levelWord}: {milestones.map((m) => `${m.title} (${shortDate(m.due_date)})${m.completed_at ? ' ✓' : ''}`).join(', ')}
-        </div>
-      )}
-      {goal.type === 'number' && childName && target !== step.target_value && (
-        <label className="row-start small">
-          <input type="checkbox" checked={spread} onChange={(e) => setSpread(e.target.checked)} style={{ width: 20, height: 20 }} />
-          Spread the new target evenly across its {childName}
-        </label>
-      )}
-      {dirty && (
-        <div className="btn-row">
-          <button
-            className="btn small"
-            onClick={() => {
-              setNote(step.target_note);
-              setTarget(step.target_value);
-            }}
-          >
-            Undo changes
-          </button>
-          <button className="btn primary small" onClick={save}>
-            Save {step.title}
-          </button>
-        </div>
-      )}
-    </div>
+      <button
+        className="btn primary"
+        onClick={() => {
+          let ops = opsUpdateGoal(goal, { title: title.trim() || goal.title, done_means: done.trim(), ...(goal.type === 'number' ? { target_value: target } : {}) });
+          if (goal.type === 'number' && target !== goal.target_value) {
+            const now = new Date().toISOString();
+            ops = [...ops, ...currentTargets(data.goalTargets, goal.id).map((t) => ({ kind: 'update', collection: 'goalTargets', id: t.id, patch: { superseded_at: now } }) as const)];
+          }
+          commit(ops);
+          toast('Goal saved');
+          onClose();
+        }}
+      >
+        Save
+      </button>
+    </Sheet>
   );
-}
-
-function placeholderFor(goal: Goal, step: PlanStep): string {
-  if (goal.type === 'number') return step.level === 'week' ? 'e.g. Eating window every day, no weekday drinks' : 'e.g. Lock in the eating window';
-  if (goal.type === 'finish') return step.level === 'week' ? 'e.g. Finish module 4 quiz' : 'e.g. Modules 1–4 passed';
-  return step.level === 'week' ? 'e.g. G–C–D changes at 60 bpm' : 'e.g. Record song 1 start to finish';
 }
 
 // ---------- Level 5: the daily tasks for the selected week ----------
@@ -682,8 +498,9 @@ function DailyTasks({
             <button
               className="btn ghost"
               onClick={() => {
-                const ops = opsCopyTasks(data, goal, prevWeek, week, today);
-                commit(ops);
+                const ensure = opsEnsureStep(data, week);
+                const ops = opsCopyTasks(withOps(data, ensure), goal, prevWeek, week, today);
+                commit(ops.length ? [...ensure, ...ops] : []);
                 onToast(ops.length ? `Copied ${prevWeek.title}'s tasks` : 'Nothing to copy');
               }}
             >
@@ -897,7 +714,8 @@ function TaskSheet({
       commit(opsEditTask(data, task.action, v, editFrom, today));
       onSaved(`${v.title.trim()} updated${editFrom > today ? ` from ${shortDate(editFrom)}` : ''}`);
     } else {
-      commit(opsAddTask(data, goal, week, v, today));
+      const ensure = opsEnsureStep(data, week);
+      commit([...ensure, ...opsAddTask(withOps(data, ensure), goal, week, v, today)]);
       onSaved(`Added ${v.title.trim()}${week.start_date <= today ? ". It's on Today when it's due." : ''}`);
     }
   }
@@ -993,6 +811,11 @@ function TaskSheet({
           </label>
         )}
       </div>
+      <label className="field">
+        When does it happen? (optional)
+        <input value={v.cue} onChange={(e) => set({ cue: e.target.value })} placeholder="e.g. After morning coffee, at my desk" />
+        <span className="xsmall muted">A specific cue ("after ___, at ___") makes a habit much more likely to stick. It shows on Today.</span>
+      </label>
       <label className="field">
         Minimum version for hard days (optional)
         <input value={v.minLabel} onChange={(e) => set({ minLabel: e.target.value })} placeholder="e.g. 5 minutes" />

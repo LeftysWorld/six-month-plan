@@ -5,6 +5,7 @@ import { resetDemo } from '../data/local.ts';
 import { BackLink, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import type { ShellProps } from '../App.tsx';
 import { getTheme, setTheme, type Theme } from '../theme.ts';
+import { ReminderSettings } from '../components/ReminderSettings.tsx';
 
 function download(name: string, content: string, type: string) {
   const blob = new Blob([content], { type });
@@ -38,7 +39,7 @@ function StartOver({ onClose }: { onClose: () => void }) {
     [data.plans.length, 'plan'],
     [data.goals.length, 'goal'],
     [data.actions.length, 'task'],
-    [data.sessions.filter((s) => s.status !== 'planned').length, 'logged session'],
+    [data.sessions.filter((s) => s.status !== 'planned').length, 'logged task'],
     [data.measurements.length, 'measurement'],
     [data.reviews.length, 'review'],
   ] as const;
@@ -92,7 +93,7 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
 
   return (
     <div className="stack">
-      <BackLink label="Home" fallback="/" />
+      <BackLink label="Today" fallback="/today" />
       <h1>Settings</h1>
 
       <div className="section-label">You</div>
@@ -136,6 +137,8 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
           </button>
         ))}
       </div>
+
+      <ReminderSettings />
 
       <div className="section-label">Time available each day</div>
       <div className="card stack-sm">
@@ -256,6 +259,9 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
           Sign out
         </button>
       )}
+      <p className="xsmall muted" style={{ textAlign: 'center', margin: 0 }}>
+        On a computer: N add · T Today · G Goals · R Review · ← → change day on Today
+      </p>
       <p className="xsmall muted" style={{ textAlign: 'center' }}>
         Six Months · v0.1 · build {typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev'}
       </p>

@@ -18,6 +18,12 @@ export interface Profile {
   /** Minutes available per weekday, Monday first (7 numbers). */
   available_minutes: number[];
   welcome_dismissed_on: ISODate | null;
+  /** Morning reminder time, "HH:MM" (the database may return "HH:MM:SS"). */
+  reminder_time?: string;
+  /** Evening "streak saver" reminder at 21:00 if nothing is logged. */
+  evening_reminder?: boolean;
+  /** Secret token for the read-only calendar feed. */
+  calendar_token?: string | null;
 }
 
 export interface Plan {
@@ -102,6 +108,8 @@ export interface Action {
   priority: boolean;
   /** The breakdown step (usually a week) this task was planned in; null for ongoing actions. */
   step_id?: string | null;
+  /** An "after ___, at ___" cue that says when the task happens (optional). */
+  cue?: string;
   archived_at: string | null;
 }
 

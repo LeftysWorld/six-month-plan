@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { addDays, blockIndex, blockRange, quarterRange, shortDate, weekStart, weekdayName, type DateRange, type Plan } from '@six/core';
+import { addDays, chainAt, quarterRange, shortDate, weekStart, weekdayName, type DateRange, type Plan } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView } from '../data/derive.ts';
 import { BackLink, Empty } from '../components/ui.tsx';
@@ -13,7 +13,7 @@ export function Progress() {
   const [tab, setTab] = useState<Tab>('body');
   return (
     <div className="stack">
-      <BackLink label="Home" fallback="/" />
+      <BackLink label="Review" fallback="/review" />
       <h1>All progress</h1>
       <div className="seg" role="tablist" aria-label="Area">
         {(['body', 'habits', 'study'] as Tab[]).map((t) => (
@@ -33,10 +33,10 @@ export function Progress() {
 function Body({ plan }: { plan: Plan }) {
   const { data, today } = useStore();
   const view = useView();
-  const [range, setRange] = useState<'block' | '3mo' | '6mo'>('block');
+  const [range, setRange] = useState<'month' | '3mo' | '6mo'>('month');
   const numberGoals = view.goalsForPlan(plan.id).filter((g) => g.type === 'number');
   const ranges: Record<string, DateRange> = {
-    block: blockRange(plan, blockIndex(plan, today)),
+    month: (() => { const m = chainAt(plan, today).month; return { start: m.start, end: m.end }; })(),
     '3mo': quarterRange(plan, today),
     '6mo': { start: plan.start_date, end: plan.end_date },
   };
@@ -51,9 +51,9 @@ function Body({ plan }: { plan: Plan }) {
             <div className="row-between">
               <span className="label">Results · {g.title}</span>
               <div className="seg" role="tablist" aria-label="Chart range">
-                {(['block', '3mo', '6mo'] as const).map((r) => (
+                {(['month', '3mo', '6mo'] as const).map((r) => (
                   <button key={r} role="tab" aria-selected={range === r} onClick={() => setRange(r)}>
-                    {r === 'block' ? 'Block' : r === '3mo' ? '3 mo' : '6 mo'}
+                    {r === 'month' ? 'Month' : r === '3mo' ? '3 mo' : '6 mo'}
                   </button>
                 ))}
               </div>

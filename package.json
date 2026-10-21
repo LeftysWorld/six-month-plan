@@ -11,7 +11,7 @@
     "dev": "npm run dev --workspace @six/web",
     "build": "npm run build --workspace @six/web",
     "preview": "npm run preview --workspace @six/web",
-    "test": "npm run test --workspace @six/core",
+    "test": "npm run test --workspace @six/core && npm run test --workspace @six/web",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {

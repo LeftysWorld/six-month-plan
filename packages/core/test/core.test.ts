@@ -316,3 +316,17 @@ test('schedules that start mid-week number their slots apart', () => {
   assert.deepEqual(s.map((x) => x.slot), [60, 61]);
   assert.deepEqual(slotsForWeek(schedule(), '2026-10-12').map((x) => x.slot), [0, 1, 2]);
 });
+
+test('chainAt finds the current 3-month stage, month and week', async () => {
+  const { chainAt } = await import('../src/plan.ts');
+  const plan = { id: 'p', name: 'p', start_date: '2026-10-05', end_date: '2027-04-05', block_days: 28, archived_at: null } as never;
+  const c = chainAt(plan, '2026-10-21');
+  assert.equal(c.quarter.title, 'First 3 months');
+  assert.equal(c.month.title, 'Month 1');
+  assert.ok(c.week.start <= '2026-10-21' && c.week.end >= '2026-10-21');
+  assert.equal(c.week.start, '2026-10-19');
+  const late = chainAt(plan, '2027-03-01');
+  assert.equal(late.quarter.title, 'Last 3 months');
+  const before = chainAt(plan, '2026-09-01');
+  assert.equal(before.week.start, '2026-10-05');
+});

@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { addDays, cascadeRanges, shortDate, suggestPath, valueOnPath, type GoalType, type PathPoint } from '@six/core';
+import { addDays, chainAt, shortDate, suggestPath, valueOnPath, type GoalType, type PathPoint } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView } from '../data/derive.ts';
 import { opsCreateGoal } from '../data/ops.ts';
 import { navigate } from '../router.ts';
-import { opsCreateBreakdown, withOps } from '../data/breakdown.ts';
-import { BackLink, Empty, GOAL_COLORS, NumberInput, useToast } from '../components/ui.tsx';
+import { blankTask, opsAddTask, withOps } from '../data/breakdown.ts';
+import { chainFor, opsStartChain } from '../data/chain.ts';
+import { BackLink, Empty, GOAL_COLORS, NumberInput, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
 
 const TYPES: { value: GoalType; title: string; sub: string }[] = [
@@ -44,12 +45,32 @@ export function GoalNew({ planId }: { planId: string | null }) {
     }));
   }, [type, baseline, target, startDate, targetDate, plan, edits]);
 
-  // What the goal flows into: two 3-month stages, three months each.
-  const preview = useMemo(() => (plan ? cascadeRanges(plan) : []), [plan]);
+  // The current links of the chain this goal starts with.
+  const periods = useMemo(() => (plan ? chainAt(plan, today < plan.start_date ? plan.start_date : today) : null), [plan, today]);
+  const [notes, setNotes] = useState<{ quarter: string; month: string; week: string } | null>(null);
+  const [taskTitle, setTaskTitle] = useState<string | null>(null);
+  const [taskDays, setTaskDays] = useState<number[]>([1, 3, 5]);
+  const [taskMinutes, setTaskMinutes] = useState(30);
   const startPoint = baseline != null ? { date: startDate, value: baseline } : null;
   const targetAt = (d: string) => (type === 'number' && startPoint && path.length ? fmt(valueOnPath(startPoint, path, d)) : null);
 
   if (!plan) return <Empty title="Create a plan first." />;
+
+  const firstMilestone = (from: string, to: string) => milestones.find((m) => m.title.trim() && m.due_date >= from && m.due_date <= to)?.title.trim();
+  const defaults = () => {
+    if (!periods) return { quarter: '', month: '', week: '' };
+    if (type === 'number') return { quarter: '', month: '', week: '' };
+    if (type === 'finish') {
+      return {
+        quarter: firstMilestone(periods.quarter.start, periods.quarter.end) ? `Done: ${milestones.filter((m) => m.title.trim() && m.due_date <= periods.quarter.end).map((m) => m.title.trim()).join(', ')}` : '',
+        month: firstMilestone(periods.month.start, periods.month.end) ?? '',
+        week: firstMilestone(periods.week.start, periods.week.end) ?? '',
+      };
+    }
+    return { quarter: '', month: '', week: `Show up on every planned day` };
+  };
+  const chainNotes = notes ?? defaults();
+  const firstTask = taskTitle ?? (type === 'number' ? '' : title.trim() ? `Work on ${title.trim().charAt(0).toLowerCase()}${title.trim().slice(1)}` : '');
 
   const canNext1 = title.trim().length > 0;
   const canNext2 = type !== 'number' || (target != null && targetDate > today);
@@ -76,18 +97,25 @@ export function GoalNew({ planId }: { planId: string | null }) {
       },
       today,
     );
-    // The goal flows straight into its breakdown: 3 months → months → weeks.
-    const next = withOps(data, ops);
+    // The goal starts with its current chain (3 months, this month, this week) and, optionally, a first daily task.
+    let next = withOps(data, ops);
     const goal = next.goals.find((g) => g.id === goalId)!;
-    commit([...ops, ...opsCreateBreakdown(next, goal, plan)]);
-    toast(`Added ${title.trim()}. Now plan the stages and this week's tasks.`);
-    navigate(`/flow/${goalId}`);
+    const chainOps = opsStartChain(next, goal, plan, today, { quarter: chainNotes.quarter.trim(), month: chainNotes.month.trim(), week: chainNotes.week.trim() });
+    next = withOps(next, chainOps);
+    const all = [...ops, ...chainOps];
+    if (firstTask.trim() && taskDays.length) {
+      const week = chainFor(next, goal, plan, today < plan.start_date ? plan.start_date : today).week.step!;
+      all.push(...opsAddTask(next, goal, week, { ...blankTask(week, today), title: firstTask.trim(), when: 'days', days: taskDays, minutes: taskMinutes, through: null }, today));
+    }
+    commit(all);
+    toast(`Added ${title.trim()}. It's set up through this week.`);
+    navigate(`/goals/${goalId}`);
   }
 
   return (
     <div className="stack">
       <div className="row-between">
-        <BackLink label="Cancel" fallback={`/plans/${plan.id}`} />
+        <BackLink label="Cancel" fallback="/goals" />
         <span className="small muted">
           {plan.name} · step {step} of 3
         </span>
@@ -149,7 +177,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
               {path.length > 0 && baseline != null && (
                 <div className="card stack-sm">
                   <div className="row-between small">
-                    <b>Suggested path · 4-week blocks</b>
+                    <b>Suggested path</b>
                     <span className="muted">
                       {fmt(((target! - baseline) / Math.max(1, path.length)))} {unit} / block
                     </span>
@@ -168,7 +196,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
                     {path.map((p, i) => (
                       <NumberInput
                         key={p.date}
-                        label={i === path.length - 1 ? `Goal · ${p.date.slice(5)}` : `Block ${i + 1} · ${p.date.slice(5)}`}
+                        label={i === path.length - 1 ? `Goal · ${p.date.slice(5)}` : `Checkpoint ${i + 1} · ${p.date.slice(5)}`}
                         value={p.value}
                         onChange={(v) => v != null && setEdits({ ...edits, [p.date]: v })}
                       />
@@ -233,56 +261,70 @@ export function GoalNew({ planId }: { planId: string | null }) {
         </div>
       )}
 
-      {step === 3 && (
+      {step === 3 && periods && (
         <div className="stack">
-          <h1>Here's how it breaks down</h1>
+          <h1>Your first week</h1>
           <p className="muted small" style={{ margin: 0 }}>
-            Your 6-month goal flows into two 3-month stages, six months, and weekly steps. Next you'll describe each stage and add daily tasks; they show up on Today.
+            Each goal keeps one goal for these 3 months, one for this month and one for this week, plus daily tasks that land on Today. All optional; change them any time.
           </p>
-          <div className="card stack-sm">
+          <div className="card stack">
             <div className="row-between">
-              <b>6 months · {title.trim()}</b>
-              <span className="xsmall muted">
+              <span className="label">6 months</span>
+              <span className="mono" style={{ fontSize: 10 }}>
                 {shortDate(plan.start_date)} – {shortDate(plan.end_date)}
               </span>
             </div>
-            {type === 'number' && target != null && (
-              <span className="small">
-                {baseline != null ? `${fmt(baseline)} → ` : ''}
-                {fmt(target)} {unit}
-              </span>
-            )}
+            <b style={{ fontSize: 16 }}>
+              {title.trim()}
+              {type === 'number' && target != null ? ` · ${baseline != null ? `${fmt(baseline)} → ` : ''}${fmt(target)} ${unit}` : ''}
+            </b>
+            {(['quarter', 'month', 'week'] as const).map((level) => {
+              const node = periods[level];
+              const t = targetAt(node.end);
+              return (
+                <label key={level} className="field">
+                  {level === 'quarter' ? `${node.title}` : level === 'month' ? `This month (${node.title})` : `This week (${node.title})`} · by {shortDate(node.end)}
+                  {t ? ` · target ${t} ${unit}` : ''}
+                  <input
+                    value={chainNotes[level]}
+                    onChange={(e) => setNotes({ ...chainNotes, [level]: e.target.value })}
+                    placeholder={type === 'number' ? 'Optional: what should be true by then' : 'What should be true by then?'}
+                  />
+                </label>
+              );
+            })}
           </div>
-          {preview.map((q) => (
-            <div key={q.start} className="card tight stack-sm" style={{ marginLeft: 14, borderLeft: `1.5px solid ${color}88` }}>
-              <div className="row-between small">
-                <b>{q.title}</b>
-                <span className="xsmall muted">
-                  {shortDate(q.start)} – {shortDate(q.end)}
-                  {targetAt(q.end) ? ` · ${targetAt(q.end)} ${unit}` : ''}
-                </span>
-              </div>
-              <div className="grid-3" style={{ marginLeft: 6 }}>
-                {q.children.map((m) => (
-                  <div key={m.start} className="goal-chip" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
-                    <b>{m.title}</b>
-                    <span className="xsmall muted">{m.children.length} weeks</span>
-                    {targetAt(m.end) && (
-                      <span className="xsmall">
-                        {targetAt(m.end)} {unit}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
+          <div className="card stack">
+            <span className="label">First daily task</span>
+            <label className="field">
+              Task
+              <input value={firstTask} onChange={(e) => setTaskTitle(e.target.value)} placeholder="e.g. Guitar practice" />
+            </label>
+            <div className="chips" role="group" aria-label="Days">
+              {WEEKDAY_NAMES.map((d, i) => (
+                <button
+                  key={d}
+                  type="button"
+                  className="chip"
+                  aria-pressed={taskDays.includes(i + 1)}
+                  onClick={() => setTaskDays(taskDays.includes(i + 1) ? taskDays.filter((x) => x !== i + 1) : [...taskDays, i + 1].sort())}
+                >
+                  {d}
+                </button>
+              ))}
             </div>
-          ))}
+            <label className="field">
+              Minutes
+              <input type="number" min={0} value={taskMinutes} onChange={(e) => setTaskMinutes(Number(e.target.value))} />
+            </label>
+            <span className="xsmall muted">Leave the task blank to add tasks later on the goal page.</span>
+          </div>
           <div className="btn-row">
             <button className="btn" onClick={() => setStep(2)}>
               Back
             </button>
             <button className="btn primary" onClick={save}>
-              Save and plan the stages
+              Save goal
             </button>
           </div>
         </div>

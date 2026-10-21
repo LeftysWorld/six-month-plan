@@ -46,7 +46,7 @@ export function StudyLog({ id }: { id: string }) {
   const [manual, setManual] = useState<number | null>(null);
   const [showManual, setShowManual] = useState(false);
 
-  if (!session) return <Empty title="This session isn't here anymore." />;
+  if (!session) return <Empty title="This task isn’t here anymore." />;
   const goals = view.goalsForAction(session.action_id);
   const milestones = data.milestones
     .filter((m) => goals.some((g) => g.id === m.goal_id))
@@ -63,10 +63,14 @@ export function StudyLog({ id }: { id: string }) {
   const r = 82;
   const circumference = 2 * Math.PI * r;
 
+  const kind = view.action(session.action_id)?.kind;
+  const isStudy = kind === 'study';
+
   function finish(total: number) {
     if (!session) return;
-    const status = total >= planned ? 'done' : total > 0 ? 'partial' : 'skipped';
-    commit(opsLogSession(session, { status, actual_minutes: total }));
+    // Study counts minutes against the plan; any other task is done once you stop the timer.
+    const status = isStudy ? (total >= planned ? 'done' : total > 0 ? 'partial' : 'skipped') : 'done';
+    commit(opsLogSession(session, { status, actual_minutes: total, ...(session.planned_count ? { actual_count: session.planned_count } : {}) }));
     timer.clear();
     toast(`Logged ${total} min`);
     navigate('/today');
@@ -113,7 +117,7 @@ export function StudyLog({ id }: { id: string }) {
             {timer.running ? 'Pause' : 'Resume'}
           </button>
           <button className="btn primary" onClick={() => finish(minutes)}>
-            Stop &amp; log {minutes} min
+            {isStudy ? `Stop & log ${minutes} min` : `Done · ${minutes} min`}
           </button>
         </div>
         {showManual ? (
@@ -132,12 +136,12 @@ export function StudyLog({ id }: { id: string }) {
           </form>
         ) : (
           <button className="link-btn small" onClick={() => setShowManual(true)}>
-            Studied without the timer? Enter minutes
+            {isStudy ? 'Studied without the timer? Enter minutes' : 'Did it without the timer? Enter minutes'}
           </button>
         )}
       </div>
 
-      <div className="card tight stack-sm">
+      {isStudy && <div className="card tight stack-sm">
         <div className="row-between small">
           <b>This week</b>
           <span className="muted">
@@ -159,7 +163,7 @@ export function StudyLog({ id }: { id: string }) {
             </button>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

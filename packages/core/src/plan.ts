@@ -202,3 +202,28 @@ export function cascadeRanges(plan: Plan): CascadeNode[] {
 export function rangeLabel(range: DateRange): string {
   return range.start === range.end ? shortDate(range.start) : `${shortDate(range.start)} – ${shortDate(range.end)}`;
 }
+
+export interface ChainPeriods {
+  quarter: CascadeNode;
+  month: CascadeNode;
+  week: CascadeNode;
+}
+
+/**
+ * The 3-month stage, month and week a date falls in (clamped to the plan).
+ * Each goal keeps one goal per level for the current period only.
+ */
+export function chainAt(plan: Plan, date: ISODate): ChainPeriods {
+  const d = date < plan.start_date ? plan.start_date : date > plan.end_date ? plan.end_date : date;
+  const inside = (n: DateRange) => n.start <= d && n.end >= d;
+  const quarters = cascadeRanges(plan);
+  const quarter = quarters.find(inside) ?? quarters[quarters.length - 1]!;
+  const month = quarter.children.find(inside) ?? quarter.children[quarter.children.length - 1]!;
+  const week = month.children.find(inside) ?? month.children[month.children.length - 1]!;
+  return { quarter, month, week };
+}
+
+/** The months of a plan, in order (used where the app talks about "this month"). */
+export function planMonths(plan: Plan): CascadeNode[] {
+  return cascadeRanges(plan).flatMap((q) => q.children);
+}
