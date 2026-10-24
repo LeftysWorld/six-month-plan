@@ -4,7 +4,6 @@ import {
   currentTargets,
   describeSchedule,
   isoWeekday,
-  progressFor,
   rangeLabel,
   shortDate,
   weekDates,
@@ -18,10 +17,9 @@ import {
   type Session,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, minutesText, useView, type View } from '../data/derive.ts';
-import type { AppData } from '../data/model.ts';
+import { fmt, minutesText, useView } from '../data/derive.ts';
 import { opsUpdateGoal } from '../data/ops.ts';
-import { CHAIN_LEVELS, catchUp, chainFor, isSet, opsEnsureStep, opsSetLevel, stepFor, type Chain, type ChainLevel, type ChainLink } from '../data/chain.ts';
+import { CHAIN_LEVELS, catchUp, chainFor, isSet, opsEnsureStep, periodStatus, opsSetLevel, stepFor, type Chain, type ChainLevel } from '../data/chain.ts';
 import { GoalExtras } from './GoalDetail.tsx';
 import {
   applyFrom,
@@ -180,24 +178,6 @@ function dateRange(s: { start_date: ISODate; end_date: ISODate }) {
 }
 
 /** How the current period is going, in a few words: "3 of 5 done", "207.9 now · aiming for 207.8". */
-function periodStatus(view: View, data: AppData, goal: Goal, plan: Plan, link: ChainLink, today: ISODate): { text: string; label: PaceLabel } | null {
-  const node = link.node;
-  if (node.start > today) return { text: `Starts ${shortDate(node.start)}`, label: 'none' };
-  if (goal.type === 'number') {
-    const n = view.goalPace(goal, plan).number;
-    const target = link.step?.target_value ?? link.suggested;
-    if (!n || n.latest == null || target == null) return null;
-    return { text: `${fmt(n.trend ?? n.latest)} now · aiming for ${fmt(Number(target))}`, label: n.label };
-  }
-  if (goal.type === 'finish') {
-    const ms = data.milestones.filter((m) => m.goal_id === goal.id && m.due_date >= node.start && m.due_date <= node.end);
-    if (ms.length) return { text: `${ms.filter((m) => m.completed_at).length} of ${ms.length} milestones`, label: 'none' };
-  }
-  const p = progressFor(view.projectedSessions(node).filter((s) => view.goalsForAction(s.action_id).some((g) => g.id === goal.id)), node, { today, dayFraction: 0 });
-  if (p.planned === 0) return { text: 'No tasks yet', label: 'none' };
-  return { text: `${fmt(p.actual, 0)} of ${p.planned} done`, label: p.label };
-}
-
 /** One level of the chain: its goal (or a prompt to set one) and how the period is going. */
 function ChainCard({
   n,
@@ -254,7 +234,7 @@ function placeholderFor(goal: Goal, level: ChainLevel): string {
 }
 
 /** Set or change the goal for the current 3 months, month or week. */
-function ChainSheet({ goal, plan, chain, level, onClose }: { goal: Goal; plan: Plan; chain: Chain; level: ChainLevel; onClose: () => void }) {
+export function ChainSheet({ goal, plan, chain, level, onClose }: { goal: Goal; plan: Plan; chain: Chain; level: ChainLevel; onClose: () => void }) {
   const { data, commit } = useStore();
   const toast = useToast();
   const link = chain[level];

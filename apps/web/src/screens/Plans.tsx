@@ -1,29 +1,37 @@
 import { useState } from 'react';
 import {
   addDays,
+  chainAt,
   daysBetween,
   planDayNumber,
-  planMonths,
   planTotalDays,
-  planTotalWeeks,
-  planWeekNumber,
   quarterRange,
-  sessionCredit,
   shortDate,
-  valueOnPath,
-  weekStart,
+  weekdayName,
   type Goal,
   type ISODate,
+  type PaceLabel,
   type Plan,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView, type View } from '../data/derive.ts';
 import { opsArchivePlan, opsCreatePlan, opsLinkGoalToPlan } from '../data/ops.ts';
-import { tasksInRange } from '../data/breakdown.ts';
-import { catchUp, chainFor, chainGaps, isSet, type ChainLevel } from '../data/chain.ts';
-import type { AppData } from '../data/model.ts';
+import {
+  CHAIN_LEVELS,
+  catchUpPlan,
+  chainFor,
+  isSet,
+  opsAddExtra,
+  periodStatus,
+  weekTally,
+  type Chain,
+  type ChainLevel,
+  type CatchUp,
+} from '../data/chain.ts';
+import type { AppData, Op } from '../data/model.ts';
 import { href, navigate } from '../router.ts';
-import { Icon, useToast } from '../components/ui.tsx';
+import { Icon, Sheet, useToast } from '../components/ui.tsx';
+import { ChainSheet } from './Flow.tsx';
 
 /** Create a plan: name, start, end (defaults to six months). */
 export function PlanForm({ onDone }: { onDone?: () => void }) {
@@ -76,510 +84,434 @@ export function PlanForm({ onDone }: { onDone?: () => void }) {
 }
 
 /**
- * Goals: where you are in the six months, how each goal is doing, what needs your attention,
- * and what's coming up. Each goal opens its one page (chain + daily tasks).
+ * Goals: every goal with its chain (3 months → this month → this week) and how this week is going.
+ * The plan is one slim line at the top; its settings live behind the plan name.
  */
 export function Plans({ planId = null }: { planId?: string | null }) {
   const { data, today } = useStore();
-  const [creating, setCreating] = useState(false);
   const live = data.plans.filter((p) => !p.archived_at && p.end_date >= today).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
-  const past = data.plans.filter((p) => p.archived_at || p.end_date < today);
   const [pickedId, setPickedId] = useState<string | null>(planId);
+  const [menu, setMenu] = useState(false);
   const plan = live.find((p) => p.id === pickedId) ?? data.plans.find((p) => p.id === pickedId) ?? live.find((p) => p.start_date <= today) ?? live[0] ?? null;
-  const activeCount = live.filter((p) => p.start_date <= today).length;
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
 
   return (
     <div className="stack rise">
+      {plan ? (
+        <PlanGoals key={plan.id} plan={plan} initial={initial} onMenu={() => setMenu(true)} />
+      ) : (
+        <>
+          <div className="topbar">
+            <span className="mono">No plan yet</span>
+            <a className="avatar" href={href('/settings')} aria-label="Settings">
+              {initial}
+            </a>
+          </div>
+          <h1 style={{ marginTop: -4 }}>Goals</h1>
+          <PlanForm />
+        </>
+      )}
+      {menu && <PlanMenu plan={plan} onPick={setPickedId} onClose={() => setMenu(false)} />}
+    </div>
+  );
+}
+
+interface GoalCardData {
+  goal: Goal;
+  chain: Chain;
+  pace: PaceLabel;
+  fix: CatchUp | null;
+  gaps: ChainLevel[];
+  /** Something to do now: behind, a level not set, an overdue milestone or an old reading. */
+  needs: boolean;
+  /** Lower sorts first. */
+  rank: number;
+}
+
+function PlanGoals({ plan, initial, onMenu }: { plan: Plan; initial: string; onMenu: () => void }) {
+  const { data, today } = useStore();
+  const view = useView();
+  const [filter, setFilter] = useState<'all' | 'needs'>('all');
+  const started = plan.start_date <= today;
+  const cards = goalCards(view, data, plan, today);
+  const needCount = cards.filter((c) => c.needs).length;
+  const shown = filter === 'needs' ? cards.filter((c) => c.needs) : cards;
+  const setup = setupSteps(view, data, plan, today);
+
+  return (
+    <>
       <div className="topbar">
         <span className="mono">
-          {plan ? plan.name : 'No plan yet'}
-          {live.length > 1 ? ` · ${activeCount} active` : ''}
+          {cards.length} goal{cards.length === 1 ? '' : 's'}
+          {started && needCount ? ` · ${needCount} need${needCount === 1 ? 's' : ''} you` : ''}
         </span>
         <a className="avatar" href={href('/settings')} aria-label="Settings">
           {initial}
         </a>
       </div>
-      <div className="row-between" style={{ alignItems: 'flex-end', marginTop: -4 }}>
-        <h1>Goals</h1>
-        <button className="btn small" onClick={() => setCreating(!creating)}>
-          {creating ? 'Cancel' : (
-            <>
-              <Icon name="plus" size={16} stroke={2.4} /> New plan
-            </>
-          )}
-        </button>
-      </div>
+      <h1 style={{ marginTop: -4 }}>Goals</h1>
 
-      {creating && <PlanForm onDone={() => setCreating(false)} />}
+      <PlanLine plan={plan} today={today} onMenu={onMenu} />
 
-      {live.length > 1 && (
-        <div className="chips" role="group" aria-label="Choose a plan" style={{ flexWrap: 'nowrap', overflowX: 'auto', scrollbarWidth: 'none', margin: '0 -20px', padding: '0 20px' }}>
-          {live.map((p) => (
-            <button key={p.id} className="chip" aria-pressed={p.id === plan?.id} onClick={() => setPickedId(p.id)} style={{ flex: 'none', whiteSpace: 'nowrap' }}>
-              {p.name}
-              {p.start_date > today ? <span style={{ opacity: 0.6 }}> · {shortDate(p.start_date)}</span> : null}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {!plan && !creating && <PlanForm />}
-      {plan && <PlanOverview key={plan.id} plan={plan} />}
-
-      {past.length > 0 && (
-        <details className="card tight">
-          <summary className="label" style={{ cursor: 'pointer', minHeight: 32, display: 'flex', alignItems: 'center' }}>
-            Archived and finished plans · {past.length}
-          </summary>
-          <div className="stack-sm" style={{ marginTop: 8 }}>
-            {past.map((p) => (
-              <button key={p.id} className="list-row" onClick={() => setPickedId(p.id)} style={{ background: 'none', border: 0, borderTop: '1px solid var(--line)', width: '100%', cursor: 'pointer', font: 'inherit', color: 'inherit', textAlign: 'left' }}>
-                <span className="grow">{p.name}</span>
-                <span className="mono">
-                  {shortDate(p.start_date)} – {shortDate(p.end_date)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </details>
-      )}
-    </div>
-  );
-}
-
-function PlanOverview({ plan }: { plan: Plan }) {
-  const { data, today } = useStore();
-  const view = useView();
-  const goals = view.goalsForPlan(plan.id);
-  const started = plan.start_date <= today;
-  const checkpoint = quarterRange(plan, plan.start_date).end;
-  const horizons = started ? view.horizons(plan) : [];
-  const goalsH = horizons.find((h) => h.key === 'plan');
-  const weekH = horizons.find((h) => h.key === 'week');
-  const attention = started ? needsAttention(view, data, plan, goals, today) : [];
-  const events = comingUp(data, plan, goals, today);
-  const setup = setupSteps(view, data, plan, goals, today);
-  const setupLeft = setup.filter((x) => !x.done).length;
-
-  return (
-    <>
-      <div className="tile" style={{ gap: 14 }}>
-        <div className="stack-sm" style={{ gap: 6 }}>
-          <span className="mono">
-            {started ? `Day ${planDayNumber(plan, today)} of ${planTotalDays(plan)} · week ${planWeekNumber(plan, today)} of ${planTotalWeeks(plan)}` : `Starts in ${daysBetween(today, plan.start_date)} days`}
+      {setup && (
+        <div className="tile" style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
+          <span className="grow" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{setup.title}</span>
+            <span className="xsmall muted">{setup.detail}</span>
           </span>
-          <span style={{ fontSize: 28, fontWeight: 650, letterSpacing: '-0.04em', lineHeight: 1.1 }}>{plan.name}</span>
-        </div>
-        <PlanTimeline plan={plan} today={today} checkpoint={checkpoint} />
-        <div className="grid-3" style={{ gap: 10, borderTop: '1px solid var(--line)', paddingTop: 14 }}>
-          {goalsH && goalsH.progress.label !== 'none' ? (
-            <Stat label="Goals on pace" value={`${fmt(goalsH.progress.actual, 0)}/${goalsH.progress.planned}`} sub="" />
-          ) : (
-            <Stat label="Goals" value={`${goals.length}`} sub={goals.length === 0 ? 'add 3–4' : started ? 'pace after week 1' : 'ready to start'} />
-          )}
-          <Stat label="This week" value={weekH ? `${fmt(weekH.progress.actual, 0)}/${weekH.progress.planned}` : '–'} sub="tasks done" />
-          <Stat label="Checkpoint" value={shortDate(checkpoint)} sub={checkpoint >= today ? `in ${daysBetween(today, checkpoint)} days` : 'passed'} />
-        </div>
-      </div>
-
-      {setupLeft > 0 && (
-        <div className="tile" style={{ gap: 12 }}>
-          <div className="row-between">
-            <span className="label" style={{ color: 'var(--accent-ink)' }}>Get this plan ready</span>
-            <span className="label">
-              {setup.length - setupLeft} of {setup.length}
-            </span>
-          </div>
-          <div className="segments" style={{ gridTemplateColumns: `repeat(${setup.length}, minmax(0, 1fr))` }} aria-hidden="true">
-            {setup.map((x) => (
-              <span key={x.key} className={x.done ? 'on' : ''} />
-            ))}
-          </div>
-          <div>
-            {setup.map((x, i) => {
-              const isNext = !x.done && setup.findIndex((y) => !y.done) === i;
-              return (
-                <div key={x.key} className="list-row" style={{ gap: 12, opacity: x.done ? 0.6 : 1 }}>
-                  <span className={`ring ${x.done ? 'done' : ''}`} style={{ width: 24, height: 24, animation: 'none' }}>
-                    {x.done && <Icon name="check" size={12} stroke={3} />}
-                  </span>
-                  <span className="grow" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontSize: 15, fontWeight: 550, letterSpacing: '-0.01em', textDecoration: x.done ? 'line-through' : undefined }}>{x.title}</span>
-                    {isNext && <span className="xsmall muted">{x.detail}</span>}
-                  </span>
-                  {isNext && (
-                    <a className="btn small primary" href={href(x.to)} style={{ flex: 'none' }}>
-                      {x.action}
-                    </a>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <a className="btn small primary" href={href(setup.to)} style={{ flex: 'none' }}>
+            {setup.action}
+          </a>
         </div>
       )}
 
-      {started && goals.length > 0 && attention.length > 0 && (
-        <>
-          <div className="row-between" style={{ margin: '14px 2px 0' }}>
-            <span className="label">Needs attention</span>
-            <span className="label">{attention.length}</span>
-          </div>
-          <div className="tile" style={{ padding: '6px 18px', gap: 0 }}>
-            {attention.map((a) => (
-              <div key={a.key} className="list-row" style={{ gap: 12 }}>
-                <span className="dot" style={{ width: 8, height: 8, background: a.color, boxShadow: `0 0 10px ${a.color}` }} />
-                <span className="grow" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span style={{ fontSize: 14.5, fontWeight: 550, letterSpacing: '-0.01em' }}>{a.title}</span>
-                  <span className="xsmall muted">{a.detail}</span>
-                </span>
-                <a className="btn small" href={href(a.to)} style={{ flex: 'none' }}>
-                  {a.action}
-                </a>
-              </div>
-            ))}
-          </div>
-        </>
+      {started && needCount > 0 && cards.length > 1 && (
+        <div className="chips" role="group" aria-label="Show">
+          <button className="chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
+            All {cards.length}
+          </button>
+          <button className="chip" aria-pressed={filter === 'needs'} onClick={() => setFilter('needs')}>
+            Needs you · {needCount}
+          </button>
+        </div>
       )}
 
-      <div className="row-between" style={{ margin: '14px 2px 0' }}>
-        <span className="label">Your goals</span>
-        <span className="label">{goals.length}</span>
-      </div>
-      {goals.length === 0 && (
+      {cards.length === 0 && (
         <div className="card tight small" style={{ color: 'var(--ink-2)' }}>
           No goals yet. Six months from now, what do you want to be true? Most people start with 3–4: a number to reach, a habit to build, something to finish.
         </div>
       )}
       <div className="goal-list">
-        {goals.map((g) => (
-          <GoalRow key={g.id} goal={g} plan={plan} />
+        {shown.map((c) => (
+          <GoalCard key={c.goal.id} card={c} plan={plan} />
         ))}
       </div>
       <a className="btn ghost" href={href(`/goals/new?plan=${plan.id}`)}>
         + Add a goal
       </a>
-
-      {events.length > 0 && (
-        <>
-          <div className="label" style={{ margin: '14px 2px 0' }}>
-            Coming up
-          </div>
-          <div className="tile" style={{ padding: '6px 18px', gap: 0 }}>
-            {events.map((e) => (
-              <a key={e.key} className="list-row" href={href(e.to)} style={{ gap: 14 }}>
-                <span style={{ width: 52, flex: 'none', display: 'flex', flexDirection: 'column' }}>
-                  <span className="mono" style={{ color: 'var(--ink)', fontSize: 11.5 }}>
-                    {shortDate(e.date).toUpperCase()}
-                  </span>
-                  <span className="xsmall muted">{e.date === today ? 'today' : `in ${daysBetween(today, e.date)}d`}</span>
-                </span>
-                <span className="grow" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                  {e.color && <span className="dot" style={{ width: 7, height: 7, background: e.color }} />}
-                  <span style={{ fontSize: 14.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.title}</span>
-                </span>
-                <Icon name="chevron" size={16} />
-              </a>
-            ))}
-          </div>
-        </>
-      )}
-
-      <PlanSettings plan={plan} />
     </>
   );
 }
 
-/** Less-used plan actions, tucked away: add a goal from another plan, archive the plan. */
-function PlanSettings({ plan }: { plan: Plan }) {
-  const { data, commit } = useStore();
+/** The plan in one line: name (opens the plan menu), day count, a thin timeline, month and checkpoint. */
+function PlanLine({ plan, today, onMenu }: { plan: Plan; today: ISODate; onMenu: () => void }) {
+  const started = plan.start_date <= today;
+  const total = Math.max(1, daysBetween(plan.start_date, plan.end_date));
+  const pos = (d: ISODate) => Math.max(0, Math.min(100, (daysBetween(plan.start_date, d) / total) * 100));
+  const checkpoint = quarterRange(plan, plan.start_date).end;
+  const month = chainAt(plan, today).month;
+  const monthLeft = daysBetween(today, month.end);
+  const used = started ? pos(today) : 0;
+  return (
+    <div className="stack-sm" style={{ gap: 8 }}>
+      <div className="row-between" style={{ gap: 10 }}>
+        <button
+          type="button"
+          onClick={onMenu}
+          aria-label={`${plan.name}: switch plan or change plan settings`}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, border: 0, background: 'none', padding: 0, color: 'var(--ink)', font: 'inherit', fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em', cursor: 'pointer', minWidth: 0 }}
+        >
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{plan.name}</span>
+          <span style={{ transform: 'rotate(90deg)', display: 'inline-flex', flex: 'none' }}>
+            <Icon name="chevron" size={14} stroke={2.4} />
+          </span>
+        </button>
+        <span className="mono" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+          {started ? `DAY ${Math.min(planDayNumber(plan, today), planTotalDays(plan))} / ${planTotalDays(plan)}` : `STARTS ${shortDate(plan.start_date).toUpperCase()}`}
+        </span>
+      </div>
+      <div style={{ position: 'relative', height: 14 }} role="img" aria-label={`${Math.round(used)}% of the plan's time used. 3-month checkpoint ${shortDate(checkpoint)}.`}>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 5, height: 4, borderRadius: 2, background: 'var(--track)' }} />
+        <div style={{ position: 'absolute', left: 0, width: `${used}%`, top: 5, height: 4, borderRadius: 2, background: 'var(--accent)' }} />
+        <div style={{ position: 'absolute', left: `calc(${pos(checkpoint)}% - 4px)`, top: 3, width: 8, height: 8, borderRadius: 2, transform: 'rotate(45deg)', background: 'var(--gold)' }} />
+        {started && today <= plan.end_date && <div style={{ position: 'absolute', left: `calc(${used}% - 1px)`, top: 0, width: 2, height: 14, borderRadius: 1, background: 'var(--ink)' }} />}
+      </div>
+      <div className="row-between xsmall" style={{ color: 'var(--ink-2)', gap: 10 }}>
+        <span>{started ? `${month.title} · ${monthLeft === 0 ? 'last day' : `${monthLeft} day${monthLeft === 1 ? '' : 's'} left`}` : `Starts in ${daysBetween(today, plan.start_date)} days`}</span>
+        <span>
+          <span style={{ color: 'var(--gold)' }}>◆</span> Checkpoint {shortDate(checkpoint)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Every goal in the plan with what it needs, goals that need you first. */
+function goalCards(view: View, data: AppData, plan: Plan, today: ISODate): GoalCardData[] {
+  const started = plan.start_date <= today;
+  const date = started ? today : plan.start_date;
+  return view
+    .goalsForPlan(plan.id)
+    .map((goal, i) => {
+      const chain = chainFor(data, goal, plan, date);
+      const pace = started ? view.goalPace(goal, plan).label : 'none';
+      const fix = started ? catchUpPlan(view, data, goal, plan, today) : null;
+      const gaps = CHAIN_LEVELS.filter((l) => !isSet(chain[l]));
+      const overdue = data.milestones.some((m) => m.goal_id === goal.id && !m.completed_at && m.due_date < today);
+      const age = goal.type === 'number' ? readingAge(view, goal, today) : 0;
+      const stale = started && (age == null || age > 7);
+      const needs = started && (!!fix || gaps.length > 0 || overdue || stale);
+      const rank = (fix ? 0 : overdue ? 1 : gaps.length ? 2 : stale ? 3 : 10) * 100 + i;
+      return { goal, chain, pace, fix, gaps, needs, rank };
+    })
+    .sort((a, b) => a.rank - b.rank);
+}
+
+/** Days since the goal's last reading, or null with no readings. */
+function readingAge(view: View, goal: Goal, today: ISODate): number | null {
+  const last = view.measurementsFor(goal.measurement_type_id).at(-1);
+  return last ? daysBetween(last.measured_on, today) : null;
+}
+
+const LEVEL_SHORT: Record<ChainLevel, string> = { quarter: '3 MO', month: 'MONTH', week: 'WEEK' };
+const LEVEL_SET: Record<ChainLevel, string> = { quarter: 'Set 3-month goal', month: "Set this month's goal", week: "Set this week's goal" };
+const LEVEL_LONG: Record<ChainLevel, string> = { quarter: '3-month goal', month: "This month's goal", week: "This week's goal" };
+
+/** One goal: outcome, its chain, this week's progress and the one thing to do if it's behind. */
+function GoalCard({ card, plan }: { card: GoalCardData; plan: Plan }) {
+  const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
-  const inPlan = new Set(view.goalsForPlan(plan.id).map((g) => g.id));
-  const others = data.goals.filter((g) => !g.archived_at && !inPlan.has(g.id));
+  const [editing, setEditing] = useState<ChainLevel | null>(null);
+  const { goal, chain, pace, fix } = card;
+  const started = plan.start_date <= today;
+  const word = pace === 'behind' ? 'Behind' : pace === 'ahead' ? 'Ahead' : pace === 'on_track' ? 'On pace' : started ? 'Too early' : 'Not started';
+  const ink = pace === 'behind' ? 'var(--amber-ink)' : pace === 'ahead' ? 'var(--blue-ink)' : pace === 'on_track' ? 'var(--accent-ink)' : 'var(--muted)';
+  const week = footer(view, data, goal, plan, today);
+  const age = goal.type === 'number' && started ? readingAge(view, goal, today) : 0;
+
+  const addExtra = (n: number) => {
+    const { ops, days } = opsAddExtra(view, data, goal, today, n);
+    if (!ops.length) return;
+    commit(ops);
+    const ids = (ops[0] as Extract<Op, { kind: 'insert' }>).rows.map((r) => r.id);
+    const when = days.map((d) => (d === today ? 'today' : weekdayName(d))).join(' and ');
+    toast(`Added ${n} for ${when}`, () => commit(ids.map((id): Op => ({ kind: 'delete', collection: 'sessions', id }))));
+  };
+
   return (
-    <details className="card tight">
-      <summary className="label" style={{ cursor: 'pointer', minHeight: 32, display: 'flex', alignItems: 'center' }}>
-        Plan settings
-      </summary>
-      <div className="stack-sm" style={{ marginTop: 10 }}>
-        <span className="small muted">
-          {shortDate(plan.start_date)} – {shortDate(plan.end_date)}
-        </span>
-        {others.length > 0 && (
-          <>
-            <span className="small strong">Add a goal from another plan</span>
-            <div className="chips">
-              {others.map((g) => (
+    <div className="tile" style={{ gap: 12, padding: '18px 18px 16px' }}>
+      <div className="row-between" style={{ alignItems: 'flex-start', gap: 10 }}>
+        <a href={href(`/goals/${goal.id}`)} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, color: 'inherit', textDecoration: 'none' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 17, fontWeight: 600, letterSpacing: '-0.02em' }}>
+            <span className="dot" style={{ width: 9, height: 9, flex: 'none', background: goal.color, boxShadow: `0 0 12px ${goal.color}` }} />
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{goal.title}</span>
+          </span>
+          <span className="small" style={{ color: 'var(--ink-2)', paddingLeft: 18 }}>
+            {outcome(view, goal, plan, today)}
+          </span>
+        </a>
+        <span style={{ flex: 'none', fontSize: 13, fontWeight: 600, color: ink }}>{word}</span>
+      </div>
+
+      <div role="list" aria-label={`${goal.title} chain`} style={{ paddingLeft: 4 }}>
+        {CHAIN_LEVELS.map((level) => {
+          const link = chain[level];
+          const set = isSet(link);
+          const status = set && started ? periodStatus(view, data, goal, plan, link, today) : null;
+          const labelInk = level === 'week' ? 'var(--accent-ink)' : status?.label === 'behind' ? 'var(--amber-ink)' : 'var(--muted)';
+          const value = link.step?.target_value != null ? `${fmt(link.step.target_value)} ${goal.unit ?? ''}`.trim() : '';
+          const text = [value, link.step?.target_note.trim() ?? ''].filter(Boolean).join(' · ');
+          return (
+            <div key={level} role="listitem" style={{ display: 'grid', gridTemplateColumns: '50px minmax(0, 1fr)', gap: 10, alignItems: 'start', padding: '7px 0', borderTop: '1px solid var(--line)' }}>
+              <span className="mono" style={{ fontSize: 10.5, paddingTop: set ? 3 : 9, color: labelInk }}>
+                {LEVEL_SHORT[level]}
+              </span>
+              {set ? (
                 <button
-                  key={g.id}
-                  className="chip"
-                  onClick={() => {
-                    commit(opsLinkGoalToPlan(data, g.id, plan.id));
-                    toast(`${g.title} added to ${plan.name}`);
-                  }}
+                  type="button"
+                  onClick={() => setEditing(level)}
+                  aria-label={`${LEVEL_LONG[level]}: ${text}. Edit`}
+                  style={{ border: 0, background: 'none', padding: 0, textAlign: 'left', font: 'inherit', cursor: 'pointer', fontSize: 14, lineHeight: 1.4, color: level === 'week' ? 'var(--ink)' : 'var(--ink-2)', fontWeight: level === 'week' ? 550 : 450 }}
                 >
-                  + {g.title}
+                  {text}
                 </button>
-              ))}
+              ) : (
+                <button className="chain-set" type="button" onClick={() => setEditing(level)}>
+                  + {LEVEL_SET[level]}
+                </button>
+              )}
             </div>
-          </>
+          );
+        })}
+      </div>
+
+      {fix && fix.extra == null && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>{fix.text}</span>}
+
+      <div className="row-between" style={{ gap: 10, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+          <span className="small" style={{ color: 'var(--ink-2)' }}>{week.text}</span>
+          {week.pips && (
+            <span style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }} aria-hidden="true">
+              {Array.from({ length: week.pips.total }, (_, i) => (
+                <span key={i} style={{ width: 18, height: 5, borderRadius: 3, background: i < week.pips!.done ? goal.color : 'var(--track)' }} />
+              ))}
+            </span>
+          )}
+        </div>
+        {fix?.extra ? (
+          <button className="btn small catch-up" type="button" onClick={() => addExtra(fix.extra!)} title={fix.text} style={{ flex: 'none' }}>
+            Add {fix.extra} this week
+          </button>
+        ) : age == null || (age ?? 0) > 7 ? (
+          <a className="btn small catch-up" href={href(`/goals/${goal.id}`)} style={{ flex: 'none' }}>
+            Log a reading
+          </a>
+        ) : (
+          <a className="avatar" href={href(`/goals/${goal.id}`)} aria-label={`Open ${goal.title}`} style={{ flex: 'none', color: 'var(--ink-2)' }}>
+            <Icon name="chevron" size={16} stroke={2.2} />
+          </a>
         )}
+      </div>
+
+      {editing && <ChainSheet goal={goal} plan={plan} chain={chain} level={editing} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+/** The 6-month outcome in one line: start → now → target for numbers, else what "done" means. */
+function outcome(view: View, goal: Goal, plan: Plan, today: ISODate): string {
+  const by = shortDate(goal.target_date ?? plan.end_date);
+  if (goal.type === 'number' && goal.target_value != null) {
+    const n = plan.start_date <= today ? view.goalPace(goal, plan).number : null;
+    const start = n?.start.value ?? goal.baseline_value;
+    const now = n?.latest;
+    return `${start != null ? `${fmt(start)} → ` : ''}${now != null ? `${fmt(now)} now → ` : ''}${fmt(goal.target_value)} ${goal.unit ?? ''} · ${by}`;
+  }
+  return `${goal.done_means.trim() || 'Done in six months'} · ${by}`;
+}
+
+/** The card's bottom line: this week's tasks (with pips), the latest reading, or the next milestone. */
+function footer(view: View, data: AppData, goal: Goal, plan: Plan, today: ISODate): { text: string; pips: { done: number; total: number } | null } {
+  if (goal.type === 'number') {
+    const n = plan.start_date <= today ? view.goalPace(goal, plan).number : null;
+    const age = readingAge(view, goal, today);
+    if (!n || n.latest == null || age == null) return { text: 'No readings yet', pips: null };
+    const ahead = n.aheadBy != null ? ` · ${fmt(Math.abs(n.aheadBy))} ${n.aheadBy >= 0 ? 'ahead of' : 'behind'} path` : '';
+    return { text: `${fmt(n.latest)} ${goal.unit ?? ''}${age > 7 ? `, ${age} days ago` : ' now'}${ahead}`, pips: null };
+  }
+  const t = weekTally(view, goal, today);
+  if (goal.type === 'finish' && t.total === 0) {
+    const next = data.milestones.filter((m) => m.goal_id === goal.id && !m.completed_at).sort((a, b) => (a.due_date < b.due_date ? -1 : 1))[0];
+    return { text: next ? `Next · ${next.title}, ${shortDate(next.due_date)}` : 'No milestones yet', pips: null };
+  }
+  if (t.total === 0) return { text: 'No tasks this week', pips: null };
+  return { text: `This week ${t.done} of ${t.total}`, pips: t.total <= 14 ? t : null };
+}
+
+/** The one setup step left for a new plan (goals, then daily tasks, then a first check-in), or null. */
+function setupSteps(view: View, data: AppData, plan: Plan, today: ISODate): { title: string; detail: string; action: string; to: string } | null {
+  const goals = view.goalsForPlan(plan.id);
+  if (goals.length === 0) return null; // The empty state already says this.
+  const noTasks = goals.find((g) => g.type !== 'number' && view.actionsForGoal(g.id).length === 0);
+  if (noTasks) return { title: `Add daily tasks for ${noTasks.title}`, detail: 'Daily tasks on the goal page land on your Today list.', action: 'Add tasks', to: `/goals/${noTasks.id}` };
+  const actionIds = new Set(goals.flatMap((g) => view.actionsForGoal(g.id, true).map((a) => a.id)));
+  const checkedIn = data.sessions.some((x) => x.action_id && actionIds.has(x.action_id) && x.status !== 'planned' && x.status !== 'moved');
+  if (!checkedIn && plan.start_date <= today) return { title: 'Do your first check-in', detail: 'Tick one thing off on Today. That starts your streak.', action: 'Open Today', to: '/today' };
+  return null;
+}
+
+/** Switch plans, start a new one, add a goal from another plan, archive. */
+function PlanMenu({ plan, onPick, onClose }: { plan: Plan | null; onPick: (id: string) => void; onClose: () => void }) {
+  const { data, today, commit } = useStore();
+  const view = useView();
+  const toast = useToast();
+  const [creating, setCreating] = useState(false);
+  const live = data.plans.filter((p) => !p.archived_at && p.end_date >= today).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+  const past = data.plans.filter((p) => p.archived_at || p.end_date < today);
+  const inPlan = new Set(plan ? view.goalsForPlan(plan.id).map((g) => g.id) : []);
+  const others = data.goals.filter((g) => !g.archived_at && !inPlan.has(g.id));
+  const row = { background: 'none', border: 0, borderTop: '1px solid var(--line)', width: '100%', cursor: 'pointer', font: 'inherit', color: 'inherit', textAlign: 'left' as const };
+
+  if (creating) {
+    return (
+      <Sheet title="New plan" onClose={onClose}>
+        <PlanForm onDone={onClose} />
+      </Sheet>
+    );
+  }
+  return (
+    <Sheet title="Plans" onClose={onClose}>
+      <div className="stack-sm">
+        {live.map((p) => (
+          <button
+            key={p.id}
+            className="list-row"
+            aria-current={p.id === plan?.id ? 'true' : undefined}
+            onClick={() => {
+              onPick(p.id);
+              onClose();
+            }}
+            style={row}
+          >
+            <span className="grow strong">{p.name}</span>
+            <span className="mono">
+              {shortDate(p.start_date)} – {shortDate(p.end_date)}
+            </span>
+            {p.id === plan?.id && <Icon name="check" size={16} stroke={2.6} />}
+          </button>
+        ))}
+        <button className="btn small" type="button" onClick={() => setCreating(true)}>
+          <Icon name="plus" size={16} stroke={2.4} /> New plan
+        </button>
+      </div>
+
+      {plan && others.length > 0 && (
+        <div className="stack-sm">
+          <span className="label">Add a goal from another plan</span>
+          <div className="chips">
+            {others.map((g) => (
+              <button
+                key={g.id}
+                className="chip"
+                onClick={() => {
+                  commit(opsLinkGoalToPlan(data, g.id, plan.id));
+                  toast(`${g.title} added to ${plan.name}`);
+                }}
+              >
+                + {g.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {past.length > 0 && (
+        <details>
+          <summary className="label" style={{ cursor: 'pointer', minHeight: 32, display: 'flex', alignItems: 'center' }}>
+            Archived and finished · {past.length}
+          </summary>
+          {past.map((p) => (
+            <button
+              key={p.id}
+              className="list-row"
+              onClick={() => {
+                onPick(p.id);
+                onClose();
+              }}
+              style={row}
+            >
+              <span className="grow">{p.name}</span>
+              <span className="mono">
+                {shortDate(p.start_date)} – {shortDate(p.end_date)}
+              </span>
+            </button>
+          ))}
+        </details>
+      )}
+
+      {plan && (
         <button
           className="btn small danger"
           onClick={() => {
             commit(opsArchivePlan(plan, !plan.archived_at));
             toast(plan.archived_at ? 'Plan restored' : 'Plan archived. Its history is kept.');
+            onClose();
           }}
         >
-          {plan.archived_at ? 'Restore plan' : 'Archive plan'}
+          {plan.archived_at ? `Restore ${plan.name}` : `Archive ${plan.name}`}
         </button>
-      </div>
-    </details>
+      )}
+    </Sheet>
   );
-}
-
-function Stat({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-      <span className="mono" style={{ fontSize: 10 }}>{label}</span>
-      <span className="num" style={{ fontSize: 22, lineHeight: 1.05 }}>{value}</span>
-      {sub && <span className="xsmall muted">{sub}</span>}
-    </div>
-  );
-}
-
-/** The plan as one bar: time used (lime), months, the 3-month checkpoint and today. */
-function PlanTimeline({ plan, today, checkpoint }: { plan: Plan; today: ISODate; checkpoint: ISODate }) {
-  const total = Math.max(1, daysBetween(plan.start_date, plan.end_date));
-  const pos = (d: ISODate) => Math.max(0, Math.min(100, (daysBetween(plan.start_date, d) / total) * 100));
-  const used = pos(today);
-  const months = planMonths(plan).slice(1);
-  return (
-    <div role="img" aria-label={`${Math.round(used)}% of the plan's time used. Checkpoint ${shortDate(checkpoint)}.`}>
-      <div style={{ position: 'relative', height: 30 }}>
-        <div style={{ position: 'absolute', left: 0, right: 0, top: 12, height: 8, borderRadius: 4, background: 'var(--track)' }} />
-        <div style={{ position: 'absolute', left: 0, width: `${used}%`, top: 12, height: 8, borderRadius: 4, background: 'var(--accent)' }} />
-        {months.map((m) => (
-          <div key={m.start} style={{ position: 'absolute', left: `${pos(m.start)}%`, top: 12, width: 1.5, height: 8, background: 'var(--ground)', opacity: 0.8 }} />
-        ))}
-        <div style={{ position: 'absolute', left: `calc(${pos(checkpoint)}% - 6px)`, top: 10, width: 12, height: 12, transform: 'rotate(45deg)', borderRadius: 3, background: 'var(--gold)', border: '2px solid var(--surface)' }} />
-        {plan.start_date <= today && today <= plan.end_date && (
-          <div style={{ position: 'absolute', left: `calc(${used}% - 1px)`, top: 2, width: 2, height: 28, borderRadius: 1, background: 'var(--ink)' }} />
-        )}
-      </div>
-      <div style={{ position: 'relative', height: 14, marginTop: 4 }}>
-        {planMonths(plan).map((m, i) => (
-          <span key={m.start} className="mono" style={{ position: 'absolute', left: `${(pos(m.start) + pos(m.end)) / 2}%`, transform: 'translateX(-50%)', fontSize: 9.5 }}>
-            M{i + 1}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** A goal with its real numbers, pace, plan progress and this week's goal. Opens the goal page. */
-function GoalRow({ goal, plan }: { goal: Goal; plan: Plan }) {
-  const { data, today } = useStore();
-  const view = useView();
-  const started = plan.start_date <= today;
-  const pace = started ? view.goalPace(goal, plan) : null;
-  const label = pace?.label ?? 'none';
-  const word = label === 'behind' ? 'Behind' : label === 'ahead' ? 'Ahead' : label === 'on_track' ? 'On pace' : started ? 'Too early' : 'Not started';
-  const ink = label === 'behind' ? 'var(--amber-ink)' : label === 'ahead' ? 'var(--blue-ink)' : label === 'on_track' ? 'var(--accent-ink)' : 'var(--muted)';
-  const prog = goalProgress(view, data, goal, plan, today);
-  const chain = chainFor(data, goal, plan, today < plan.start_date ? plan.start_date : today);
-  const week = chain.week;
-  const weekTasks = tasksInRange(data, goal.id, { start: week.node.start, end: week.node.end }).length;
-  const fix = started ? catchUp(view, data, goal, plan, today) : null;
-  const weekGoal = isSet(week) ? week.step!.target_note || (week.step!.target_value != null ? `${fmt(week.step!.target_value)} ${goal.unit ?? ''}` : '') : '';
-
-  return (
-    <a className="tile" href={href(`/goals/${goal.id}`)} aria-label={`${goal.title}: ${word}. Open goal`} style={{ gap: 10 }}>
-      <div className="row-between" style={{ gap: 10 }}>
-        <span className="row-start" style={{ gap: 10, flexWrap: 'nowrap', minWidth: 0 }}>
-          <span className="dot" style={{ width: 9, height: 9, background: goal.color, boxShadow: `0 0 12px ${goal.color}` }} />
-          <span style={{ fontSize: 16.5, fontWeight: 600, letterSpacing: '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{goal.title}</span>
-        </span>
-        <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap' }}>{word}</span>
-      </div>
-      <div className="small" style={{ color: 'var(--ink-2)' }}>
-        {prog.summary}
-      </div>
-      <div style={{ position: 'relative', height: 6, borderRadius: 3, background: 'var(--track)' }} aria-hidden="true">
-        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.max(2, prog.done * 100)}%`, borderRadius: 3, background: goal.color }} />
-        {started && prog.expected != null && (
-          <div style={{ position: 'absolute', left: `calc(${Math.min(100, prog.expected * 100)}% - 1px)`, top: -4, width: 2, height: 14, borderRadius: 1, background: 'var(--ink)', opacity: 0.8 }} />
-        )}
-      </div>
-      {fix && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>{fix}</span>}
-      <div className="row-between" style={{ gap: 8 }}>
-        <span className="mono" style={{ fontSize: 10.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {weekGoal ? `This week · ${weekGoal}` : "This week's goal not set"} · {weekTasks} task{weekTasks === 1 ? '' : 's'}
-        </span>
-        <Icon name="chevron" size={16} />
-      </div>
-    </a>
-  );
-}
-
-/** How far along a goal is (0..1), where it should be by now, and a one-line summary with real numbers. */
-function goalProgress(view: View, data: AppData, goal: Goal, plan: Plan, today: ISODate): { done: number; expected: number | null; summary: string } {
-  const elapsed = Math.max(0, Math.min(1, daysBetween(plan.start_date, today) / Math.max(1, daysBetween(plan.start_date, plan.end_date))));
-  if (goal.type === 'number') {
-    const n = plan.start_date <= today ? view.goalPace(goal, plan).number : null;
-    const start = n?.start.value ?? goal.baseline_value;
-    const target = goal.target_value;
-    if (start == null || target == null) return { done: 0, expected: null, summary: 'Set a start and target to track this.' };
-    const span = Math.abs(target - start) || 1;
-    const now = n?.trend ?? n?.latest ?? start;
-    const path = view.pathFor(goal);
-    const expectedValue = n ? valueOnPath(n.start, path, today) : start;
-    const ahead = n?.aheadBy;
-    return {
-      done: Math.max(0, Math.min(1, Math.abs(now - start) / span)),
-      expected: Math.max(0, Math.min(1, Math.abs(expectedValue - start) / span)),
-      summary: `${fmt(start)} → ${n?.latest != null ? `${fmt(n.latest)} now` : 'no reading yet'} → ${fmt(target)} ${goal.unit ?? ''}${ahead != null ? ` · ${fmt(Math.abs(ahead))} ${ahead >= 0 ? 'ahead of' : 'behind'} path` : ''}`,
-    };
-  }
-  if (goal.type === 'finish') {
-    const ms = data.milestones.filter((m) => m.goal_id === goal.id).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
-    const done = ms.filter((m) => m.completed_at).length;
-    const due = ms.filter((m) => m.due_date <= today).length;
-    const next = ms.find((m) => !m.completed_at);
-    return {
-      done: ms.length ? done / ms.length : 0,
-      expected: ms.length ? due / ms.length : elapsed,
-      summary: ms.length ? `${done} of ${ms.length} milestones${next ? ` · next: ${next.title}, ${shortDate(next.due_date)}` : ' · all done'}` : 'No milestones yet',
-    };
-  }
-  const actionIds = new Set(view.actionsForGoal(goal.id, true).map((a) => a.id));
-  const sessions = view.projectedSessions({ start: plan.start_date, end: plan.end_date }).filter((s) => s.action_id && actionIds.has(s.action_id) && s.status !== 'moved');
-  const planned = sessions.length;
-  const credit = sessions.reduce((sum, s) => sum + sessionCredit(s), 0);
-  const thisWeek = sessions.filter((s) => (s.date ? weekStart(s.date) : s.week_start) === weekStart(today));
-  const weekDone = thisWeek.reduce((sum, s) => sum + sessionCredit(s), 0);
-  const pace = plan.start_date <= today ? view.goalPace(goal, plan).progress : null;
-  return {
-    done: planned ? credit / planned : 0,
-    expected: pace && planned ? pace.expected / planned : null,
-    summary: planned ? `${fmt(credit, 0)} of ${planned} done · this week ${fmt(weekDone, 0)} of ${thisWeek.length}` : 'No tasks scheduled yet',
-  };
-}
-
-interface Attention {
-  key: string;
-  title: string;
-  detail: string;
-  action: string;
-  to: string;
-  color: string;
-  rank: number;
-}
-
-const LEVEL_WORD: Record<ChainLevel, string> = { quarter: '3-month goal', month: "this month's goal", week: "this week's goal" };
-
-/** Things worth doing now, most important first: catch-ups, overdue milestones, unset goals, stale readings. */
-function needsAttention(view: View, data: AppData, plan: Plan, goals: Goal[], today: ISODate): Attention[] {
-  const out: Attention[] = [];
-  for (const g of goals) {
-    const fix = catchUp(view, data, g, plan, today);
-    if (fix) out.push({ key: `behind-${g.id}`, title: g.title, detail: fix, action: 'Catch up', to: `/goals/${g.id}`, color: g.color, rank: 0 });
-    const overdue = data.milestones.filter((m) => m.goal_id === g.id && !m.completed_at && m.due_date < today).sort((a, b) => (a.due_date < b.due_date ? -1 : 1))[0];
-    if (overdue && g.type !== 'finish') out.push({ key: `overdue-${overdue.id}`, title: overdue.title, detail: `${g.title} · was due ${shortDate(overdue.due_date)}`, action: 'Open', to: `/goals/${g.id}`, color: g.color, rank: 1 });
-    const gaps = chainGaps(chainFor(data, g, plan, today));
-    if (gaps.length) {
-      const first = gaps[gaps.length - 1]!;
-      out.push({ key: `gap-${g.id}`, title: g.title, detail: `Set ${gaps.map((l) => LEVEL_WORD[l]).join(', ')}`, action: first === 'week' ? 'Set week' : 'Set goal', to: `/goals/${g.id}`, color: g.color, rank: 2 });
-    }
-    if (g.type === 'number') {
-      const last = view.measurementsFor(g.measurement_type_id).at(-1);
-      const age = last ? daysBetween(last.measured_on, today) : null;
-      if (age == null || age > 7) out.push({ key: `reading-${g.id}`, title: g.title, detail: age == null ? 'No readings logged yet' : `Last reading ${age} days ago`, action: 'Log', to: `/goals/${g.id}`, color: g.color, rank: 3 });
-    }
-  }
-  return out.sort((a, b) => a.rank - b.rank).slice(0, 5);
-}
-
-interface Upcoming {
-  key: string;
-  date: ISODate;
-  title: string;
-  to: string;
-  color?: string;
-}
-
-/** Dates in the next six weeks: new months, the checkpoint, milestones, the weekly review, the plan's start or end. */
-function comingUp(data: AppData, plan: Plan, goals: Goal[], today: ISODate): Upcoming[] {
-  const horizon = addDays(today, 42);
-  const inWindow = (d: ISODate) => d >= today && d <= horizon;
-  const out: Upcoming[] = [];
-  if (plan.start_date > today) out.push({ key: 'start', date: plan.start_date, title: `${plan.name} starts`, to: `/goals?plan=${plan.id}` });
-  const checkpoint = quarterRange(plan, plan.start_date).end;
-  if (inWindow(checkpoint)) out.push({ key: 'checkpoint', date: checkpoint, title: '3-month checkpoint: set the next 3-month goals', to: '/review' });
-  planMonths(plan).forEach((m, i) => {
-    if (i > 0 && inWindow(m.start)) out.push({ key: `month-${m.start}`, date: m.start, title: `Month ${i + 1} begins: set this month's goals`, to: '/goals' });
-  });
-  for (const g of goals) {
-    for (const m of data.milestones) {
-      if (m.goal_id === g.id && !m.completed_at && inWindow(m.due_date)) out.push({ key: `m-${m.id}`, date: m.due_date, title: m.title, to: `/goals/${g.id}`, color: g.color });
-    }
-  }
-  if (plan.start_date <= today) out.push({ key: 'review', date: addDays(weekStart(today), 6), title: 'Weekly review', to: '/review' });
-  if (inWindow(plan.end_date)) out.push({ key: 'end', date: plan.end_date, title: `${plan.name} ends`, to: `/goals?plan=${plan.id}` });
-  return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)).slice(0, 6);
-}
-
-interface SetupStep {
-  key: string;
-  title: string;
-  detail: string;
-  action: string;
-  to: string;
-  done: boolean;
-}
-
-/** What a new plan needs before it runs itself: goals, this week's goals, daily tasks, a first check-in. */
-function setupSteps(view: View, data: AppData, plan: Plan, goals: Goal[], today: ISODate): SetupStep[] {
-  const first = goals[0];
-  const unset = goals.find((g) => !isSet(chainFor(data, g, plan, today < plan.start_date ? plan.start_date : today).week));
-  const noTasks = goals.find((g) => view.actionsForGoal(g.id).length === 0);
-  const actionIds = new Set(goals.flatMap((g) => view.actionsForGoal(g.id, true).map((a) => a.id)));
-  const checkedIn = data.sessions.some((x) => x.action_id && actionIds.has(x.action_id) && x.status !== 'planned' && x.status !== 'moved');
-  return [
-    {
-      key: 'goals',
-      title: goals.length >= 3 ? `${goals.length} goals added` : goals.length ? `Add more goals (${goals.length} so far)` : 'Add your first goal',
-      detail: 'A number to reach, a habit to build or something to finish. 3–4 is a good start.',
-      action: 'Add goal',
-      to: `/goals/new?plan=${plan.id}`,
-      done: goals.length >= 3,
-    },
-    {
-      key: 'chain',
-      title: unset ? `Set this week's goal for ${unset.title}` : goals.length ? "This week's goals set" : "Set this week's goals",
-      detail: 'One line each for the next 3 months, this month and this week. Each goal suggests a start.',
-      action: 'Set goals',
-      to: unset ? `/goals/${unset.id}` : first ? `/goals/${first.id}` : `/goals/new?plan=${plan.id}`,
-      done: goals.length > 0 && !unset,
-    },
-    {
-      key: 'tasks',
-      title: noTasks ? `Add daily tasks for ${noTasks.title}` : goals.length ? 'Daily tasks for every goal' : 'Add daily tasks',
-      detail: 'Daily tasks on the goal page land on your Today list.',
-      action: 'Add tasks',
-      to: noTasks ? `/goals/${noTasks.id}` : first ? `/goals/${first.id}` : `/goals/new?plan=${plan.id}`,
-      done: goals.length > 0 && !noTasks,
-    },
-    {
-      key: 'checkin',
-      title: checkedIn ? 'First check-in done' : 'Do your first check-in',
-      detail: 'Tick one thing off on Today. That starts your streak.',
-      action: 'Open Today',
-      to: '/today',
-      done: checkedIn,
-    },
-  ];
 }

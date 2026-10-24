@@ -1,4 +1,4 @@
-import { addDays, chainAt, daysBetween, progressFor, type CascadeNode, type Goal, type ISODate, type Plan, type PlanStep } from '@six/core';
+import { addDays, chainAt, daysBetween, progressFor, sessionCredit, shortDate, weekStart, type CascadeNode, type Goal, type ISODate, type PaceLabel, type Plan, type PlanStep, type Session } from '@six/core';
 import type { AppData, Op } from './model.ts';
 import { makeStep, suggestedTarget } from './breakdown.ts';
 import { fmt, type View } from './derive.ts';
@@ -90,11 +90,18 @@ export function chainGaps(chain: Chain): ChainLevel[] {
   return CHAIN_LEVELS.filter((l) => !isSet(chain[l]));
 }
 
+export interface CatchUp {
+  /** One plain sentence, e.g. "1 extra a week for the next 3 weeks catches you up." */
+  text: string;
+  /** How many extra tasks to schedule this week (null when extra tasks aren't the fix). */
+  extra: number | null;
+}
+
 /**
- * What gets a goal back on pace this month, in plain words, or null when it's on pace.
- * e.g. "1 extra a week for the next 3 weeks catches you up" or "1.3 lb a week reaches 207.8 by Nov 1".
+ * What gets a goal back on pace this month, or null when it's on pace.
+ * Task-based goals get a number of extra tasks for this week, which "Add N this week" schedules.
  */
-export function catchUp(view: View, data: AppData, goal: Goal, plan: Plan, today: ISODate): string | null {
+export function catchUpPlan(view: View, data: AppData, goal: Goal, plan: Plan, today: ISODate): CatchUp | null {
   if (plan.start_date > today || view.tooEarly(plan)) return null;
   const { month } = chainAt(plan, today);
   const daysLeft = Math.max(1, daysBetween(today, month.end) + 1);
@@ -107,20 +114,112 @@ export function catchUp(view: View, data: AppData, goal: Goal, plan: Plan, today
     const target = step.step?.target_value ?? step.suggested;
     if (now == null || target == null) return null;
     const perWeek = Math.abs(Number(target) - now) / Math.max(1, daysLeft / 7);
-    return `${fmt(perWeek)} ${goal.unit ?? ''} a week reaches ${fmt(Number(target))} by ${shortish(month.end)}.`;
+    return { text: `${fmt(perWeek)} ${goal.unit ?? ''} a week reaches ${fmt(Number(target))} by ${shortish(month.end)}.`, extra: null };
   }
   if (goal.type === 'finish') {
     const overdue = data.milestones.filter((m) => m.goal_id === goal.id && !m.completed_at && m.due_date < today).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
     if (!overdue.length) return null;
-    return overdue.length === 1 ? `Finish "${overdue[0]!.title}" this week to get back on track.` : `${overdue.length} milestones are overdue. Finish the oldest first.`;
+    return {
+      text: overdue.length === 1 ? `Finish "${overdue[0]!.title}" this week to get back on track.` : `${overdue.length} milestones are overdue. Finish the oldest first.`,
+      extra: null,
+    };
   }
   const p = progressFor(view.sessionsForGoal(goal.id), { start: month.start, end: today }, { today, dayFraction: 0 });
   const gap = Math.round(p.expected - p.actual);
   if (p.label !== 'behind' || gap < 1) return null;
-  if (weeksLeft === 1) return `${gap} extra this week catches you up.`;
+  if (!mainAction(view, data, goal, today)) return { text: `${gap} behind this month. Add a daily task to catch up.`, extra: null };
+  if (weeksLeft === 1) return { text: `${gap} extra this week catches you up.`, extra: gap };
   const per = Math.ceil(gap / weeksLeft);
   const weeks = Math.ceil(gap / per);
-  return `${per} extra a week for the next ${weeks} week${weeks === 1 ? '' : 's'} catches you up.`;
+  return { text: `${per} extra a week for the next ${weeks} week${weeks === 1 ? '' : 's'} catches you up.`, extra: per };
+}
+
+/** The catch-up sentence alone (see catchUpPlan). */
+export function catchUp(view: View, data: AppData, goal: Goal, plan: Plan, today: ISODate): string | null {
+  return catchUpPlan(view, data, goal, plan, today)?.text ?? null;
+}
+
+/** The goal's main task this week: the one with the most sessions (ties: the priority one). */
+function mainAction(view: View, data: AppData, goal: Goal, today: ISODate) {
+  const monday = weekStart(today);
+  const count = new Map<string, number>();
+  for (const s of view.sessionsForGoal(goal.id)) {
+    if (s.action_id && (s.date ? weekStart(s.date) : s.week_start) === monday) count.set(s.action_id, (count.get(s.action_id) ?? 0) + 1);
+  }
+  const actions = view.actionsForGoal(goal.id).filter((a) => !a.archived_at);
+  if (!actions.length) return null;
+  return [...actions].sort((a, b) => (count.get(b.id) ?? 0) - (count.get(a.id) ?? 0) || Number(b.priority) - Number(a.priority))[0]!;
+}
+
+/**
+ * Schedule `n` extra sessions of the goal's main task on the rest of this week,
+ * on the days with the fewest of that goal's tasks (never twice on a day if it can be helped).
+ * Returns the ops and the days used.
+ */
+export function opsAddExtra(view: View, data: AppData, goal: Goal, today: ISODate, n: number): { ops: Op[]; days: ISODate[] } {
+  const action = mainAction(view, data, goal, today);
+  if (!action || n < 1) return { ops: [], days: [] };
+  const monday = weekStart(today);
+  const days: ISODate[] = [];
+  for (let d = today; d <= addDays(monday, 6); d = addDays(d, 1)) days.push(d);
+  const goalSessions = view.sessionsForGoal(goal.id).filter((s) => s.status !== 'moved');
+  const load = new Map(days.map((d) => [d, goalSessions.filter((s) => s.date === d).length]));
+  const hasAction = new Set(goalSessions.filter((s) => s.action_id === action.id && s.date).map((s) => s.date!));
+  const usedSlots = data.sessions.filter((s) => s.action_id === action.id && s.week_start === monday && s.origin === 'oneoff').length;
+  const picked: ISODate[] = [];
+  for (let i = 0; i < n; i++) {
+    const day = [...days].sort((a, b) => Number(hasAction.has(a)) - Number(hasAction.has(b)) || load.get(a)! - load.get(b)! || (a < b ? -1 : 1))[0]!;
+    picked.push(day);
+    hasAction.add(day);
+    load.set(day, load.get(day)! + 1);
+  }
+  const sessions: Session[] = picked.map((date, i) => ({
+    id: crypto.randomUUID(),
+    action_id: action.id,
+    week_start: monday,
+    slot: 500 + usedSlots + i,
+    date,
+    title: action.title,
+    priority: false,
+    planned_minutes: action.planned_minutes,
+    planned_count: action.planned_count,
+    status: 'planned',
+    actual_minutes: null,
+    actual_count: null,
+    note: '',
+    obstacles: [],
+    origin: 'oneoff',
+    source: 'catch-up',
+    moved_from: null,
+    logged_at: null,
+  }));
+  return { ops: [{ kind: 'insert', collection: 'sessions', rows: sessions as unknown as ({ id: string } & Record<string, unknown>)[] }], days: [...picked].sort() };
+}
+
+/** This week's sessions for a goal: how many there are and how many are done. */
+export function weekTally(view: View, goal: Goal, today: ISODate): { done: number; total: number } {
+  const monday = weekStart(today);
+  const list = view.sessionsForGoal(goal.id).filter((s) => s.status !== 'moved' && (s.date ? weekStart(s.date) : s.week_start) === monday && s.origin !== 'unplanned');
+  return { done: Math.round(list.reduce((sum, s) => sum + sessionCredit(s), 0)), total: list.length };
+}
+
+/** How one period of the chain is going, in a few words, with a pace label. */
+export function periodStatus(view: View, data: AppData, goal: Goal, plan: Plan, link: ChainLink, today: ISODate): { text: string; label: PaceLabel } | null {
+  const node = link.node;
+  if (node.start > today) return { text: `Starts ${shortDate(node.start)}`, label: 'none' };
+  if (goal.type === 'number') {
+    const n = view.goalPace(goal, plan).number;
+    const target = link.step?.target_value ?? link.suggested;
+    if (!n || n.latest == null || target == null) return null;
+    return { text: `${fmt(n.trend ?? n.latest)} now · aiming for ${fmt(Number(target))}`, label: n.label };
+  }
+  if (goal.type === 'finish') {
+    const ms = data.milestones.filter((m) => m.goal_id === goal.id && m.due_date >= node.start && m.due_date <= node.end);
+    if (ms.length) return { text: `${ms.filter((m) => m.completed_at).length} of ${ms.length} milestones`, label: 'none' };
+  }
+  const p = progressFor(view.projectedSessions(node).filter((s) => view.goalsForAction(s.action_id).some((g) => g.id === goal.id)), node, { today, dayFraction: 0 });
+  if (p.planned === 0) return { text: 'No tasks yet', label: 'none' };
+  return { text: `${fmt(p.actual, 0)} of ${p.planned} done`, label: p.label };
 }
 
 function shortish(d: ISODate): string {

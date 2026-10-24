@@ -48,7 +48,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
   // The current links of the chain this goal starts with.
   const periods = useMemo(() => (plan ? chainAt(plan, today < plan.start_date ? plan.start_date : today) : null), [plan, today]);
   const [notes, setNotes] = useState<{ quarter: string; month: string; week: string } | null>(null);
-  const [taskTitle, setTaskTitle] = useState<string | null>(null);
+  const [taskTitle, setTaskTitle] = useState('');
   const [taskDays, setTaskDays] = useState<number[]>([1, 3, 5]);
   const [taskMinutes, setTaskMinutes] = useState(30);
   const startPoint = baseline != null ? { date: startDate, value: baseline } : null;
@@ -70,7 +70,8 @@ export function GoalNew({ planId }: { planId: string | null }) {
     return { quarter: '', month: '', week: `Show up on every planned day` };
   };
   const chainNotes = notes ?? defaults();
-  const firstTask = taskTitle ?? (type === 'number' ? '' : title.trim() ? `Work on ${title.trim().charAt(0).toLowerCase()}${title.trim().slice(1)}` : '');
+  // Only what the person types: no made-up "Work on …" task.
+  const firstTask = taskTitle;
 
   const canNext1 = title.trim().length > 0;
   const canNext2 = type !== 'number' || (target != null && targetDate > today);
@@ -295,7 +296,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
             })}
           </div>
           <div className="card stack">
-            <span className="label">First daily task</span>
+            <span className="label">First daily task · optional</span>
             <label className="field">
               Task
               <input value={firstTask} onChange={(e) => setTaskTitle(e.target.value)} placeholder="e.g. Guitar practice" />
