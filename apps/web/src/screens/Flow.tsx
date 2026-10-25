@@ -39,7 +39,7 @@ import {
 } from '../data/breakdown.ts';
 import { BackLink, Empty, Icon, PacePill, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
-import { opsUnshareTask } from '../data/connect.ts';
+import { matchingTasks, opsShareTask, opsUnshareTask, shareCandidates } from '../data/connect.ts';
 import { ConnectionStrip, ShareTaskSheet } from '../components/Connections.tsx';
 
 /**
@@ -353,7 +353,6 @@ function DailyTasks({
   const { data, today, commit } = useStore();
   const [editing, setEditing] = useState<{ task: WeekTask | null; initial?: Partial<TaskInput> } | null>(null);
   const [logging, setLogging] = useState<Session | null>(null);
-  const [sharing, setSharing] = useState(false);
   const range = dateRange(week);
   const tasks = tasksInRange(data, goal.id, range, week.id);
   const over = week.end_date < today;
@@ -478,9 +477,6 @@ function DailyTasks({
           <button className="btn primary" onClick={() => setEditing({ task: null })}>
             + Add a daily task
           </button>
-          <button className="btn ghost" onClick={() => setSharing(true)}>
-            + Use a task from another goal
-          </button>
           {prevWeek && prevTasks.some((t) => t.origin === 'here') && (
             <button
               className="btn ghost"
@@ -512,7 +508,6 @@ function DailyTasks({
         />
       )}
       {logging && <LogSheet session={data.sessions.find((x) => x.id === logging.id) ?? logging} onClose={() => setLogging(null)} />}
-      {sharing && <ShareTaskSheet goal={goal} onClose={() => setSharing(false)} onShared={(m) => onToast(m)} />}
     </div>
   );
 }
@@ -699,6 +694,14 @@ function TaskSheet({
     ...goalIds.map((id) => view.goal(id)).filter((g): g is Goal => !!g && g.id !== goal.id && !view.activeGoals.includes(g)),
   ];
   const sharedWith = task ? view.otherGoalsForAction(task.action.id, goal.id) : [];
+  // New task: offer the tasks other goals already have, so a duplicate isn't made by accident.
+  const candidates = task ? [] : shareCandidates(view, goal.id, today);
+  const matches = matchingTasks(candidates, v.title);
+  const [browsing, setBrowsing] = useState(false);
+  const useExisting = (actionId: string, title: string, from: string) => {
+    commit(opsShareTask(data, actionId, goal.id));
+    onSaved(`Using ${title} from ${from}: it now counts for ${goal.title} too`);
+  };
   const types = data.measurementTypes.filter((t) => !t.archived_at);
   const pickKind = (kind: ActionKind) => {
     const patch: Partial<TaskInput> = { kind };
@@ -759,6 +762,39 @@ function TaskSheet({
         Task
         <input autoFocus value={v.title} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. Practice chord changes" />
       </label>
+      {matches.length > 0 && (
+        <div className="banner info stack-sm" style={{ alignItems: 'stretch' }}>
+          {matches.slice(0, 3).map((m) => (
+            <div key={m.action.id} className="row-between" style={{ gap: 8 }}>
+              <span className="small">
+                <b>{m.action.title}</b> already exists on {m.goal.title}. Use that one instead?
+              </span>
+              <button className="btn small" style={{ flex: 'none' }} onClick={() => useExisting(m.action.id, m.action.title, m.goal.title)}>
+                Use it
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {!task && candidates.length > 0 && !v.title.trim() && (
+        <div className="card tight stack-sm">
+          <div className="row-between">
+            <span className="xsmall muted">Or use one you already have (logged once, counts for both)</span>
+            <button className="link-btn small" onClick={() => setBrowsing(true)}>
+              See all
+            </button>
+          </div>
+          <div className="chips">
+            {candidates.flatMap((g) => g.tasks.map((t) => ({ ...t, goal: g.goal }))).slice(0, 6).map((t) => (
+              <button key={t.action.id} className="chip" onClick={() => useExisting(t.action.id, t.action.title, t.goal.title)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }} title={`From ${t.goal.title} · ${describeSchedule(t.schedule)}`}>
+                <span className="dot" style={{ width: 7, height: 7, background: t.goal.color }} />
+                {t.action.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {browsing && <ShareTaskSheet goal={goal} onClose={() => setBrowsing(false)} onShared={(m) => onSaved(m)} />}
       <div className="stack-sm">
         <span className="xsmall muted">When</span>
         <div className="seg" role="tablist" aria-label="When">

@@ -93,3 +93,24 @@ test('a task goes on a day at most once, so missed days cannot pile onto one day
   const oneOff = { ...d.sessions[1]!, action_id: null };
   assert.equal(view.canPlace(oneOff, '2026-10-25'), true, 'one-offs can go anywhere');
 });
+
+test('a task that ends with its week can still be shared (the old filter only allowed no end date)', async () => {
+  const { runningSchedule, shareCandidates, matchingTasks } = await import('../src/data/connect.ts');
+  const d = base();
+  d.plans = [{ id: 'p', name: 'Plan', start_date: '2026-10-01', end_date: '2027-03-31', block_days: 28, archived_at: null } as AppData['plans'][number]];
+  d.planGoals = d.goals.map((g, i) => ({ id: `pg${i}`, plan_id: 'p', goal_id: g.id }));
+  d.schedules = [
+    { id: 'old', action_id: 'lift', rule: 'per_week', days: [], per_week: 5, effective_from: '2026-10-01', effective_to: '2026-10-18' },
+    { id: 'now', action_id: 'lift', rule: 'per_week', days: [], per_week: 5, effective_from: '2026-10-19', effective_to: '2026-10-25' },
+  ];
+  assert.equal(runningSchedule(d, 'lift', '2026-10-25')?.id, 'now', 'ends this week but still running');
+  assert.equal(runningSchedule(d, 'lift', '2026-10-26'), null, 'finished once the week is over');
+  const view = new View(d, '2026-10-25', 0.5);
+  const groups = shareCandidates(view, 'weight', '2026-10-25');
+  assert.deepEqual(groups.map((g) => [g.goal.id, g.tasks.map((t) => t.action.id)]), [['gym', ['lift']]]);
+  assert.equal(shareCandidates(view, 'gym', '2026-10-25').length, 0, 'a goal is never offered its own tasks');
+  assert.equal(matchingTasks(groups, 'gym session').length, 1, 'typing "gym session" suggests Gym');
+  assert.equal(matchingTasks(groups, 'GYM').length, 1);
+  assert.equal(matchingTasks(groups, 'guitar').length, 0);
+  assert.equal(matchingTasks(groups, 'gy').length, 0, 'too short to suggest');
+});

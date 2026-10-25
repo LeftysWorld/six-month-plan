@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, chainAt, clockDays, daysBetween, isStale, prepGaps, shortDate, suggestPath, valueOnPath, type GoalType, type IdeaPrep, type PathPoint } from '@six/core';
 import { useStore } from '../data/store.tsx';
+import { runningSchedule } from '../data/connect.ts';
 import { fmt, useView } from '../data/derive.ts';
 import { href, navigate } from '../router.ts';
 import { opsSavePrep, ownClock } from '../data/commit.ts';
@@ -99,7 +100,7 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
   const [connect, setConnect] = useState<string[]>(prep.connect ?? []);
   const [reuse, setReuse] = useState<string[]>(prep.reuse ?? []);
   const otherGoals = view.activeGoals;
-  const liveTasks = (goalId: string) => view.actionsForGoal(goalId).filter((a) => data.schedules.some((s) => s.action_id === a.id && s.effective_to == null));
+  const liveTasks = (goalId: string) => view.actionsForGoal(goalId).filter((a) => !!runningSchedule(data, a.id, today));
   const startPoint = baseline != null ? { date: startDate, value: baseline } : null;
   const targetAt = (d: string) => (type === 'number' && startPoint && path.length ? fmt(valueOnPath(startPoint, path, d)) : null);
 

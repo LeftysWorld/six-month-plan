@@ -6,7 +6,7 @@ import { opsLogSession, opsMoveSession, opsRestoreSession } from '../data/ops.ts
 import { href } from '../router.ts';
 import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
 import { SessionFiles } from '../components/Attachments.tsx';
-import { lastReading, opsRecordReading, readingOn } from '../data/connect.ts';
+import { lastReading, opsRecordReading, opsSetTaskGoals, readingOn } from '../data/connect.ts';
 
 /** Log an item beyond a one-tap check: amount, state, obstacles, note, or move it. */
 export function LogSheet({ session, onClose }: { session: Session; onClose: () => void }) {
@@ -73,13 +73,7 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
 
   return (
     <Sheet title={session.title} onClose={onClose}>
-      {goal && (
-        <div className="row-start small muted" style={{ marginTop: -8 }}>
-          <span className="dot" style={{ background: goal.color }} />
-          Supports: {goal.title}
-          {action?.cue ? ` · ${action.cue}` : ''}
-        </div>
-      )}
+      {goal && <CountsFor actionId={session.action_id!} cue={action?.cue} />}
       {moving ? (
         <div className="stack-sm">
           <div className="small muted">Move this one only. To change how often it happens, edit the task on its goal page.</div>
@@ -198,5 +192,64 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
         </>
       )}
     </Sheet>
+  );
+}
+
+/**
+ * "Counts for: Work out + Lose weight · Change": which goals this task supports, and a quick way to
+ * change that from Today. Each tap saves; the task always keeps at least one goal.
+ */
+function CountsFor({ actionId, cue }: { actionId: string; cue?: string }) {
+  const { data, commit } = useStore();
+  const view = useView();
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const goals = view.goalsForAction(actionId).filter((g) => !g.archived_at);
+  const ids = goals.map((g) => g.id);
+  const choices = [...goals.filter((g) => g.completed_at), ...view.activeGoals];
+  return (
+    <div className="stack-sm" style={{ marginTop: -8 }}>
+      <div className="row-start small muted" style={{ gap: 6 }}>
+        {goals.map((g) => (
+          <span key={g.id} className="dot" style={{ background: g.color }} />
+        ))}
+        <span>
+          Counts for: {goals.map((g) => g.title).join(' + ')}
+          {cue ? ` · ${cue}` : ''}
+        </span>
+        {view.activeGoals.length > 1 && (
+          <button className="link-btn small" onClick={() => setEditing(!editing)} style={{ padding: '0 4px' }}>
+            {editing ? 'Done' : 'Change'}
+          </button>
+        )}
+      </div>
+      {editing && (
+        <div className="chips" role="group" aria-label="Goals this task counts for">
+          {choices.map((g) => {
+            const on = ids.includes(g.id);
+            return (
+              <button
+                key={g.id}
+                className="chip"
+                aria-pressed={on}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minHeight: 34 }}
+                onClick={() => {
+                  if (on && ids.length === 1) {
+                    toast('A task needs at least one goal');
+                    return;
+                  }
+                  const next = on ? ids.filter((x) => x !== g.id) : [...ids, g.id];
+                  commit(opsSetTaskGoals(data, actionId, next));
+                  toast(on ? `No longer counts for ${g.title}` : `Now counts for ${g.title} too`);
+                }}
+              >
+                <span className="dot" style={{ width: 7, height: 7, background: g.color }} />
+                {g.title}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

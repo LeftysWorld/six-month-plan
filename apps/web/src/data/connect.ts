@@ -1,4 +1,5 @@
-import { type Action, type GoalLink, type ISODate, type Session } from '@six/core';
+import { type Action, type ActionSchedule, type Goal, type GoalLink, type ISODate, type Session } from '@six/core';
+import type { View } from './derive.ts';
 import type { AppData, Op } from './model.ts';
 import { opsLogSession } from './ops.ts';
 
@@ -90,4 +91,61 @@ export function readingOn(data: AppData, typeId: string | null | undefined, date
   if (!typeId || !date) return null;
   const m = data.measurements.find((x) => x.type_id === typeId && x.measured_on === date);
   return m ? Number(m.value) : null;
+}
+
+/**
+ * The schedule a task runs on from `today` on: the one in force today, else the next one that
+ * starts later. Null when the task has finished (every schedule ended before today).
+ * Tasks added from a goal page usually end with their week, so "no end date" isn't the test.
+ */
+export function runningSchedule(data: AppData, actionId: string, today: ISODate): ActionSchedule | null {
+  const live = data.schedules.filter((s) => s.action_id === actionId && (s.effective_to == null || s.effective_to >= today));
+  const now = live.filter((s) => s.effective_from <= today).sort((a, b) => (a.effective_from < b.effective_from ? 1 : -1))[0];
+  return now ?? live.sort((a, b) => (a.effective_from < b.effective_from ? -1 : 1))[0] ?? null;
+}
+
+export interface ShareGroup {
+  goal: Goal;
+  connected: boolean;
+  tasks: { action: Action; schedule: ActionSchedule }[];
+}
+
+/**
+ * Tasks another goal could share with `goalId`: still running, not archived, not already on it.
+ * Grouped by the goal they're on, connected goals first. `onlyGoalId` limits it to one goal.
+ */
+export function shareCandidates(view: View, goalId: string, today: ISODate, onlyGoalId?: string): ShareGroup[] {
+  const data = view.data;
+  const connected = new Set(view.connectionsFor(goalId).map((c) => c.goal.id));
+  const mine = new Set(view.actionsForGoal(goalId).map((a) => a.id));
+  const seen = new Set<string>();
+  return view.activeGoals
+    .filter((g) => g.id !== goalId && (!onlyGoalId || g.id === onlyGoalId))
+    .sort((a, b) => Number(connected.has(b.id)) - Number(connected.has(a.id)) || a.title.localeCompare(b.title))
+    .map((g) => ({
+      goal: g,
+      connected: connected.has(g.id),
+      tasks: view
+        .actionsForGoal(g.id)
+        .filter((a) => !mine.has(a.id) && !seen.has(a.id))
+        .map((a) => ({ action: a, schedule: runningSchedule(data, a.id, today) }))
+        .filter((t): t is { action: Action; schedule: ActionSchedule } => !!t.schedule)
+        .map((t) => (seen.add(t.action.id), t)),
+    }))
+    .filter((x) => x.tasks.length > 0);
+}
+
+/** Tasks whose title looks like what you're typing (same words, either way round), for a "use this one?" hint. */
+export function matchingTasks(groups: ShareGroup[], typed: string): { action: Action; schedule: ActionSchedule; goal: Goal }[] {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const q = norm(typed);
+  if (q.length < 3) return [];
+  return groups.flatMap((g) =>
+    g.tasks
+      .filter((t) => {
+        const title = norm(t.action.title);
+        return title.includes(q) || (title.length >= 3 && q.includes(title));
+      })
+      .map((t) => ({ ...t, goal: g.goal })),
+  );
 }
