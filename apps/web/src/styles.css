@@ -759,6 +759,10 @@ button.day-cell { border: 0; cursor: pointer; font: inherit; color: var(--ink); 
 .week-day-date { display: flex; flex-direction: column; width: 40px; flex: none; font-variant-numeric: tabular-nums; }
 
 /* ---------- Today: week scrubber ---------- */
+.today-week-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.today-week-name { display: inline-flex; align-items: baseline; gap: 10px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.today-week-arrow { width: 36px; height: 36px; border: 0; border-radius: 10px; background: none; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.today-week-arrow:hover, .today-week-arrow:focus-visible { color: var(--ink); background: var(--line-2); }
 .today-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .today-day {
   display: flex;

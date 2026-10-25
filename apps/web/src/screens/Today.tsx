@@ -7,7 +7,7 @@ import { checkInStreak, dismissRitual, ritualDue, type Streak } from '../data/ha
 import { parseQuickAdd } from '../data/parse.ts';
 import { blankTask, opsAddTask, withOps } from '../data/breakdown.ts';
 import { chainFor, opsEnsureStep, stepFor } from '../data/chain.ts';
-import { opsAddOneOff, opsLogSession, opsLogUnplanned, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
+import { opsAddOneOff, opsEnsureWeek, opsLogSession, opsLogUnplanned, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
 import { href } from '../router.ts';
 import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
@@ -29,24 +29,41 @@ export function Today() {
   const toast = useToast();
   const [open, setOpen] = useState<Session | null>(null);
   const [adding, setAdding] = useState(false);
-  // The day being shown. Opens on today; tap any day of this week (or use the arrow keys) to see it.
+  // The day being shown. Opens on today; tap a day, page weeks with ‹ ›, or use the arrow keys.
   const [picked, setPicked] = useState<ISODate>(today);
   const [, bump] = useState(0);
-  const week = weekDates(weekStart(today));
-  const day = week.includes(picked) ? picked : today;
+  const thisMonday = weekStart(today);
+  const monday = weekStart(picked);
+  const week = weekDates(monday);
+  const day = picked;
   const isToday = day === today;
   const isFuture = day > today;
+  const isThisWeek = monday === thisMonday;
+  const weekOffset = Math.round((Date.parse(monday) - Date.parse(thisMonday)) / (7 * 86400000));
+  const weekName = weekOffset === 0 ? 'This week' : weekOffset === 1 ? 'Next week' : weekOffset === -1 ? 'Last week' : `Week of ${shortDate(monday)}`;
+  /** Show the same weekday in another week; landing on this week shows today. */
+  const goWeek = (by: number) => {
+    const target = addDays(monday, 7 * by);
+    setPicked(target === thisMonday ? today : addDays(day, 7 * by));
+  };
+
+  // A future week's tasks are made when you look at it, so you can see what's coming.
+  useEffect(() => {
+    if (monday <= thisMonday) return;
+    const ops = opsEnsureWeek(data, monday);
+    if (ops.length > 0) commit(ops);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monday, thisMonday, data.actions.length, data.schedules.length]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
-      const i = week.indexOf(day);
-      if (e.key === 'ArrowLeft' && i > 0) setPicked(week[i - 1]!);
-      if (e.key === 'ArrowRight' && i < week.length - 1) setPicked(week[i + 1]!);
+      if (e.key === 'ArrowLeft') setPicked(addDays(day, -1));
+      if (e.key === 'ArrowRight') setPicked(addDays(day, 1));
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [day, week]);
+  }, [day]);
 
   const sessions = view.sessionsOn(day);
   const done = sessions.filter((s) => s.status !== 'planned');
@@ -133,7 +150,26 @@ export function Today() {
   const segs = [...sessions].sort((a, b) => rank(a) - rank(b)).slice(0, 12);
 
   const weekStrip = (
-    <div className="today-week" role="group" aria-label="This week">
+    <div className="stack-sm" style={{ gap: 6 }}>
+    <div className="today-week-nav">
+      <button type="button" className="today-week-arrow" onClick={() => goWeek(-1)} aria-label="Previous week">
+        <span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}>
+          <Icon name="chevron" size={16} stroke={2.2} />
+        </span>
+      </button>
+      <span className="today-week-name">
+        {weekName}
+        {!isThisWeek && (
+          <button type="button" className="link-btn xsmall" onClick={() => setPicked(today)}>
+            Back to today
+          </button>
+        )}
+      </span>
+      <button type="button" className="today-week-arrow" onClick={() => goWeek(1)} aria-label="Next week">
+        <Icon name="chevron" size={16} stroke={2.2} />
+      </button>
+    </div>
+    <div className="today-week" role="group" aria-label={weekName}>
       {week.map((d) => {
         const list = view.sessionsOn(d);
         const finished = list.filter((s) => s.status !== 'planned').length;
@@ -157,10 +193,11 @@ export function Today() {
         );
       })}
     </div>
+    </div>
   );
 
   const placeable = trayGroups.filter(({ first }) => view.canPlace(first, placeOn));
-  const anyDay = !isToday && placeable.length > 0 && (
+  const anyDay = !isToday && isThisWeek && placeable.length > 0 && (
     <div className="stack-sm">
       <div className="label" style={{ margin: '6px 2px 0' }}>
         Any day this week
