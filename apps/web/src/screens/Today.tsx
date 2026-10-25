@@ -13,7 +13,7 @@ import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { useAddFiles } from '../components/Attachments.tsx';
-import { lastReading, opsRecordReading, readingOn } from '../data/connect.ts';
+import { lastReading, measureLabel, measureOnToday, opsRecordReading, readingOn } from '../data/connect.ts';
 import { CommitmentCard } from '../components/Commitment.tsx';
 import { opsAddIdea } from '../data/backlog.ts';
 import { currentCommitment } from '../data/insights.ts';
@@ -861,8 +861,8 @@ export function QuickAdd({ date, onClose }: { date: ISODate; onClose: () => void
 }
 
 /**
- * Today's numbers: one row per measurement your goals track (weight, waist…), logged right here
- * so you never have to open each goal. Goals without a measurement don't appear. A measurement
+ * Today's numbers: the measurements you've set to show on Today (a goal's main number by default),
+ * logged right here so you never have to open each goal. Stopped measurements never show. One
  * that already has a "Log a number" task today is left to that task.
  */
 function TodayNumbers() {
@@ -880,7 +880,7 @@ function TodayNumbers() {
       .map((a) => a!.measurement_type_id!),
   );
   const rows = data.measurementTypes
-    .filter((t) => !t.archived_at && !taskTypes.has(t.id))
+    .filter((t) => measureOnToday(data, t.id) && !taskTypes.has(t.id))
     .map((t) => ({ type: t, goal: liveGoals.find((g) => g.id === t.goal_id || g.measurement_type_id === t.id) }))
     .filter((r): r is { type: typeof r.type; goal: NonNullable<typeof r.goal> } => !!r.goal)
     .sort((a, b) => Number(b.goal.measurement_type_id === b.type.id) - Number(a.goal.measurement_type_id === a.type.id));
@@ -915,7 +915,7 @@ function TodayNumbers() {
           >
             <span className="dot" style={{ background: goal.color }} />
             <span className="grow" style={{ minWidth: 0 }}>
-              <span className="today-number-name">{type.name}</span>
+              <span className="today-number-name">{measureLabel(type)}</span>
               <span className="xsmall muted today-number-goal">{goal.title}</span>
             </span>
             {editing ? (

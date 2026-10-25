@@ -218,6 +218,8 @@ export interface MeasurementType {
   cadence_days: number;
   goal_id: string | null;
   archived_at: string | null;
+  /** Shown in Today's numbers for a daily entry. Unset: on for a goal's main number, off for the rest. */
+  on_today?: boolean | null;
 }
 
 export interface Measurement {

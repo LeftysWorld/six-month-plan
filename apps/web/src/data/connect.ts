@@ -204,3 +204,15 @@ export function opsMergeDuplicateMeasures(data: AppData): Op[] {
   }
   return ops;
 }
+
+/** Whether a measurement shows in Today's numbers (archived ones never do). */
+export function measureOnToday(data: AppData, typeId: string): boolean {
+  const t = data.measurementTypes.find((m) => m.id === typeId);
+  if (!t || t.archived_at) return false;
+  return t.on_today ?? data.goals.some((g) => g.measurement_type_id === typeId);
+}
+
+/** "Body fat (%)": a measurement's name with its unit. */
+export function measureLabel(t: { name: string; unit: string }): string {
+  return t.unit.trim() ? `${t.name} (${t.unit.trim()})` : t.name;
+}

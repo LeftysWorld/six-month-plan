@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { shortDate, type Goal, type MeasurementType, type Plan } from '@six/core';
-import { findMeasure } from '../data/connect.ts';
+import { findMeasure, measureLabel, measureOnToday } from '../data/connect.ts';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView } from '../data/derive.ts';
 import {
@@ -136,7 +136,7 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
         </div>
       )}
 
-      <Measurements goal={goal} types={types} onAdd={(msg) => toast(/^(Stopped|Already)/.test(msg) ? msg : `Added ${msg}`)} />
+      <Measurements goal={goal} types={types} onAdd={(msg) => toast(/^(Stopped|Already|Renamed|Showing|Hidden)/.test(msg) ? msg : `Added ${msg}`)} />
 
       {history.length > 0 && (
         <details className="card tight">
@@ -262,7 +262,7 @@ export function GoalRecord({ goal }: { goal: Goal }) {
       )}
 
       <GoalFiles actionIds={actionIds} />
-      <Measurements goal={goal} types={goal.type === 'number' ? types.filter((t) => t.id !== goal.measurement_type_id) : types} onAdd={(msg) => toast(/^(Stopped|Already)/.test(msg) ? msg : `Added ${msg}`)} />
+      <Measurements goal={goal} types={types} onAdd={(msg) => toast(/^(Stopped|Already|Renamed|Showing|Hidden)/.test(msg) ? msg : `Added ${msg}`)} />
     </>
   );
 }
@@ -428,7 +428,12 @@ export function GoalEdit({ goal, onSaved }: { goal: Goal; onSaved?: () => void }
   );
 }
 
-function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementType[]; onAdd: (name: string) => void }) {
+/**
+ * Every number this goal tracks. Each one can be renamed, shown on Today (for daily entry) or not,
+ * and stopped. A number goal's main measurement is charted and logged in the progress card, so it
+ * has no log box here and can't be stopped (it's what the goal is measured by).
+ */
+function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementType[]; onAdd: (msg: string) => void }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const [values, setValues] = useState<Record<string, number | null>>({});
@@ -436,11 +441,14 @@ function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementTy
   const [newUnit, setNewUnit] = useState('in');
   const [cadence, setCadence] = useState(7);
   const [adding, setAdding] = useState(false);
+  const [renaming, setRenaming] = useState<{ id: string; name: string; unit: string } | null>(null);
+  const update = (id: string, patch: Partial<MeasurementType>) => commit([{ kind: 'update', collection: 'measurementTypes', id, patch }]);
+  const sorted = [...types].sort((a, b) => Number(b.id === goal.measurement_type_id) - Number(a.id === goal.measurement_type_id));
 
   return (
     <div className="card stack-sm">
       <div className="row-between">
-        <span className="label">{goal.type === 'number' ? 'Other measurements' : 'Measurements'}</span>
+        <span className="label">Measurements</span>
         <button className="link-btn small" onClick={() => setAdding(!adding)}>
           {adding ? 'Cancel' : '+ Track something'}
         </button>
@@ -464,7 +472,7 @@ function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementTy
           <div className="grid-3">
             <label className="field">
               Name
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Arm (flexed)" />
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Waist" />
             </label>
             <label className="field">
               Unit
@@ -475,56 +483,105 @@ function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementTy
               <input type="number" min={1} max={90} value={cadence} onChange={(e) => setCadence(Number(e.target.value))} />
             </label>
           </div>
+          <span className="xsmall muted">New measurements stay off Today until you turn on “Show on Today”.</span>
           <button className="btn small" type="submit">
             Add measurement
           </button>
         </form>
       )}
-      {types.length === 0 && !adding && <span className="small muted">Track a number for evidence, like arm size or the splits gap.</span>}
-      {types.map((t) => {
+      {sorted.length === 0 && !adding && <span className="small muted">Track a number for evidence, like arm size or the splits gap.</span>}
+      {sorted.map((t) => {
+        const main = t.id === goal.measurement_type_id;
         const readings = view.measurementsFor(t.id);
         const first = readings[0];
         const last = readings.at(-1);
+        const onToday = measureOnToday(data, t.id);
         return (
           <div key={t.id} className="stack-sm" style={{ borderTop: '1px solid var(--line-2)', paddingTop: 8 }}>
-            <div className="row-between small">
-              <b>{t.name}</b>
-              <span className="muted">
-                {last ? `${fmt(last.value)} ${t.unit} · ${shortDate(last.measured_on)}` : 'No readings'}
-                {first && last && first !== last ? ` · start ${fmt(first.value)}` : ''}
-              </span>
-            </div>
-            {t.id !== goal.measurement_type_id && (
-              <button
-                type="button"
-                className="link-btn xsmall"
-                style={{ alignSelf: 'flex-start', paddingLeft: 0 }}
-                onClick={() => {
-                  // Archived, not deleted: past readings stay in your export.
-                  commit([{ kind: 'update', collection: 'measurementTypes', id: t.id, patch: { archived_at: new Date().toISOString() } }]);
-                  onAdd(`Stopped tracking ${t.name.toLowerCase()}`);
+            {renaming?.id === t.id ? (
+              <form
+                className="row-start"
+                style={{ flexWrap: 'nowrap' }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!renaming.name.trim()) return;
+                  update(t.id, { name: renaming.name.trim(), unit: renaming.unit.trim() });
+                  if (main && goal.unit !== renaming.unit.trim()) commit(opsUpdateGoal(goal, { unit: renaming.unit.trim() }));
+                  onAdd(`Renamed to ${measureLabel({ name: renaming.name.trim(), unit: renaming.unit })}`);
+                  setRenaming(null);
                 }}
               >
-                Stop tracking {t.name.toLowerCase()}
-              </button>
+                <input className="input" aria-label="Measurement name" autoFocus value={renaming.name} onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} />
+                <input className="input" aria-label="Unit" style={{ width: 72, flex: 'none' }} value={renaming.unit} onChange={(e) => setRenaming({ ...renaming, unit: e.target.value })} />
+                <button className="btn small primary" type="submit" style={{ flex: 'none', minHeight: 44 }}>
+                  Save
+                </button>
+                <button className="btn small" type="button" style={{ flex: 'none', minHeight: 44 }} onClick={() => setRenaming(null)}>
+                  Cancel
+                </button>
+              </form>
+            ) : (
+              <div className="row-between small">
+                <b>
+                  {measureLabel(t)}
+                  {main && <span className="xsmall muted" style={{ fontWeight: 400 }}> · main number, charted above</span>}
+                </b>
+                <span className="muted">
+                  {last ? `${fmt(last.value)} ${t.unit} · ${shortDate(last.measured_on)}` : 'No readings'}
+                  {first && last && first !== last ? ` · start ${fmt(first.value)}` : ''}
+                </span>
+              </div>
             )}
-            <form
-              className="grid-3"
-              style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}
-              onSubmit={(e) => {
-                e.preventDefault();
-                const v = values[t.id];
-                if (v == null) return;
-                commit(opsAddMeasurement(t.id, v, today));
-                setValues({ ...values, [t.id]: null });
-              }}
-            >
-              <NumberInput label={`Today's ${t.name.toLowerCase()} (${t.unit})`} value={values[t.id] ?? null} onChange={(v) => setValues({ ...values, [t.id]: v })} />
-              <button className="btn small" type="submit" style={{ alignSelf: 'end', minHeight: 44 }}>
-                Log
-              </button>
-            </form>
-            {readings.length > 0 && (
+            <div className="row-start" style={{ gap: 14 }}>
+              <label className="row-start small" style={{ gap: 6, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={onToday}
+                  onChange={(e) => {
+                    update(t.id, { on_today: e.target.checked });
+                    onAdd(e.target.checked ? `Showing ${t.name.toLowerCase()} on Today` : `Hidden ${t.name.toLowerCase()} from Today`);
+                  }}
+                />
+                Show on Today
+              </label>
+              {renaming?.id !== t.id && (
+                <button type="button" className="link-btn xsmall" onClick={() => setRenaming({ id: t.id, name: t.name, unit: t.unit })}>
+                  Rename
+                </button>
+              )}
+              {!main && (
+                <button
+                  type="button"
+                  className="link-btn xsmall"
+                  onClick={() => {
+                    // Archived, not deleted: past readings stay in your export.
+                    update(t.id, { archived_at: new Date().toISOString() });
+                    onAdd(`Stopped tracking ${t.name.toLowerCase()}`);
+                  }}
+                >
+                  Stop tracking
+                </button>
+              )}
+            </div>
+            {!main && (
+              <form
+                className="grid-3"
+                style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const v = values[t.id];
+                  if (v == null) return;
+                  commit(opsAddMeasurement(t.id, v, today));
+                  setValues({ ...values, [t.id]: null });
+                }}
+              >
+                <NumberInput label={`Today's ${t.name.toLowerCase()} (${t.unit})`} value={values[t.id] ?? null} onChange={(v) => setValues({ ...values, [t.id]: v })} />
+                <button className="btn small" type="submit" style={{ alignSelf: 'end', minHeight: 44 }}>
+                  Log
+                </button>
+              </form>
+            )}
+            {!main && readings.length > 0 && (
               <details>
                 <summary className="xsmall muted" style={{ cursor: 'pointer' }}>
                   All {readings.length} readings

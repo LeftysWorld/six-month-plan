@@ -15,7 +15,7 @@ const BACKLOG_MIGRATION = 'supabase/migrations/20261026000000_goal_backlog.sql';
 export let schemaWarning: string | null = null;
 
 function isMissingBreakdown(message: string): boolean {
-  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas|completion_note|done_means|goals\.completed_at|\bprep\b|\bsolo\b|attachments|goal_links|goal_groups|group_id|actions\.measurement_type_id|'details' column|actions\.details|'measurement_type_id' column of 'actions'/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas|completion_note|done_means|goals\.completed_at|\bprep\b|\bsolo\b|attachments|goal_links|goal_groups|group_id|actions\.measurement_type_id|'details' column|actions\.details|on_today|'measurement_type_id' column of 'actions'/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
 }
 
 let client: SupabaseClient | null = null;

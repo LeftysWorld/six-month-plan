@@ -252,3 +252,18 @@ test('a goal with the same measurement twice gets them merged onto its main one'
   assert.deepEqual(opsMergeDuplicateMeasures(out), [], 'nothing left to merge');
   assert.equal(findMeasure(out, 'weight', ' weight ', 'LB'), 'w1');
 });
+
+test("Today's numbers: a goal's main number by default, extras only when turned on, stopped ones never", async () => {
+  const { measureOnToday, measureLabel } = await import('../src/data/connect.ts');
+  const d = base();
+  d.goals = d.goals.map((g) => (g.id === 'weight' ? { ...g, type: 'number', measurement_type_id: 'w' } : g));
+  const t = (id: string, name: string, unit: string, extra: object = {}) => ({ id, name, unit, cadence_days: 7, goal_id: 'weight', archived_at: null, ...extra });
+  d.measurementTypes = [t('w', 'Weight', 'lb'), t('bf', 'Body fat', '%'), t('waist', 'Waist', 'in', { on_today: true }), t('old', 'Neck', 'in', { on_today: true, archived_at: '2026-10-25T00:00:00Z' })];
+  assert.equal(measureOnToday(d, 'w'), true);
+  assert.equal(measureOnToday(d, 'bf'), false);
+  assert.equal(measureOnToday(d, 'waist'), true);
+  assert.equal(measureOnToday(d, 'old'), false);
+  d.measurementTypes[0] = { ...d.measurementTypes[0]!, on_today: false };
+  assert.equal(measureOnToday(d, 'w'), false, 'the main number can be turned off too');
+  assert.equal(measureLabel(d.measurementTypes[1]!), 'Body fat (%)');
+});
