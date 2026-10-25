@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { addDays, chainAt, shortDate, suggestPath, valueOnPath, type GoalType, type PathPoint } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView } from '../data/derive.ts';
@@ -25,11 +25,15 @@ export function GoalNew({ planId }: { planId: string | null }) {
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState('');
   const [type, setType] = useState<GoalType>('practice');
-  const [unit, setUnit] = useState('lb');
-  const [measureName, setMeasureName] = useState('Weight');
+  // "Reach a number" fields start empty: placeholders show examples, nothing is pre-filled.
+  const [unit, setUnit] = useState('');
+  const [measureName, setMeasureName] = useState('');
   const [baseline, setBaseline] = useState<number | null>(null);
   const [target, setTarget] = useState<number | null>(null);
-  const [targetDate, setTargetDate] = useState(plan?.end_date ?? addDays(today, 182));
+  const [targetDate, setTargetDate] = useState('');
+  // A date input can't show a placeholder, so it stays a text input until focused or filled.
+  const [dateFocused, setDateFocused] = useState(false);
+  const dateRef = useRef<HTMLInputElement>(null);
   const [edits, setEdits] = useState<Record<string, number>>({});
   const [why, setWhy] = useState('');
   const [doneMeans, setDoneMeans] = useState('');
@@ -38,7 +42,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
 
   const startDate = today;
   const path: PathPoint[] = useMemo(() => {
-    if (type !== 'number' || baseline == null || target == null) return [];
+    if (type !== 'number' || baseline == null || target == null || !targetDate || targetDate <= startDate) return [];
     return suggestPath(baseline, target, startDate, targetDate, plan?.block_days ?? 28).map((p) => ({
       ...p,
       value: edits[p.date] ?? p.value,
@@ -74,7 +78,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
   const firstTask = taskTitle;
 
   const canNext1 = title.trim().length > 0;
-  const canNext2 = type !== 'number' || (target != null && targetDate > today);
+  const canNext2 = type !== 'number' || (target != null && !!targetDate && targetDate > today);
 
   function save() {
     if (!plan) return;
@@ -159,19 +163,38 @@ export function GoalNew({ planId }: { planId: string | null }) {
               <div className="grid-2">
                 <label className="field">
                   What you measure
-                  <input value={measureName} onChange={(e) => setMeasureName(e.target.value)} />
+                  <input value={measureName} onChange={(e) => setMeasureName(e.target.value)} placeholder="e.g. Body weight" />
                 </label>
                 <label className="field">
                   Unit
-                  <input value={unit} onChange={(e) => setUnit(e.target.value)} />
+                  <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="e.g. lb" />
                 </label>
               </div>
               <div className="grid-3">
-                <NumberInput label="Starting point" value={baseline} onChange={setBaseline} placeholder="Add later" />
-                <NumberInput label="Target" value={target} onChange={setTarget} />
+                <NumberInput label="Starting point" value={baseline} onChange={setBaseline} placeholder="e.g. 190" />
+                <NumberInput label="Target" value={target} onChange={setTarget} placeholder="e.g. 160" />
                 <label className="field">
                   By
-                  <input type="date" value={targetDate} min={addDays(today, 7)} onChange={(e) => setTargetDate(e.target.value)} />
+                  <input
+                    ref={dateRef}
+                    type={targetDate || dateFocused ? 'date' : 'text'}
+                    value={targetDate}
+                    min={addDays(today, 7)}
+                    placeholder={`e.g. ${shortDate(plan.end_date)}`}
+                    onFocus={() => {
+                      setDateFocused(true);
+                      // Open the picker once the input has switched to a date input.
+                      setTimeout(() => {
+                        try {
+                          dateRef.current?.showPicker?.();
+                        } catch {
+                          /* some browsers only allow showPicker on a click */
+                        }
+                      }, 0);
+                    }}
+                    onBlur={() => setDateFocused(false)}
+                    onChange={(e) => setTargetDate(e.target.value)}
+                  />
                 </label>
               </div>
               {baseline == null && <p className="xsmall muted" style={{ margin: 0 }}>Don't know your start yet? Leave it empty and add it later.</p>}
