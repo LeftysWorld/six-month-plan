@@ -22,10 +22,12 @@ export function opsAddIdea(data: AppData, title: string, note = ''): { ops: Op[]
   return { ops: [{ kind: 'insert', collection: 'ideas', rows: row(idea) }], idea };
 }
 
-export function opsEditIdea(idea: GoalIdea, patch: { title?: string; note?: string }): Op[] {
+export function opsEditIdea(idea: GoalIdea, patch: { title?: string; note?: string; done_means?: string }): Op[] {
   const clean: Record<string, string> = {};
   if (patch.title !== undefined && patch.title.trim()) clean.title = patch.title.trim();
   if (patch.note !== undefined) clean.note = patch.note.trim();
+  // Only sent when used (or already set), so a database without the column still saves the rest.
+  if (patch.done_means !== undefined && (patch.done_means.trim() || idea.done_means)) clean.done_means = patch.done_means.trim();
   return Object.keys(clean).length ? [{ kind: 'update', collection: 'ideas', id: idea.id, patch: clean }] : [];
 }
 

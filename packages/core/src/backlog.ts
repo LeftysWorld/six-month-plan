@@ -53,6 +53,17 @@ export function hasRoom(ideas: GoalIdea[], limit = SELECTED_LIMIT): boolean {
   return column(ideas, 'selected').length < limit;
 }
 
+/**
+ * What an idea still needs before it can be selected for the next commitment
+ * (the entry policy): a reason it matters and what done looks like.
+ */
+export function readinessGaps(idea: Pick<GoalIdea, 'note' | 'done_means'>): ('why' | 'done')[] {
+  const gaps: ('why' | 'done')[] = [];
+  if (!idea.note.trim()) gaps.push('why');
+  if (!(idea.done_means ?? '').trim()) gaps.push('done');
+  return gaps;
+}
+
 /** Whole days an idea has been waiting (since it was written down). */
 export function ageInDays(idea: Pick<GoalIdea, 'created_at'>, now: Date = new Date()): number {
   return Math.max(0, Math.floor((now.getTime() - Date.parse(idea.created_at)) / 864e5));

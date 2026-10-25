@@ -25,6 +25,7 @@ import { setAppBadge } from './push.ts';
 import { WelcomeBack } from './screens/WelcomeBack.tsx';
 import { Flow } from './screens/Flow.tsx';
 import { Backlog } from './screens/Backlog.tsx';
+import { Completed } from './screens/Completed.tsx';
 
 const MODE_KEY = 'six.mode';
 
@@ -170,12 +171,16 @@ function Shell(props: ShellProps) {
     case 'goals':
       if (s0 === 'goals' && s1 === 'new') screen = <GoalNew planId={route.query.get('plan')} ideaId={route.query.get('idea')} />;
       else if (s0 === 'goals' && s1 === 'backlog') screen = <Backlog />;
+      else if (s0 === 'goals' && s1 === 'completed') screen = <Completed />;
       else if (s0 === 'goals' && s1) screen = <Flow goalId={s1} />;
       else screen = <Plans planId={s0 === 'plans' ? s1 ?? null : route.query.get('plan')} />;
       break;
     case 'backlog':
     case 'ideas':
       screen = <Backlog />;
+      break;
+    case 'completed':
+      screen = <Completed />;
       break;
     case 'flow':
       screen = <Flow goalId={s1 ?? ''} />;
@@ -205,7 +210,7 @@ function Shell(props: ShellProps) {
       screen = <Today />;
   }
 
-  const tab = s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'flow' || s0 === 'actions' || s0 === 'backlog' || s0 === 'ideas' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
+  const tab = s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'flow' || s0 === 'actions' || s0 === 'backlog' || s0 === 'ideas' || s0 === 'completed' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
 
   return (
     <div className="shell">

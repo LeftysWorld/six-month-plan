@@ -7,6 +7,8 @@ import {
   opsAddMeasurementType,
   opsAddMilestone,
   opsArchiveGoal,
+  opsCompleteGoal,
+  opsReopenGoal,
   opsDeleteMeasurement,
   opsToggleMilestone,
   opsUpdateGoal,
@@ -141,6 +143,8 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
         </details>
       )}
 
+      <CompleteGoal goal={goal} />
+
       <div className="row-between xsmall muted">
         <span>In: {plans.map((p) => p.name).join(', ') || 'no plan'}</span>
         <button
@@ -156,6 +160,67 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
         </button>
       </div>
     </>
+  );
+}
+
+/** Finish the goal (it moves to Completed with a note on how it ended), or reopen a finished one. */
+function CompleteGoal({ goal }: { goal: Goal }) {
+  const { data, today, commit } = useStore();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState('');
+  if (goal.completed_at) {
+    return (
+      <div className="card tight row-between small" style={{ gap: 10 }}>
+        <span>
+          <b>Completed {shortDate(goal.completed_at.slice(0, 10))}.</b>
+          {goal.completion_note ? <span className="muted"> “{goal.completion_note}”</span> : null}
+        </span>
+        <button
+          type="button"
+          className="link-btn small"
+          onClick={() => {
+            commit(opsReopenGoal(data, goal));
+            toast(`${goal.title} is active again`);
+          }}
+        >
+          Reopen
+        </button>
+      </div>
+    );
+  }
+  if (!open) {
+    return (
+      <button type="button" className="btn ghost" onClick={() => setOpen(true)}>
+        Mark goal complete
+      </button>
+    );
+  }
+  return (
+    <form
+      className="card stack-sm"
+      onSubmit={(e) => {
+        e.preventDefault();
+        commit(opsCompleteGoal(data, goal, note, today));
+        toast(`${goal.title} completed`);
+        navigate('/goals/completed');
+      }}
+    >
+      <span className="label">Mark goal complete</span>
+      <label className="field">
+        How did it end? (optional)
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Recorded all three songs; the morning slot made it work" rows={2} autoFocus />
+      </label>
+      <span className="xsmall muted">It moves to Completed and its tasks come off your list. Its history is kept, and you can reopen it.</span>
+      <div className="btn-row">
+        <button className="btn small primary" type="submit">
+          Complete goal
+        </button>
+        <button className="btn small" type="button" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 

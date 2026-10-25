@@ -49,6 +49,10 @@ export interface Goal {
   color: string;
   measurement_type_id: string | null;
   archived_at: string | null;
+  /** When the goal was finished (it then lives under Completed). Missing on older databases. */
+  completed_at?: string | null;
+  /** How it ended, in your words. */
+  completion_note?: string;
 }
 
 export interface PlanGoal {
@@ -247,8 +251,10 @@ export type IdeaStatus = 'backlog' | 'selected' | 'started' | 'discarded';
 export interface GoalIdea {
   id: string;
   title: string;
-  /** Why it matters, or anything worth remembering. */
+  /** Why it matters (needed to select it). */
   note: string;
+  /** What done looks like in six months, in a line (needed to select it). Missing on older databases. */
+  done_means?: string;
   status: IdeaStatus;
   /** Order within its column: lower comes first (more important). */
   rank: number;

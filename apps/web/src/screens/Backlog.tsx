@@ -1,26 +1,31 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { ageInDays, column, hasRoom, quarterRange, shortDate, SELECTED_LIMIT, type GoalIdea } from '@six/core';
+import { ageInDays, column, hasRoom, quarterRange, readinessGaps, shortDate, SELECTED_LIMIT, type GoalIdea } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/derive.ts';
 import { opsAddIdea, opsDeleteIdea, opsEditIdea, opsMoveIdea, opsRestoreIdea, opsSetStatus } from '../data/backlog.ts';
+import { withOps } from '../data/breakdown.ts';
+import type { Op } from '../data/model.ts';
 import { href, navigate } from '../router.ts';
 import { Icon, useToast } from '../components/ui.tsx';
 
-/** Switch between your goals and the backlog of goal ideas (shown on both pages). */
-export function GoalsSwitch({ current }: { current: 'goals' | 'backlog' }) {
+/** Backlog → Goals → Completed: the flow of a goal, left to right (shown on all three pages). */
+export function GoalsSwitch({ current }: { current: 'backlog' | 'goals' | 'completed' }) {
   const { data } = useStore();
   const view = useView();
   const plan = view.mainPlan;
-  const goals = plan ? view.goalsForPlan(plan.id).length : data.goals.filter((g) => !g.archived_at).length;
+  const goals = plan ? view.goalsForPlan(plan.id).length : data.goals.filter((g) => !g.archived_at && !g.completed_at).length;
   const waiting = data.ideas.filter((i) => i.status === 'backlog' || i.status === 'selected').length;
+  const done = data.goals.filter((g) => g.completed_at && !g.archived_at).length;
+  const tab = (key: typeof current, to: string, label: string, count: number) => (
+    <a href={href(to)} aria-current={current === key ? 'page' : undefined}>
+      {label} <span className="count">{count}</span>
+    </a>
+  );
   return (
-    <nav className="seg goals-switch" aria-label="Goals or backlog">
-      <a href={href('/goals')} aria-current={current === 'goals' ? 'page' : undefined}>
-        Goals <span className="count">{goals}</span>
-      </a>
-      <a href={href('/goals/backlog')} aria-current={current === 'backlog' ? 'page' : undefined}>
-        Backlog <span className="count">{waiting}</span>
-      </a>
+    <nav className="seg goals-switch" aria-label="Backlog, goals or completed">
+      {tab('backlog', '/goals/backlog', 'Backlog', waiting)}
+      {tab('goals', '/goals', 'Goals', goals)}
+      {tab('completed', '/goals/completed', 'Completed', done)}
     </nav>
   );
 }
@@ -66,10 +71,8 @@ export function Backlog() {
           {initial}
         </a>
       </div>
-      <div className="row-between" style={{ alignItems: 'center', gap: 12, marginTop: -4, flexWrap: 'wrap' }}>
-        <h1>Backlog</h1>
-        <GoalsSwitch current="backlog" />
-      </div>
+      <h1 style={{ marginTop: -4 }}>Backlog</h1>
+      <GoalsSwitch current="backlog" />
 
       <form className="idea-add" onSubmit={add}>
         <label className="visually-hidden" htmlFor="idea-title">
@@ -111,6 +114,14 @@ export function Backlog() {
           <p className="xsmall muted" style={{ margin: 0 }}>
             {room ? `Start one when a goal wraps up, or at ${nextChance}.` : 'Full. Start one, or send one back, to make room.'}
           </p>
+          <div className="policy">
+            <span>
+              <b>To enter</b> Why it matters and what done looks like. Up to {SELECTED_LIMIT}.
+            </span>
+            <span>
+              <b>To start</b> Its 3-month, month and first-week goals and a daily task, set in goal setup.
+            </span>
+          </div>
         </section>
 
         <section className="card stack-sm backlog-list" aria-labelledby="backlog-title">
@@ -197,20 +208,41 @@ export function Backlog() {
   );
 }
 
+const GAP_WORD = { why: 'why it matters', done: 'what done looks like' } as const;
+
 /** One idea: its place, title and why, move up/down, and the next step (select, or start as a goal). */
 function IdeaRow({ idea, index, count, room, planId }: { idea: GoalIdea; index: number; count: number; room: boolean; planId: string | null }) {
   const { data, commit } = useStore();
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [asked, setAsked] = useState(false);
   const [title, setTitle] = useState(idea.title);
   const [note, setNote] = useState(idea.note);
+  const [done, setDone] = useState(idea.done_means ?? '');
   const isSelected = idea.status === 'selected';
   const age = ageInDays(idea);
+  const gaps = readinessGaps(idea);
+  const draftGaps = readinessGaps({ note, done_means: done });
 
   const move = (dir: 'up' | 'down' | 'top') => commit(opsMoveIdea(data, idea.id, dir));
   const discard = () => {
     commit(opsSetStatus(data, idea, 'discarded'));
     toast(`Discarded ${idea.title}`, () => commit(opsRestoreIdea(idea)));
+  };
+  const select = (edits: Op[] = []) => {
+    const next = edits.length ? withOps(data, edits) : data;
+    const fresh = next.ideas.find((i) => i.id === idea.id) ?? idea;
+    commit([...edits, ...opsSetStatus(next, fresh, 'selected')]);
+    toast(`${idea.title} selected for next commitment`, () => commit(opsRestoreIdea(idea)));
+  };
+  // Selecting an idea that isn't ready opens it, asking for what's missing (the entry policy).
+  const trySelect = () => {
+    if (gaps.length) {
+      setOpen(true);
+      setAsked(true);
+      return;
+    }
+    select();
   };
 
   return (
@@ -222,6 +254,8 @@ function IdeaRow({ idea, index, count, room, planId }: { idea: GoalIdea; index: 
         <button type="button" className="idea-text" aria-expanded={open} onClick={() => setOpen(!open)}>
           <span className="idea-title">{idea.title}</span>
           {idea.note && <span className="idea-note">{idea.note}</span>}
+          {!isSelected && gaps.length > 0 && <span className="idea-gap">Needs {gaps.map((g) => GAP_WORD[g]).join(' and ')}</span>}
+          {!isSelected && gaps.length === 0 && <span className="idea-ready">Ready to select</span>}
           {!isSelected && age >= 60 && <span className="idea-note" style={{ color: 'var(--amber-ink)' }}>Waiting {Math.round(age / 7)} weeks</span>}
         </button>
         <span className="idea-moves">
@@ -243,10 +277,7 @@ function IdeaRow({ idea, index, count, room, planId }: { idea: GoalIdea; index: 
             disabled={!room}
             title={room ? undefined : `Selected is full (${SELECTED_LIMIT})`}
             aria-label={room ? `Select ${idea.title} for next commitment` : `Select ${idea.title}: selected is full`}
-            onClick={() => {
-              commit(opsSetStatus(data, idea, 'selected'));
-              toast(`${idea.title} selected for next commitment`, () => commit(opsRestoreIdea(idea)));
-            }}
+            onClick={trySelect}
           >
             Select
           </button>
@@ -257,21 +288,46 @@ function IdeaRow({ idea, index, count, room, planId }: { idea: GoalIdea; index: 
           className="idea-edit stack-sm"
           onSubmit={(e) => {
             e.preventDefault();
-            commit(opsEditIdea(idea, { title, note }));
+            commit(opsEditIdea(idea, { title, note, done_means: done }));
             setOpen(false);
+            setAsked(false);
           }}
         >
+          {asked && gaps.length > 0 && (
+            <span className="small" style={{ color: 'var(--amber-ink)' }}>
+              To select it, add {draftGaps.length ? draftGaps.map((g) => GAP_WORD[g]).join(' and ') : 'nothing more: it’s ready'}.
+            </span>
+          )}
           <label className="field">
             Goal idea
             <input value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           <label className="field">
-            Why it matters (optional)
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Builds on the cardio from the weight goal" rows={2} />
+            Why it matters
+            <textarea autoFocus={asked && !note.trim()} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Builds on the cardio from the weight goal" rows={2} />
           </label>
-          <span className="xsmall muted">Written down {age === 0 ? 'today' : `${age} day${age === 1 ? '' : 's'} ago`}.</span>
+          <label className="field">
+            What done looks like in six months
+            <input autoFocus={asked && !!note.trim() && !done.trim()} value={done} onChange={(e) => setDone(e.target.value)} placeholder="e.g. Finish a half marathon in under 2 hours" />
+          </label>
+          <span className="xsmall muted">Both are needed to select it. Written down {age === 0 ? 'today' : `${age} day${age === 1 ? '' : 's'} ago`}.</span>
           <div className="btn-row" style={{ flexWrap: 'wrap' }}>
-            <button className="btn small primary" type="submit" disabled={!title.trim()}>
+            {!isSelected && (
+              <button
+                className="btn small primary"
+                type="button"
+                disabled={draftGaps.length > 0 || !room || !title.trim()}
+                title={!room ? `Selected is full (${SELECTED_LIMIT})` : draftGaps.length ? `Add ${draftGaps.map((g) => GAP_WORD[g]).join(' and ')}` : undefined}
+                onClick={() => {
+                  select(opsEditIdea(idea, { title, note, done_means: done }));
+                  setOpen(false);
+                  setAsked(false);
+                }}
+              >
+                Save and select
+              </button>
+            )}
+            <button className={`btn small${isSelected ? ' primary' : ''}`} type="submit" disabled={!title.trim()}>
               Save
             </button>
             {!isSelected && index > 0 && (

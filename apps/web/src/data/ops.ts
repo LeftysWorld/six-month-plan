@@ -272,6 +272,36 @@ export function opsArchiveGoal(goal: Goal, archived: boolean): Op[] {
   return [{ kind: 'update', collection: 'goals', id: goal.id, patch: { archived_at: archived ? nowISO() : null } }];
 }
 
+/**
+ * Finish a goal: it moves to Completed with an optional note on how it ended. Its own tasks
+ * (not shared with another goal) are archived with the same timestamp and planned sessions
+ * from `from` on come off the list. History is kept.
+ */
+export function opsCompleteGoal(data: AppData, goal: Goal, note: string, from: ISODate): Op[] {
+  const at = nowISO();
+  const ops: Op[] = [{ kind: 'update', collection: 'goals', id: goal.id, patch: { completed_at: at, ...(note.trim() ? { completion_note: note.trim() } : {}) } }];
+  const mine = new Set(data.actionGoals.filter((ag) => ag.goal_id === goal.id).map((ag) => ag.action_id));
+  const own = data.actions.filter((a) => mine.has(a.id) && !a.archived_at && data.actionGoals.filter((ag) => ag.action_id === a.id).length === 1);
+  const ids = new Set(own.map((a) => a.id));
+  for (const a of own) ops.push({ kind: 'update', collection: 'actions', id: a.id, patch: { archived_at: at } });
+  for (const s of data.sessions) {
+    if (s.action_id && ids.has(s.action_id) && s.status === 'planned' && (s.date ?? s.week_start) >= from) ops.push({ kind: 'delete', collection: 'sessions', id: s.id });
+  }
+  return ops;
+}
+
+/** Undo a completion: the goal is active again and the tasks archived with it come back. */
+export function opsReopenGoal(data: AppData, goal: Goal): Op[] {
+  const at = goal.completed_at;
+  const ops: Op[] = [{ kind: 'update', collection: 'goals', id: goal.id, patch: { completed_at: null } }];
+  if (!at) return ops;
+  const mine = new Set(data.actionGoals.filter((ag) => ag.goal_id === goal.id).map((ag) => ag.action_id));
+  for (const a of data.actions) {
+    if (mine.has(a.id) && a.archived_at === at) ops.push({ kind: 'update', collection: 'actions', id: a.id, patch: { archived_at: null } });
+  }
+  return ops;
+}
+
 export function opsLinkGoalToPlan(data: AppData, goalId: string, planId: string): Op[] {
   if (data.planGoals.some((pg) => pg.goal_id === goalId && pg.plan_id === planId)) return [];
   return [{ kind: 'insert', collection: 'planGoals', rows: rows([{ id: newId(), plan_id: planId, goal_id: goalId }]) }];

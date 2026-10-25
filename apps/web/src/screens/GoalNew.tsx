@@ -7,7 +7,7 @@ import { navigate } from '../router.ts';
 import { blankTask, opsAddTask, withOps } from '../data/breakdown.ts';
 import { opsStartIdea } from '../data/backlog.ts';
 import { chainFor, opsStartChain } from '../data/chain.ts';
-import { BackLink, Empty, GOAL_COLORS, NumberInput, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
+import { BackLink, Empty, GOAL_COLORS, Icon, NumberInput, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
 
 const TYPES: { value: GoalType; title: string; sub: string }[] = [
@@ -39,7 +39,7 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
   const dateRef = useRef<HTMLInputElement>(null);
   const [edits, setEdits] = useState<Record<string, number>>({});
   const [why, setWhy] = useState(idea?.note ?? '');
-  const [doneMeans, setDoneMeans] = useState('');
+  const [doneMeans, setDoneMeans] = useState(idea?.done_means ?? '');
   const [milestones, setMilestones] = useState([{ title: '', due_date: addDays(today, 28) }]);
   const color = GOAL_COLORS[existing.length % GOAL_COLORS.length]!;
 
@@ -74,17 +74,26 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
         week: firstMilestone(periods.week.start, periods.week.end) ?? '',
       };
     }
-    return { quarter: '', month: '', week: `Show up on every planned day` };
+    return { quarter: '', month: '', week: '' };
   };
   const chainNotes = notes ?? defaults();
   // Only what the person types: no made-up "Work on …" task.
   const firstTask = taskTitle;
 
+  // Entry requirements for a goal to start: its 3-month, month and first-week goals, and a daily task.
+  const ready = [
+    { key: 'quarter', label: '3-month goal', ok: !!chainNotes.quarter.trim() },
+    { key: 'month', label: 'This month’s goal', ok: !!chainNotes.month.trim() },
+    { key: 'week', label: 'This week’s goal', ok: !!chainNotes.week.trim() },
+    { key: 'task', label: 'A daily task with its days', ok: !!firstTask.trim() && taskDays.length > 0 && taskMinutes > 0 },
+  ];
+  const isReady = ready.every((r) => r.ok);
+
   const canNext1 = title.trim().length > 0;
   const canNext2 = type !== 'number' || (target != null && !!targetDate && targetDate > today);
 
   function save() {
-    if (!plan) return;
+    if (!plan || !isReady) return;
     const { ops, goalId } = opsCreateGoal(
       data,
       {
@@ -292,9 +301,9 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
 
       {step === 3 && periods && (
         <div className="stack">
-          <h1>Your first week</h1>
+          <h1>Ready to start</h1>
           <p className="muted small" style={{ margin: 0 }}>
-            Each goal keeps one goal for these 3 months, one for this month and one for this week, plus daily tasks that land on Today. All optional; change them any time.
+            A goal starts once you know what should be true in 3 months, this month and this week, and what you'll do each day. You can change any of it later.
           </p>
           <div className="card stack">
             <div className="row-between">
@@ -317,14 +326,15 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
                   <input
                     value={chainNotes[level]}
                     onChange={(e) => setNotes({ ...chainNotes, [level]: e.target.value })}
-                    placeholder={type === 'number' ? 'Optional: what should be true by then' : 'What should be true by then?'}
+                    placeholder={level === 'quarter' ? 'e.g. Record song 1 start to finish' : level === 'month' ? 'e.g. Clean G–C–D–Em changes at 60 bpm' : 'e.g. Practise G–C–D 20 minutes on 5 days'}
+                    required
                   />
                 </label>
               );
             })}
           </div>
           <div className="card stack">
-            <span className="label">First daily task · optional</span>
+            <span className="label">First daily task</span>
             <label className="field">
               Task
               <input value={firstTask} onChange={(e) => setTaskTitle(e.target.value)} placeholder="e.g. Guitar practice" />
@@ -346,14 +356,26 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
               Minutes
               <input type="number" min={0} value={taskMinutes} onChange={(e) => setTaskMinutes(Number(e.target.value))} />
             </label>
-            <span className="xsmall muted">Leave the task blank to add tasks later on the goal page.</span>
+            <span className="xsmall muted">It lands on Today on those days. Add more tasks on the goal page.</span>
+          </div>
+          <div className="card stack-sm ready-list" aria-label="Ready to start">
+            <span className="label">To start this goal</span>
+            {ready.map((r) => (
+              <span key={r.key} className={`ready-item${r.ok ? ' ok' : ''}`}>
+                <span className="ready-mark" aria-hidden="true">
+                  {r.ok ? <Icon name="check" size={12} stroke={3} /> : null}
+                </span>
+                {r.label}
+                <span className="visually-hidden">{r.ok ? ': done' : ': still needed'}</span>
+              </span>
+            ))}
           </div>
           <div className="btn-row">
             <button className="btn" onClick={() => setStep(2)}>
               Back
             </button>
-            <button className="btn primary" onClick={save}>
-              Save goal
+            <button className="btn primary" onClick={save} disabled={!isReady}>
+              {isReady ? 'Start goal' : `${ready.filter((r) => !r.ok).length} to go`}
             </button>
           </div>
         </div>

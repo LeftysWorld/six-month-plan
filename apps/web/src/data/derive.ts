@@ -85,7 +85,8 @@ export class View {
 
   goalsForPlan(planId: string, includeArchived = false): Goal[] {
     const ids = new Set(this.data.planGoals.filter((pg) => pg.plan_id === planId).map((pg) => pg.goal_id));
-    return this.data.goals.filter((g) => ids.has(g.id) && (includeArchived || !g.archived_at));
+    // Archived and completed goals are left out of everyday lists (Completed has its own page).
+    return this.data.goals.filter((g) => ids.has(g.id) && (includeArchived || (!g.archived_at && !g.completed_at)));
   }
 
   plansForGoal(goalId: string): Plan[] {

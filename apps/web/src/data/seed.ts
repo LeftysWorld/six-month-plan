@@ -92,9 +92,12 @@ export function buildDemoData(): AppData {
   const career = goal({ title: 'Land a product role', type: 'practice', color: '#8B6CF6', why: 'Work on AI products I care about.', done_means: 'Signed offer' });
   const jhu = goal({ title: 'JHU AI certificate', type: 'finish', color: '#C9A227', why: 'Credibility for AI product roles.', done_means: 'All modules passed' });
   const aigp = goal({ title: 'Pass the AIGP exam', type: 'finish', color: '#C9A227', why: 'AI governance credibility.', done_means: 'Exam passed' });
-  data.goals = [weight, strength, guitar, splits, career, jhu, aigp];
+  // A goal already finished early in the plan, so Completed has something to show.
+  const finishedAt = `${addDays(today, -2)}T18:00:00.000Z`;
+  const course = goal({ title: 'Finish the agents course', type: 'finish', color: '#3FB6C9', why: 'Hands-on with agents and evals.', done_means: 'All lessons and the capstone done', completed_at: finishedAt, completion_note: 'Done two weeks early. Short evening sessions worked better than weekend marathons.' });
+  data.goals = [weight, strength, guitar, splits, career, jhu, aigp, course];
   data.planGoals = [
-    ...[weight, strength, guitar, splits, career, jhu].map((g) => ({ id: id(), plan_id: plan.id, goal_id: g.id })),
+    ...[weight, strength, guitar, splits, career, jhu, course].map((g) => ({ id: id(), plan_id: plan.id, goal_id: g.id })),
     { id: id(), plan_id: plan2.id, goal_id: jhu.id },
     { id: id(), plan_id: plan2.id, goal_id: aigp.id },
     { id: id(), plan_id: plan2.id, goal_id: career.id },
@@ -304,19 +307,30 @@ export function buildDemoData(): AppData {
     Object.assign(data, withOps(data, opsAddTask(data, g, week, { ...blankTask(week, today), ...patch }, today)));
   }
 
+  // The finished course: its task (archived when the goal was completed) and the sessions done.
+  const courseTask = { id: id(), title: 'Course lesson', kind: 'minutes' as const, planned_minutes: 40, planned_count: null, min_label: '', min_minutes: null, min_count: null, priority: false, step_id: null, archived_at: finishedAt };
+  data.actions.push(courseTask);
+  data.actionGoals.push({ id: id(), action_id: courseTask.id, goal_id: course.id });
+  for (let i = 1; i <= 9; i++) {
+    const date = addDays(today, -2 - Math.round((i - 1) * 1.5));
+    if (date < start) break;
+    data.sessions.push({ id: id(), action_id: courseTask.id, week_start: weekStart(date), slot: 900 + i, date, title: courseTask.title, priority: false, planned_minutes: 40, planned_count: null, status: 'done', actual_minutes: 40 + (i % 3) * 5, actual_count: null, note: '', obstacles: [], origin: 'scheduled', source: 'manual', moved_from: null, logged_at: `${date}T20:00:00.000Z` });
+  }
+
   // The goal backlog: two ideas selected for the next commitment, the rest waiting in order.
-  const ideas: [string, string, 'selected' | 'backlog', number][] = [
-    ['Run a half marathon', 'Builds on the cardio from the weight goal.', 'selected', 40],
-    ['Pass the PMP exam', 'Prerequisites are done; the exam is what is left.', 'selected', 25],
-    ['Build an AI side project end to end', 'Ship something small with an agent and evals.', 'backlog', 30],
-    ['Conversational Spanish', '', 'backlog', 12],
-    ['Read 12 books', 'One a month, mostly product and history.', 'backlog', 70],
-    ['Cook 30 new recipes', '', 'backlog', 5],
+  const ideas: [string, string, string, 'selected' | 'backlog', number][] = [
+    ['Run a half marathon', 'Builds on the cardio from the weight goal.', 'Finish a half marathon in under 2 hours', 'selected', 40],
+    ['Pass the PMP exam', 'Prerequisites are done; the exam is what is left.', 'PMP passed', 'selected', 25],
+    ['Build an AI side project end to end', 'Ship something small with an agent and evals.', '', 'backlog', 30],
+    ['Conversational Spanish', '', '', 'backlog', 12],
+    ['Read 12 books', 'One a month, mostly product and history.', '12 books read, a note on each', 'backlog', 70],
+    ['Cook 30 new recipes', '', '', 'backlog', 5],
   ];
-  data.ideas = ideas.map(([title, note, status, age], i) => ({
+  data.ideas = ideas.map(([title, note, done_means, status, age], i) => ({
     id: id(),
     title,
     note,
+    done_means,
     status,
     rank: i + 1,
     goal_id: null,

@@ -482,3 +482,11 @@ test('backlog: columns in order, reorder, room in selected, age', async () => {
   assert.equal(hasRoom([...ideas, idea('s2', 2, 'selected'), idea('s3', 3, 'selected')]), false);
   assert.equal(ageInDays({ created_at: '2026-10-01T00:00:00.000Z' }, new Date('2026-10-25T12:00:00.000Z')), 24);
 });
+
+test('backlog: an idea needs a why and what done looks like before it can be selected', async () => {
+  const { readinessGaps } = await import('../src/index.ts');
+  assert.deepEqual(readinessGaps({ note: '', done_means: '' }), ['why', 'done']);
+  assert.deepEqual(readinessGaps({ note: 'Health', done_means: undefined }), ['done']);
+  assert.deepEqual(readinessGaps({ note: '  ', done_means: 'Finish a half in under 2h' }), ['why']);
+  assert.deepEqual(readinessGaps({ note: 'Health', done_means: 'Finish a half in under 2h' }), []);
+});

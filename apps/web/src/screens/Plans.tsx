@@ -108,10 +108,8 @@ export function Plans({ planId = null }: { planId?: string | null }) {
               {initial}
             </a>
           </div>
-          <div className="row-between" style={{ alignItems: 'center', gap: 12, marginTop: -4, flexWrap: 'wrap' }}>
-            <h1>Goals</h1>
-            <GoalsSwitch current="goals" />
-          </div>
+          <h1 style={{ marginTop: -4 }}>Goals</h1>
+          <GoalsSwitch current="goals" />
           <PlanForm />
         </>
       )}
@@ -153,10 +151,8 @@ function PlanGoals({ plan, initial, onMenu }: { plan: Plan; initial: string; onM
           {initial}
         </a>
       </div>
-      <div className="row-between" style={{ alignItems: 'center', gap: 12, marginTop: -4, flexWrap: 'wrap' }}>
-        <h1>Goals</h1>
-        <GoalsSwitch current="goals" />
-      </div>
+      <h1 style={{ marginTop: -4 }}>Goals</h1>
+      <GoalsSwitch current="goals" />
 
       <PlanLine plan={plan} today={today} onMenu={onMenu} />
 

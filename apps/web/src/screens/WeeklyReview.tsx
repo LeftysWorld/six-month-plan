@@ -32,7 +32,7 @@ import {
 import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, useView, type View } from '../data/derive.ts';
 import type { AppData, Op, ReviewPayload } from '../data/model.ts';
-import { opsArchiveAction, opsArchiveGoal, opsCompleteReview, opsCreatePlan, opsLinkGoalToPlan, opsReplacePath, opsUpdateGoal } from '../data/ops.ts';
+import { opsArchiveAction, opsArchiveGoal, opsCompleteGoal, opsCompleteReview, opsCreatePlan, opsLinkGoalToPlan, opsReplacePath, opsUpdateGoal } from '../data/ops.ts';
 import { catchUp, catchUpPlan, chainFor, isSet, opsSetLevel, type ChainLevel } from '../data/chain.ts';
 import { withOps } from '../data/breakdown.ts';
 import { selectedIdeas } from '../data/backlog.ts';
@@ -382,6 +382,13 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
         if (f.goal.type === 'number' && value != null && value !== f.currentValue) patch.target_value = value;
         if (!Object.keys(patch).length) continue;
         add(opsSetLevel(next, f.goal, plan, chainFor(next, f.goal, plan, f.date), f.level, patch));
+      }
+    }
+    // Retrospective: a goal you achieved (and aren't carrying over) moves to Completed.
+    if (kind === 'retro') {
+      for (const r of results) {
+        const g = next.goals.find((x) => x.id === r.goal_id);
+        if (r.result === 'hit' && g && !g.completed_at && !carryDefault(draft, g)) add(opsCompleteGoal(next, g, '', addDays(period.end, 1)));
       }
     }
     let newPlanId: string | null = null;
