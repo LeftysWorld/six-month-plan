@@ -12,6 +12,8 @@ import { opsAddOneOff, opsLogSession, opsLogUnplanned, opsMoveSession, opsRestor
 import { href, navigate } from '../router.ts';
 import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
+import { CommitmentCard } from '../components/Commitment.tsx';
+import { currentCommitment } from '../data/insights.ts';
 
 const FULL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const fullDay = (d: ISODate) => FULL_DAYS[isoWeekday(d) - 1] ?? '';
@@ -60,6 +62,7 @@ export function Today() {
   const plan = view.mainPlan;
   const coach = isToday ? coachLine(view, plan, today, sessions) : null;
   const streak = checkInStreak(data.sessions, today);
+  const commitment = currentCommitment(data.reviews, today);
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   const showMorning = isToday && ritualDue('morning', today);
   const showEvening = isToday && !showMorning && ritualDue('evening', today);
@@ -237,6 +240,10 @@ export function Today() {
               bump((n) => n + 1);
             }}
           />
+        )}
+
+        {isToday && commitment && commitment.forWeek === weekStart(today) && (
+          <CommitmentCard review={commitment.review} text={commitment.text} forWeek={commitment.forWeek} today={today} compact />
         )}
 
         {next && <UpNext session={next} onStart={() => start(next)} onOpen={() => openSession(next)} />}

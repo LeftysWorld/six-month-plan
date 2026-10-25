@@ -78,17 +78,25 @@ export interface WeekPoint {
   minutesDone: number;
 }
 
-/** One point per week, oldest first, ending with the week starting `lastMonday`. */
+/**
+ * One point per week, oldest first, ending with the week starting `lastMonday`.
+ * Weeks before `from` (e.g. before the plan's first real week) come back empty (rate null).
+ */
 export function weeklyTrend(
   sessions: Session[],
   lastMonday: ISODate,
   weeks: number,
   today: ISODate,
   actionById?: (id: string | null) => Pick<Action, 'min_minutes'> | null | undefined,
+  from?: ISODate,
 ): WeekPoint[] {
   const out: WeekPoint[] = [];
   for (let i = weeks - 1; i >= 0; i--) {
     const monday = addDays(lastMonday, -7 * i);
+    if (from && monday < from) {
+      out.push({ monday, planned: 0, credit: 0, rate: null, minutesPlanned: 0, minutesDone: 0 });
+      continue;
+    }
     const t = periodTally(sessions, { start: monday, end: addDays(monday, 6) }, today, actionById);
     out.push({
       monday,
@@ -153,9 +161,19 @@ export function commitmentStats(reviews: Review[]): { answered: number; kept: nu
   return { answered, kept, partly };
 }
 
+/**
+ * The Monday of a plan's first real week. A plan that starts Friday to Sunday has only a few
+ * days in its first calendar week, so that stub is folded into the next week instead of
+ * counting as a week of its own (in review counts, averages and trends).
+ */
+export function firstPlanWeek(plan: Pick<Plan, 'start_date'>): ISODate {
+  const monday = weekStart(plan.start_date);
+  return isoWeekday(plan.start_date) >= 5 ? addDays(monday, 7) : monday;
+}
+
 /** Weekly reviews done vs weeks finished in a plan (weeks that ended before today). */
 export function weeklyReviewCount(plan: Plan, reviews: Review[], today: ISODate): { done: number; weeks: number } {
-  const first = weekStart(plan.start_date);
+  const first = firstPlanWeek(plan);
   const done = new Set(reviews.filter((r) => r.kind === 'weekly' && r.status === 'done').map((r) => r.period_start));
   let weeks = 0;
   let count = 0;

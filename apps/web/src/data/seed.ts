@@ -239,22 +239,43 @@ export function buildDemoData(): AppData {
     }
   }
 
-  // Past weekly reviews
-  for (let monday = weekStart(start); addDays(monday, 6) < today; monday = addDays(monday, 7)) {
+  // Past weekly reviews: different notes each week, whether the last change stuck, and week-goal results.
+  const reviewNotes = [
+    { went: 'Showed up for every workout.', got: 'Late nights made mornings hard.', change: 'Lights out by 11 on weeknights.' },
+    { went: 'Kept JHU study going every weekday.', got: 'Evenings after study were too tired for guitar.', change: 'Guitar in the morning, before email.' },
+    { went: 'Meal prep on Sunday made the eating window easy.', got: 'Tuesday stretching keeps getting skipped.', change: 'Stretch right after the workout, not later.' },
+  ];
+  const kept = ['yes', 'partly', 'no'] as const;
+  let n = 0;
+  for (let monday = weekStart(start); addDays(monday, 6) < today; monday = addDays(monday, 7), n++) {
     const inWeek = sessions.filter((s) => s.week_start === monday);
+    const note = reviewNotes[n % reviewNotes.length]!;
     data.reviews.push({
       id: id(),
       kind: 'weekly',
       period_start: monday,
       period_end: addDays(monday, 6),
       status: 'done',
-      went_well: 'Kept JHU study going every weekday.',
-      got_in_way: 'Evenings after study were too tired for guitar.',
-      change_next: 'Guitar in the morning.',
+      went_well: note.went,
+      got_in_way: note.got,
+      change_next: note.change,
       obstacles: ['Energy'],
       actions_done: inWeek.filter((s) => s.status === 'done' || s.status === 'minimum').length,
       actions_planned: inWeek.length,
       completed_at: `${addDays(monday, 6)}T18:00:00.000Z`,
+      commitment_kept: n === 0 ? null : kept[(n - 1) % kept.length]!,
+      goal_results: [
+        { goal_id: weight.id, level: 'week', step_id: null, note: '', result: 'hit' },
+        { goal_id: strength.id, level: 'week', step_id: null, note: '', result: 'hit' },
+        { goal_id: guitar.id, level: 'week', step_id: null, note: '', result: n % 2 ? 'partly' : 'missed' },
+        { goal_id: splits.id, level: 'week', step_id: null, note: '', result: 'missed' },
+        { goal_id: career.id, level: 'week', step_id: null, note: '', result: n % 2 ? 'hit' : 'partly' },
+        { goal_id: jhu.id, level: 'week', step_id: null, note: '', result: 'hit' },
+      ],
+      goal_decisions: [],
+      carry_forward: '',
+      minutes_planned: 0,
+      minutes_done: 0,
     });
   }
   // ---- Goal chains: each goal's current 3-month, month and week goal ----

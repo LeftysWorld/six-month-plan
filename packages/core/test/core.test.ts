@@ -401,7 +401,21 @@ test('review tallies: future days are upcoming, not misses; minutes and patterns
   const reviews = [review('2026-10-05', { change_next: 'Guitar in the morning', commitment_kept: 'partly' }), review('2026-09-28', { commitment_kept: 'yes' })];
   assert.equal(previousReview(reviews, 'weekly', '2026-10-12')?.change_next, 'Guitar in the morning');
   assert.deepEqual(commitmentStats(reviews), { answered: 2, kept: 1, partly: 1 });
-  assert.deepEqual(weeklyReviewCount(plan, reviews, '2026-10-19'), { done: 2, weeks: 3 });
+  // The plan starts on a Friday, so its first real week is Oct 5 (the Sep 28 stub doesn't count).
+  assert.deepEqual(weeklyReviewCount(plan, reviews, '2026-10-19'), { done: 1, weeks: 2 });
+});
+
+test('a plan starting Friday to Sunday folds its stub week into the next one', async () => {
+  const { firstPlanWeek, weeklyReviewCount, weeklyTrend } = await import('../src/index.ts');
+  assert.equal(firstPlanWeek({ start_date: '2026-10-11' }), '2026-10-12'); // Sunday start
+  assert.equal(firstPlanWeek({ start_date: '2026-10-08' }), '2026-10-05'); // Thursday start keeps its week
+  const sunday = { ...plan, start_date: '2026-10-11', end_date: '2027-04-11' };
+  const done = (start: string) => ({ id: start, kind: 'weekly' as const, period_start: start, period_end: addDays(start, 6), status: 'done' as const, went_well: '', got_in_way: '', change_next: '', obstacles: [], actions_done: 0, actions_planned: 0, completed_at: null });
+  // On Oct 26 two real weeks are over (Oct 12, Oct 19); the Oct 5 stub doesn't count.
+  assert.deepEqual(weeklyReviewCount(sunday, [done('2026-10-05'), done('2026-10-12')], '2026-10-26'), { done: 1, weeks: 2 });
+  const trend = weeklyTrend([], '2026-10-19', 3, '2026-10-26', undefined, '2026-10-12');
+  assert.equal(trend[0]!.monday, '2026-10-05');
+  assert.equal(trend[0]!.rate, null);
 });
 
 test('period reviews: a missed month stays open, the last 3 months fold into the retro', async () => {

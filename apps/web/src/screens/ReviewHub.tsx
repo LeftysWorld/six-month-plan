@@ -1,28 +1,42 @@
+import { useState } from 'react';
 import {
   addDays,
   isoWeekday,
   periodReviewSlots,
   planWeekNumber,
   retroSlot,
+  reviewSuggestions,
   shortDate,
   weekStart,
+  weekdayName,
   weeklyReviewCount,
+  WEEKDAY_LONG,
   type ISODate,
   type PeriodReviewSlot,
   type Review,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, useView } from '../data/derive.ts';
+import { fmt, minutesText, useView } from '../data/derive.ts';
 import type { AppData } from '../data/model.ts';
-import { hubInsights } from '../data/insights.ts';
+import {
+  commitmentTrail,
+  currentCommitment,
+  hubInsights,
+  minutesByGoal,
+  opsWeekdayMove,
+  reviewMinutes,
+  scorecard,
+  weekdayMove,
+  type Insight,
+} from '../data/insights.ts';
 import { href } from '../router.ts';
-import { Icon } from '../components/ui.tsx';
+import { Icon, useToast } from '../components/ui.tsx';
 import { TrendBars } from '../components/TrendBars.tsx';
-import { ProgressBento } from './Home.tsx';
+import { CommitmentCard } from '../components/Commitment.tsx';
 
 /**
  * Which week a weekly review covers: the current week from Saturday on, otherwise last
- * week if it hasn't been reviewed yet. Returns null when there's nothing to review.
+ * week if it hasn't been reviewed yet.
  */
 export function weekToReview(data: AppData, today: ISODate): { monday: ISODate; overdue: boolean; done: boolean } {
   const thisMonday = weekStart(today);
@@ -33,6 +47,14 @@ export function weekToReview(data: AppData, today: ISODate): { monday: ISODate; 
     return { monday: lastMonday, overdue: true, done: false };
   }
   return { monday: thisMonday, overdue: false, done: reviewed(thisMonday) };
+}
+
+/** "Due today" on Sunday, "Due tomorrow" on Saturday, otherwise "Due Sunday" (or "Still open"). */
+export function dueLabel(target: { overdue: boolean; done: boolean }, today: ISODate): string {
+  if (target.done) return 'Done';
+  if (target.overdue) return 'Still open';
+  const dow = isoWeekday(today);
+  return dow === 7 ? 'Due today' : dow === 6 ? 'Due tomorrow' : 'Due Sunday';
 }
 
 const KIND_TITLE: Record<Review['kind'], string> = { weekly: 'Week', block: 'Month', quarter: '3-month', retro: 'Retrospective' };
@@ -50,28 +72,37 @@ export function reviewTitle(r: Review): string {
   return `${KIND_TITLE[r.kind]} · ${shortDate(r.period_start)}${r.kind === 'weekly' ? '' : ` – ${shortDate(r.period_end)}`}`;
 }
 
+/**
+ * Review: the review that's due (or, once done, the change you're making), how each goal went
+ * week by week, patterns with a fix, the changes you've tried, and past reviews.
+ */
 export function ReviewHub() {
   const { data, today } = useStore();
   const view = useView();
   const plan = view.mainPlan;
+  const started = !!plan && plan.start_date <= today;
   const target = weekToReview(data, today);
-  const weekLabel = plan && plan.start_date <= target.monday ? `Week ${planWeekNumber(plan, addDays(target.monday, 6))} review` : `Review of ${shortDate(target.monday)}`;
-  const past = [...data.reviews].filter((r) => r.status === 'done').sort((a, b) => (a.period_end < b.period_end ? 1 : a.period_end > b.period_end ? -1 : a.kind === 'weekly' ? 1 : -1));
-  const due = view.measurementsDue(addDays(target.monday, 6));
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
-  const count = plan && plan.start_date <= today ? weeklyReviewCount(plan, data.reviews, today) : null;
+  const goals = plan ? view.goalsForPlan(plan.id) : [];
+  const commitment = currentCommitment(data.reviews, today);
+  const past = [...data.reviews].filter((r) => r.status === 'done').sort((a, b) => (a.period_end < b.period_end ? 1 : a.period_end > b.period_end ? -1 : a.kind === 'weekly' ? 1 : -1));
 
-  // Month, 3-month and plan reviews: the open (or missed) ones first, then what's coming up.
+  // Month, 3-month and plan reviews: open (or missed) ones are cards; only the next upcoming one is shown.
   const slots: PeriodReviewSlot[] = [];
-  if (plan && plan.start_date <= today) slots.push(...periodReviewSlots(plan, data.reviews, today));
-  const retroPlans = data.plans.filter((p) => !p.archived_at && p.start_date <= today && p.end_date >= addDays(today, -60));
-  for (const p of retroPlans) {
+  if (plan && started) slots.push(...periodReviewSlots(plan, data.reviews, today));
+  for (const p of data.plans.filter((x) => !x.archived_at && x.start_date <= today && x.end_date >= addDays(today, -60))) {
     const r = retroSlot(p, data.reviews, today);
     if (r && (r.state !== 'upcoming' || p.id === plan?.id)) slots.push(r);
   }
   const open = slots.filter((s) => s.state !== 'upcoming');
-  const upcoming = slots.filter((s) => s.state === 'upcoming').sort((a, b) => (a.opensOn < b.opensOn ? -1 : 1));
-  const insights = plan && plan.start_date <= addDays(today, -7) ? hubInsights(data, today) : null;
+  const nextUp = slots.filter((s) => s.state === 'upcoming').sort((a, b) => (a.opensOn < b.opensOn ? -1 : 1))[0];
+  const insights = plan && started ? hubInsights(data, plan, today, !target.done) : null;
+  const score = plan && started && goals.length ? scorecard(view, data, plan, goals, today) : null;
+  const trail = commitmentTrail(data.reviews);
+
+  const topCard = <WeeklyCard target={target} />;
+  const commitmentCard = commitment ? <CommitmentCard review={commitment.review} text={commitment.text} forWeek={commitment.forWeek} today={today} /> : null;
+  const openCards = open.map((s) => <SlotCard key={`${s.kind}:${s.plan.id}:${s.period.start}`} s={s} />);
 
   return (
     <div className="stack rise">
@@ -83,116 +114,139 @@ export function ReviewHub() {
       </div>
       <h1 style={{ marginTop: -4 }}>Review</h1>
 
-      <div className="card dark stack">
-        <div className="row-between" style={{ alignItems: 'baseline' }}>
-          <h2>{weekLabel}</h2>
-          <span className="xsmall muted">
-            {target.done ? 'Done' : target.overdue ? 'Still open' : 'Due Sunday'} · ~5 min
-          </span>
+      <div className="review-grid">
+        <div className="stack review-main">
+          {topCard}
+          {commitmentCard}
+          {openCards}
+          {score && <Scorecard score={score} />}
+          {insights && <InsightsCard trend={insights.trend} insights={insights.insights} goals={goals} reviewMonday={target.monday} />}
         </div>
-        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink-2)' }}>
-          {target.done
-            ? 'This week is reviewed. The next one opens on Saturday.'
-            : `${shortDate(target.monday)} – ${shortDate(addDays(target.monday, 6))}. ${
-                due.length ? `${due.length} measurement${due.length === 1 ? '' : 's'} due. ` : ''
-              }Look back, reflect, plan next week.`}
-        </p>
-        {count && count.weeks > 0 && (
-          <span className="xsmall" style={{ color: 'var(--ink-2)' }}>
-            {count.done} of {count.weeks} weekly review{count.weeks === 1 ? '' : 's'} done this plan
-          </span>
-        )}
-        {!target.done && (
-          <a className="btn primary" href={href(`/review/run?kind=weekly&week=${target.monday}`)}>
-            Start review
-          </a>
-        )}
-      </div>
-
-      {open.map((s) => {
-        const copy = SLOT_COPY[s.kind];
-        return (
-          <div key={`${s.kind}:${s.plan.id}:${s.period.start}`} className="card stack-sm">
-            <div className="row-between" style={{ alignItems: 'baseline', gap: 8 }}>
-              <span className="row-start" style={{ gap: 10, flexWrap: 'nowrap' }}>
-                <SlotTag tag={copy.tag} color={copy.color} ink={copy.ink} />
-                <b>{copy.name(s)}</b>
-              </span>
-              <span className="xsmall" style={{ color: s.state === 'overdue' ? 'var(--amber-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>
-                {s.state === 'overdue' ? 'Still open' : `Due ${shortDate(s.period.end)}`} · ~{copy.minutes} min
-              </span>
-            </div>
-            <span className="small" style={{ color: 'var(--ink-2)' }}>
-              {shortDate(s.period.start)} – {shortDate(s.period.end)}. {copy.detail}.
-            </span>
-            <a className="btn primary small" href={slotHref(s)} style={{ alignSelf: 'flex-start' }}>
-              Start
-            </a>
-          </div>
-        );
-      })}
-
-      {insights && (insights.lines.length > 0 || insights.trend.some((w) => w.rate != null)) && (
-        <div className="card stack-sm">
-          <span className="label">Insights</span>
-          <TrendBars weeks={insights.trend} />
-          {insights.lines.map((l) => (
-            <span key={l} className="small" style={{ color: 'var(--ink-2)', lineHeight: 1.45 }}>
-              {l}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {plan && plan.start_date <= today && (
-        <>
-          <div className="row-between" style={{ margin: '14px 2px 0' }}>
-            <span className="label">Progress</span>
-            <a className="label" href={href('/progress')} style={{ textDecoration: 'none', color: 'var(--ink-2)' }}>
-              Charts ›
-            </a>
-          </div>
-          <ProgressBento plan={plan} />
-        </>
-      )}
-
-      {upcoming.length > 0 && (
-        <div className="card stack-sm">
-          <span className="label">Coming up</span>
-          {upcoming.map((s) => {
-            const copy = SLOT_COPY[s.kind];
-            return (
-              <div key={`${s.kind}:${s.plan.id}:${s.period.start}`} className="list-row">
-                <SlotTag tag={copy.tag} color={copy.color} ink={copy.ink} />
-                <div className="grow">
-                  <div className="strong small">{copy.name(s)}</div>
-                  <div className="xsmall muted">
-                    Opens {shortDate(s.opensOn)} · {copy.detail}
-                  </div>
+        <div className="stack review-side">
+          {trail.length > 0 && <ChangesTried trail={trail} />}
+          {nextUp && (
+            <div className="card tight row-start" style={{ gap: 12, flexWrap: 'nowrap' }}>
+              <SlotTag tag={SLOT_COPY[nextUp.kind].tag} color={SLOT_COPY[nextUp.kind].color} ink={SLOT_COPY[nextUp.kind].ink} />
+              <div className="grow" style={{ minWidth: 0 }}>
+                <div className="small strong">Next: {SLOT_COPY[nextUp.kind].name(nextUp)}</div>
+                <div className="xsmall muted">
+                  Opens {shortDate(nextUp.opensOn)} · ~{SLOT_COPY[nextUp.kind].minutes} min
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="card stack-sm">
-        <div className="row-between">
-          <span className="label">Past reviews</span>
-          {past.length > 5 && (
-            <a className="label" href={href('/review/past')} style={{ textDecoration: 'none', color: 'var(--ink-2)' }}>
-              See all {past.length} ›
+            </div>
+          )}
+          <div className="card stack-sm">
+            <div className="row-between">
+              <span className="label">Past reviews</span>
+              {past.length > 5 && (
+                <a className="label" href={href('/review/past')} style={{ textDecoration: 'none', color: 'var(--ink-2)' }}>
+                  See all {past.length} ›
+                </a>
+              )}
+            </div>
+            {past.length === 0 && <span className="small muted">Your first review will show up here.</span>}
+            {past.slice(0, 5).map((r) => (
+              <PastRow key={r.id} review={r} />
+            ))}
+          </div>
+          {started && (
+            <a className="btn ghost small" href={href('/progress')} style={{ alignSelf: 'flex-start' }}>
+              All charts ›
             </a>
           )}
         </div>
-        {past.length === 0 && <span className="small muted">Your first review will show up here.</span>}
-        {past.slice(0, 5).map((r) => (
-          <PastRow key={r.id} review={r} />
-        ))}
       </div>
-      <p className="xsmall muted" style={{ textAlign: 'center' }}>
-        Missed a review? It stays open until the next one of its kind opens.
+    </div>
+  );
+}
+
+/** The weekly review: what it covers, an honest time estimate and Start, or (when done) next week at a glance. */
+function WeeklyCard({ target }: { target: ReturnType<typeof weekToReview> }) {
+  const { data, today } = useStore();
+  const view = useView();
+  const plan = view.mainPlan;
+  const end = addDays(target.monday, 6);
+  const label = plan && plan.start_date <= target.monday ? `Week ${planWeekNumber(plan, end)} review` : `Review of ${shortDate(target.monday)}`;
+  const due = view.measurementsDue(end);
+  const goals = plan ? view.goalsForPlan(plan.id) : [];
+  const count = plan && plan.start_date <= today ? weeklyReviewCount(plan, data.reviews, today) : null;
+
+  if (target.done) {
+    const nextMonday = addDays(target.monday, 7);
+    const next = data.sessions.filter((s) => s.week_start === nextMonday && s.status === 'planned');
+    const minutes = next.reduce((sum, s) => sum + s.planned_minutes, 0);
+    return (
+      <div className="card dark stack-sm">
+        <div className="row-between" style={{ alignItems: 'baseline' }}>
+          <h2>{label}</h2>
+          <span className="xsmall" style={{ color: 'var(--accent-ink)' }}>
+            Done
+          </span>
+        </div>
+        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink-2)' }}>
+          Next week ({shortDate(nextMonday)} – {shortDate(addDays(nextMonday, 6))}) is planned: {next.length} task{next.length === 1 ? '' : 's'}
+          {minutes ? `, ${minutesText(minutes)}` : ''}. The next review opens Saturday.
+        </p>
+        {count && count.weeks > 0 && <ReviewCount done={count.done} weeks={count.weeks} />}
+      </div>
+    );
+  }
+
+  const suggestions = reviewSuggestions(data.actions, data.schedules, data.sessions, target.monday, { availableMinutes: data.profile.available_minutes, today });
+  const minutes = reviewMinutes({ goals: goals.length, measurements: due.length, suggestions: suggestions.length, planning: true });
+  return (
+    <div className="card dark stack">
+      <div className="row-between" style={{ alignItems: 'baseline', gap: 8 }}>
+        <h2>{label}</h2>
+        <span className="xsmall" style={{ color: target.overdue || isoWeekday(today) === 7 ? 'var(--amber-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>
+          {dueLabel(target, today)} · ~{minutes} min
+        </span>
+      </div>
+      <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink-2)' }}>
+        {shortDate(target.monday)} – {shortDate(end)}. Rate {goals.length} week goal{goals.length === 1 ? '' : 's'}
+        {due.length ? `, log ${due.length} measurement${due.length === 1 ? '' : 's'}` : ''}
+        {suggestions.length ? `, decide on ${suggestions.length} suggestion${suggestions.length === 1 ? '' : 's'}` : ''}, then plan next week.
       </p>
+      {count && count.weeks > 0 && <ReviewCount done={count.done} weeks={count.weeks} />}
+      <a className="btn primary" href={href(`/review/run?kind=weekly&week=${target.monday}`)}>
+        Start review
+      </a>
+    </div>
+  );
+}
+
+function ReviewCount({ done, weeks }: { done: number; weeks: number }) {
+  return (
+    <span className="xsmall" style={{ color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ display: 'flex', gap: 3 }} aria-hidden="true">
+        {Array.from({ length: Math.min(weeks, 26) }, (_, i) => (
+          <span key={i} style={{ width: 8, height: 8, borderRadius: 2, background: i < done ? 'var(--accent)' : 'var(--track)' }} />
+        ))}
+      </span>
+      {done} of {weeks} weekly review{weeks === 1 ? '' : 's'} done
+    </span>
+  );
+}
+
+function SlotCard({ s }: { s: PeriodReviewSlot }) {
+  const copy = SLOT_COPY[s.kind];
+  return (
+    <div className="card stack-sm">
+      <div className="row-between" style={{ alignItems: 'baseline', gap: 8 }}>
+        <span className="row-start" style={{ gap: 10, flexWrap: 'nowrap' }}>
+          <SlotTag tag={copy.tag} color={copy.color} ink={copy.ink} />
+          <b>{copy.name(s)}</b>
+        </span>
+        <span className="xsmall" style={{ color: s.state === 'overdue' ? 'var(--amber-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>
+          {s.state === 'overdue' ? 'Still open' : `Due ${shortDate(s.period.end)}`} · ~{copy.minutes} min
+        </span>
+      </div>
+      <span className="small" style={{ color: 'var(--ink-2)' }}>
+        {shortDate(s.period.start)} – {shortDate(s.period.end)}. {copy.detail}.
+      </span>
+      <a className="btn primary small" href={slotHref(s)} style={{ alignSelf: 'flex-start' }}>
+        Start
+      </a>
     </div>
   );
 }
@@ -205,23 +259,214 @@ function SlotTag({ tag, color, ink }: { tag: string; color: string; ink: string 
   );
 }
 
-/** One past review: what it covered, how much got done, and the change it planned. Opens the full review. */
+const MARK: Record<string, { glyph: string; word: string }> = { hit: { glyph: '✓', word: 'hit' }, partly: { glyph: '½', word: 'partly' }, missed: { glyph: '✕', word: 'missed' } };
+
+/** Goals × weeks: how much got done (shading) and how the week goal was rated (mark). */
+function Scorecard({ score }: { score: ReturnType<typeof scorecard> }) {
+  const { mondays, rows, hits } = score;
+  return (
+    <div className="card stack-sm">
+      <div className="row-between" style={{ gap: 8 }}>
+        <span className="label">Week by week</span>
+        {hits.rated > 0 && (
+          <span className="xsmall muted">
+            Week goals hit {hits.hit} of {hits.rated}
+          </span>
+        )}
+      </div>
+      <div className="scorecard" style={{ gridTemplateColumns: `minmax(0, 1fr) repeat(${mondays.length}, 34px)` }}>
+        <span />
+        {mondays.map((m, i) => (
+          <span key={m} className="mono score-head">
+            {i === mondays.length - 1 ? 'NOW' : shortDate(m).replace(' ', ' ').toUpperCase()}
+          </span>
+        ))}
+        {rows.map(({ goal, cells }) => (
+          <Row key={goal.id} goal={goal} cells={cells} />
+        ))}
+      </div>
+      <div className="row-start xsmall muted" style={{ gap: 14 }}>
+        <span>Shade = tasks done</span>
+        <span>✓ hit · ½ partly · ✕ missed</span>
+      </div>
+    </div>
+  );
+}
+
+function Row({ goal, cells }: { goal: { id: string; title: string; color: string }; cells: ReturnType<typeof scorecard>['rows'][number]['cells'] }) {
+  return (
+    <>
+      <a href={href(`/goals/${goal.id}`)} className="score-goal small">
+        <span className="dot" style={{ width: 8, height: 8, flex: 'none', background: goal.color }} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{goal.title}</span>
+      </a>
+      {cells.map((c) => {
+        const tasks = c.planned ? `${c.done} of ${c.planned} tasks` : 'no tasks due';
+        const label = `${goal.title}, week of ${shortDate(c.monday)}${c.current ? ' (so far)' : ''}: ${tasks}${c.result ? `, week goal ${MARK[c.result]!.word}` : ''}`;
+        return (
+          <span
+            key={c.monday}
+            className={`score-cell${c.current ? ' current' : ''}`}
+            role="img"
+            aria-label={label}
+            title={label}
+            style={{
+              background: c.rate == null ? 'var(--track)' : `color-mix(in srgb, ${goal.color} ${Math.round(18 + c.rate * 72)}%, transparent)`,
+              color: c.result === 'missed' ? 'var(--amber-ink)' : 'var(--ink)',
+            }}
+          >
+            {c.result ? MARK[c.result]!.glyph : ''}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+/** Weekly trend, where the time went last week, and patterns, each with a fix where there is one. */
+function InsightsCard({ trend, insights, goals, reviewMonday }: { trend: ReturnType<typeof hubInsights>['trend']; insights: Insight[]; goals: ReturnType<ReturnType<typeof useView>['goalsForPlan']>; reviewMonday: ISODate }) {
+  const { data, today } = useStore();
+  const view = useView();
+  const lastMonday = addDays(weekStart(today), -7);
+  const time = minutesByGoal(view, data, goals, lastMonday);
+  const total = time.reduce((s, x) => s + x.minutes, 0);
+  return (
+    <div className="card stack">
+      <span className="label">Insights</span>
+      <TrendBars weeks={trend} />
+      {time.length > 0 && (
+        <div className="stack-sm" style={{ gap: 6 }}>
+          <span className="xsmall muted">
+            Where your time went · week of {shortDate(lastMonday)} · {minutesText(total)}
+          </span>
+          {time.map((t) => (
+            <div key={t.goal.id} className="time-row xsmall">
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.goal.title}</span>
+              <span className="time-bar" aria-hidden="true">
+                <span style={{ width: `${Math.max(3, (t.minutes / time[0]!.minutes) * 100)}%`, background: t.goal.color }} />
+              </span>
+              <span style={{ textAlign: 'right', color: 'var(--ink-2)' }}>{minutesText(t.minutes)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {insights.map((i) => (
+        <InsightRow key={i.text} insight={i} reviewMonday={reviewMonday} />
+      ))}
+    </div>
+  );
+}
+
+function InsightRow({ insight, reviewMonday }: { insight: Insight; reviewMonday: ISODate }) {
+  const { data, today, commit } = useStore();
+  const toast = useToast();
+  const [confirm, setConfirm] = useState(false);
+  const a = insight.action;
+  const move = a?.kind === 'move-weekday' ? weekdayMove(data, a.weekday, today) : null;
+  return (
+    <div className="stack-sm" style={{ gap: 8, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+      <span className="small" style={{ color: 'var(--ink-2)', lineHeight: 1.45 }}>
+        {insight.text}
+      </span>
+      {a?.kind === 'review' && (
+        <a className="btn small" href={href(`/review/run?kind=weekly&week=${reviewMonday}`)} style={{ alignSelf: 'flex-start' }}>
+          {a.label}
+        </a>
+      )}
+      {move && !confirm && (
+        <button className="btn small" type="button" onClick={() => setConfirm(true)} style={{ alignSelf: 'flex-start' }}>
+          Move {WEEKDAY_LONG[move.from - 1]} tasks to {WEEKDAY_LONG[move.to - 1]}
+        </button>
+      )}
+      {move && confirm && (
+        <div className="note-box stack-sm" style={{ gap: 8 }}>
+          <span className="small">
+            From {weekdayName(move.start)} {shortDate(move.start)}, {move.tasks.map((t) => t.title).join(', ')} move{move.tasks.length === 1 ? 's' : ''} from {WEEKDAY_LONG[move.from - 1]} to{' '}
+            {WEEKDAY_LONG[move.to - 1]}. Earlier weeks keep their days.
+          </span>
+          <div className="btn-row">
+            <button
+              className="btn small primary"
+              type="button"
+              onClick={() => {
+                commit(opsWeekdayMove(data, move, today));
+                setConfirm(false);
+                toast(`Moved to ${WEEKDAY_LONG[move.to - 1]} from ${shortDate(move.start)}`);
+              }}
+            >
+              Move
+            </button>
+            <button className="btn small" type="button" onClick={() => setConfirm(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const KEPT: Record<string, { word: string; ink: string }> = {
+  yes: { word: 'Stuck', ink: 'var(--accent-ink)' },
+  partly: { word: 'Partly', ink: 'var(--ink-2)' },
+  no: { word: "Didn't", ink: 'var(--amber-ink)' },
+};
+
+/** The changes you committed to in weekly reviews and whether they stuck. */
+function ChangesTried({ trail }: { trail: ReturnType<typeof commitmentTrail> }) {
+  const answered = trail.filter((t) => t.kept);
+  const stuck = answered.filter((t) => t.kept === 'yes').length;
+  return (
+    <div className="card stack-sm">
+      <div className="row-between">
+        <span className="label">Changes you tried</span>
+        {answered.length > 0 && (
+          <span className="xsmall muted">
+            {stuck} of {answered.length} stuck
+          </span>
+        )}
+      </div>
+      {trail.map((t) => (
+        <div key={t.review.id} className="list-row" style={{ alignItems: 'flex-start', gap: 10 }}>
+          <span className="mono" style={{ fontSize: 10.5, width: 46, flex: 'none', paddingTop: 2 }}>
+            {shortDate(addDays(t.review.period_start, 7)).toUpperCase()}
+          </span>
+          <span className="small grow" style={{ lineHeight: 1.4 }}>
+            {t.text}
+          </span>
+          <span className="xsmall strong" style={{ flex: 'none', color: t.kept ? KEPT[t.kept]!.ink : 'var(--muted)' }}>
+            {t.kept ? KEPT[t.kept]!.word : t.answered ? 'No answer' : 'In progress'}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** One past review: what it covered, how much got done, and the change it planned (and whether it stuck). */
 export function PastRow({ review: r }: { review: Review }) {
-  const line = r.went_well || r.change_next || r.carry_forward || '';
+  const { data } = useStore();
+  const after = r.kind === 'weekly' ? data.reviews.filter((x) => x.kind === 'weekly' && x.status === 'done' && x.period_start > r.period_start).sort((a, b) => (a.period_start < b.period_start ? -1 : 1))[0] : null;
+  const kept = r.change_next.trim() && after?.commitment_kept ? KEPT[after.commitment_kept]!.word.toLowerCase() : null;
+  const results = r.goal_results ?? [];
+  const hit = results.filter((g) => g.result === 'hit').length;
+  const line = r.change_next.trim()
+    ? `Change: ${r.change_next.trim()}${kept ? ` → ${kept}` : ''}`
+    : r.carry_forward?.trim()
+      ? `Carry over: ${r.carry_forward.trim()}`
+      : r.went_well.trim()
+        ? `Went well: ${r.went_well.trim()}`
+        : '';
   return (
     <a className="list-row" href={href(`/review/past/${r.id}`)} style={{ alignItems: 'center' }}>
       <div className="grow" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div className="row-between small" style={{ gap: 8 }}>
           <b>{reviewTitle(r)}</b>
           <span className="muted" style={{ whiteSpace: 'nowrap' }}>
-            {fmt(r.actions_done, 0)} of {r.actions_planned} done
+            {fmt(r.actions_done, 0)} of {r.actions_planned} done{results.length ? ` · ${hit}/${results.length} goals` : ''}
           </span>
         </div>
-        {line && (
-          <div className="xsmall muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {r.went_well ? `Went well: ${r.went_well}` : r.change_next ? `Next: ${r.change_next}` : `Carry over: ${line}`}
-          </div>
-        )}
+        {line && <div className="xsmall muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line}</div>}
       </div>
       <span style={{ color: 'var(--muted)', flex: 'none', display: 'inline-flex' }}>
         <Icon name="chevron" size={16} stroke={2.2} />
@@ -229,3 +474,4 @@ export function PastRow({ review: r }: { review: Review }) {
     </a>
   );
 }
+

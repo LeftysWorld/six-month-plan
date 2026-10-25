@@ -86,9 +86,13 @@ export function tasksInRange(data: AppData, goalId: string, range: DateRange, st
   return out.sort((a, b) => Number(b.action.priority) - Number(a.action.priority) || a.action.title.localeCompare(b.action.title));
 }
 
-/** Is this a one-day task (a schedule that starts and ends on the same date)? */
+/**
+ * Is this a one-day task? One-day tasks are saved as a single weekday on a single date.
+ * A repeating task whose range happens to be one day long (e.g. "every day this week"
+ * added on a Sunday) is not one: it keeps its days, so editing it can't shrink it.
+ */
 export function isOnce(schedule: ActionSchedule): boolean {
-  return schedule.effective_from === schedule.effective_to;
+  return schedule.effective_from === schedule.effective_to && schedule.rule === 'days' && schedule.days.length === 1;
 }
 
 /** Fixed-day tasks that fall on a date (any goal), with their minutes. */

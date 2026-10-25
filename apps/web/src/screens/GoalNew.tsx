@@ -203,7 +203,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
                   <div className="row-between small">
                     <b>Suggested path</b>
                     <span className="muted">
-                      {fmt(((target! - baseline) / Math.max(1, path.length)))} {unit} / block
+                      {fmt(((target! - baseline) / Math.max(1, path.length)))} {unit} every {Math.round((plan?.block_days ?? 28) / 7)} weeks
                     </span>
                   </div>
                   <WeightChart
