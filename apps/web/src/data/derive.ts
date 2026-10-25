@@ -199,6 +199,16 @@ export class View {
     );
   }
 
+  /**
+   * Can this session go on this date? A task happens at most once a day: a day that already has
+   * that task (planned or logged) can't take another, so missed days can't be made up on one day.
+   * One-offs with no task behind them can go anywhere.
+   */
+  canPlace(session: Session, date: ISODate): boolean {
+    if (!session.action_id) return true;
+    return !this.data.sessions.some((s) => s.id !== session.id && s.action_id === session.action_id && s.date === date && s.status !== 'moved');
+  }
+
   unplacedThisWeek(): Session[] {
     const monday = weekStart(this.today);
     return this.data.sessions.filter((s) => !s.date && s.week_start === monday && s.status === 'planned');

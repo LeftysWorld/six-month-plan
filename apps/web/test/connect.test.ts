@@ -78,3 +78,18 @@ test('a prepared idea can be ready with a shared task instead of its own', () =>
   assert.ok(prepGaps(prep, periods).includes('task'));
   assert.ok(!prepGaps({ ...prep, reuse: ['lift'] }, periods).includes('task'));
 });
+
+test('a task goes on a day at most once, so missed days cannot pile onto one day', () => {
+  const d = base();
+  const session = (id: string, date: string | null, status: AppData['sessions'][number]['status'] = 'planned'): AppData['sessions'][number] => ({
+    id, action_id: 'lift', week_start: '2026-10-19', slot: Number(id.slice(1)), date, title: 'Gym', priority: false, planned_minutes: 60, planned_count: null,
+    status, actual_minutes: null, actual_count: null, note: '', obstacles: [], origin: 'scheduled', source: 'manual', moved_from: null, logged_at: null,
+  });
+  d.sessions = [session('s1', '2026-10-25', 'done'), session('s2', null), session('s3', null)];
+  const view = new View(d, '2026-10-25', 0.5);
+  assert.equal(view.canPlace(d.sessions[1]!, '2026-10-25'), false, 'Sunday already has the gym (done)');
+  assert.equal(view.canPlace(d.sessions[1]!, '2026-10-26'), true, 'Monday is free');
+  assert.equal(view.canPlace(d.sessions[0]!, '2026-10-25'), true, 'a session never blocks itself');
+  const oneOff = { ...d.sessions[1]!, action_id: null };
+  assert.equal(view.canPlace(oneOff, '2026-10-25'), true, 'one-offs can go anywhere');
+});

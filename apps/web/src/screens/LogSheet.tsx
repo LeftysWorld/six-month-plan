@@ -68,7 +68,8 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
   }
 
   const monday = weekStart(session.date ?? today);
-  const moveDates = [...weekDates(monday), ...weekDates(addDays(monday, 7))].filter((d) => d >= today && d !== session.date);
+  // A task happens at most once a day, so days that already have it aren't offered.
+  const moveDates = [...weekDates(monday), ...weekDates(addDays(monday, 7))].filter((d) => d >= today && d !== session.date && view.canPlace(session, d));
 
   return (
     <Sheet title={session.title} onClose={onClose}>

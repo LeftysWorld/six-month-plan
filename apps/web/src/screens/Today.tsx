@@ -55,16 +55,17 @@ export function Today() {
     first: s,
     count: tray.filter((t) => (t.action_id ?? t.id) === (s.action_id ?? s.id)).length,
   }));
-  // Times-a-week tasks with sessions left show on today's list, one row each; logging one puts it on today.
-  const daysLeft = 8 - isoWeekday(today);
-  const trayLeft = new Map(isToday ? trayGroups.map(({ first, count }) => [first.id, count]) : []);
+  // Times-a-week tasks show on today's list once, until one is done or planned today: a task happens
+  // at most once a day, so days you missed earlier in the week can't be made up today.
+  const trayToday = isToday ? trayGroups.filter(({ first }) => view.canPlace(first, today)).map((g) => g.first) : [];
+  const weekOf = (actionId: string | null) => view.sessionsInWeek(weekStart(today)).filter((x) => x.action_id === actionId && x.origin === 'scheduled');
   const hintFor = (s: Session): string | null => {
-    const left = trayLeft.get(s.id);
-    if (left == null) return null;
-    const urgent = left >= daysLeft;
-    return `${left} left this week${urgent ? (daysLeft === 1 ? ' · last day' : ` · ${daysLeft} days left`) : ''}`;
+    if (!s.action_id || s.date) return null;
+    const all = weekOf(s.action_id);
+    const done = all.filter((x) => x.status === 'done' || x.status === 'partial' || x.status === 'minimum').length;
+    return `${done} of ${all.length} this week`;
   };
-  const planned = [...sessions.filter((s) => s.status === 'planned'), ...(isToday ? trayGroups.map((g) => g.first) : [])].sort(
+  const planned = [...sessions.filter((s) => s.status === 'planned'), ...trayToday].sort(
     (a, b) => Number(b.priority) - Number(a.priority),
   );
   const available = data.profile.available_minutes[isoWeekday(day) - 1] ?? 0;
@@ -159,13 +160,14 @@ export function Today() {
     </div>
   );
 
-  const anyDay = !isToday && trayGroups.length > 0 && (
+  const placeable = trayGroups.filter(({ first }) => view.canPlace(first, placeOn));
+  const anyDay = !isToday && placeable.length > 0 && (
     <div className="stack-sm">
       <div className="label" style={{ margin: '6px 2px 0' }}>
         Any day this week
       </div>
       <div className="card tight stack-sm">
-        {trayGroups.map(({ first, count }) => (
+        {placeable.map(({ first, count }) => (
           <div key={first.id} className="row-between">
             <span className="row-start small" style={{ flexWrap: 'nowrap' }}>
               <span className="dot" style={{ background: view.colorFor(first) }} />
@@ -408,6 +410,7 @@ export function StreakDots({ streak }: { streak: Streak }) {
 /** Morning: yesterday's leftovers, today's load against your time, then "Start my day". */
 function MorningPlan({ sessions, available, onDone }: { sessions: Session[]; available: number; onDone: () => void }) {
   const { data, today, commit } = useStore();
+  const view = useView();
   const toast = useToast();
   const yesterday = addDays(today, -1);
   const leftovers = data.sessions.filter((s) => s.date === yesterday && s.status === 'planned');
@@ -427,9 +430,11 @@ function MorningPlan({ sessions, available, onDone }: { sessions: Session[]; ava
           {leftovers.map((s) => (
             <div key={s.id} className="row-between" style={{ gap: 8 }}>
               <span className="small grow" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</span>
-              <button className="btn small" onClick={() => { commit(opsMoveSession(s, today)); toast(`${s.title} moved to today`); }}>
-                Today
-              </button>
+              {view.canPlace(s, today) && (
+                <button className="btn small" onClick={() => { commit(opsMoveSession(s, today)); toast(`${s.title} moved to today`); }}>
+                  Today
+                </button>
+              )}
               <button className="btn small" onClick={() => { commit(opsLogSession(s, { status: 'skipped' })); toast(`${s.title} skipped`); }}>
                 Let go
               </button>
@@ -447,9 +452,15 @@ function MorningPlan({ sessions, available, onDone }: { sessions: Session[]; ava
               <span className="small grow" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {s.title} · {minutesText(s.planned_minutes)}
               </span>
-              <button className="btn small" onClick={() => { commit(opsMoveSession(s, tomorrow)); toast(`${s.title} moved to tomorrow`, () => commit(opsRestoreSession(s))); }}>
-                Tomorrow
-              </button>
+              {view.canPlace(s, tomorrow) ? (
+                <button className="btn small" onClick={() => { commit(opsMoveSession(s, tomorrow)); toast(`${s.title} moved to tomorrow`, () => commit(opsRestoreSession(s))); }}>
+                  Tomorrow
+                </button>
+              ) : (
+                <button className="btn small" onClick={() => { commit(opsLogSession(s, { status: 'skipped' })); toast(`${s.title} skipped today`, () => commit(opsRestoreSession(s))); }}>
+                  Skip today
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -468,9 +479,12 @@ function MorningPlan({ sessions, available, onDone }: { sessions: Session[]; ava
 /** Evening: tick what you did, roll the rest to tomorrow, done. */
 function EveningWrap({ sessions, onDone }: { sessions: Session[]; onDone: () => void }) {
   const { today, commit } = useStore();
+  const view = useView();
   const toast = useToast();
   const open = sessions.filter((s) => s.status === 'planned');
   const tomorrow = addDays(today, 1);
+  // Only tasks that aren't already on tomorrow can roll over; the rest are simply missed today.
+  const movable = open.filter((s) => view.canPlace(s, tomorrow));
   return (
     <div className="tile" style={{ gap: 12 }}>
       <div className="row-between">
@@ -487,20 +501,26 @@ function EveningWrap({ sessions, onDone }: { sessions: Session[]; onDone: () => 
               <button className="btn small" onClick={() => { commit(opsLogSession(s, { status: 'done' })); toast(`${s.title} done`, () => commit(opsRestoreSession(s))); }}>
                 Did it
               </button>
-              <button className="btn small" onClick={() => { commit(opsMoveSession(s, tomorrow)); toast(`${s.title} moved to tomorrow`, () => commit(opsRestoreSession(s))); }}>
-                Tomorrow
-              </button>
+              {movable.includes(s) ? (
+                <button className="btn small" onClick={() => { commit(opsMoveSession(s, tomorrow)); toast(`${s.title} moved to tomorrow`, () => commit(opsRestoreSession(s))); }}>
+                  Tomorrow
+                </button>
+              ) : (
+                <button className="btn small" onClick={() => { commit(opsLogSession(s, { status: 'skipped' })); toast(`${s.title} skipped today`, () => commit(opsRestoreSession(s))); }}>
+                  Skip
+                </button>
+              )}
             </div>
           ))}
-          {open.length > 1 && (
+          {movable.length > 1 && (
             <button
               className="btn small ghost"
               onClick={() => {
-                commit(open.flatMap((s) => opsMoveSession(s, tomorrow)));
-                toast(`Moved ${open.length} to tomorrow`);
+                commit(movable.flatMap((s) => opsMoveSession(s, tomorrow)));
+                toast(`Moved ${movable.length} to tomorrow`);
               }}
             >
-              Move all {open.length} to tomorrow
+              Move {movable.length === open.length ? `all ${open.length}` : `the ${movable.length} that can go`} to tomorrow
             </button>
           )}
         </div>
@@ -763,7 +783,18 @@ export function QuickAdd({ date, onClose }: { date: ISODate; onClose: () => void
             e.preventDefault();
             const a = actions.find((x) => x.id === actionId);
             if (!a) return;
-            commit(opsLogUnplanned(data, a, date <= today ? date : today, logMinutes));
+            const on = date <= today ? date : today;
+            // A task happens at most once a day: use the session already on that day, or one of this
+            // week's "any day" sessions, before adding an extra one.
+            const sameDay = data.sessions.find((x) => x.action_id === a.id && x.date === on && x.status !== 'moved');
+            if (sameDay && sameDay.status !== 'planned') {
+              toast(`${a.title} is already logged ${on === today ? 'today' : `on ${weekdayName(on)}`}`);
+              return;
+            }
+            const anyDay = sameDay ? undefined : data.sessions.find((x) => x.action_id === a.id && !x.date && x.week_start === weekStart(on) && x.status === 'planned');
+            const target = sameDay ?? anyDay;
+            if (target) commit(opsLogSession(target, { status: 'done', actual_minutes: logMinutes, on }));
+            else commit(opsLogUnplanned(data, a, on, logMinutes));
             toast(`Logged ${a.title}`);
             onClose();
           }}
