@@ -188,3 +188,28 @@ test('deleting a goal removes its own tasks and logs, keeps shared tasks for oth
   assert.equal(d.planGoals.length, 0);
   assert.equal(d.groups.length, 0, 'Body had one goal left, so the group is gone');
 });
+
+test('moving goals into a batch keeps tasks and the week goal; an emptied own clock is archived', async () => {
+  const { opsMoveGoals, currentWindow, planMove } = await import('../src/data/move.ts');
+  const { opsStartChain } = await import('../src/data/chain.ts');
+  const today = '2026-10-25';
+  let d = base();
+  const own = { id: 'own', name: 'Work out', start_date: '2026-10-01', end_date: '2027-03-31', block_days: 28, archived_at: null, solo: true } as AppData['plans'][number];
+  const batch = { id: 'batch', name: 'Career & credentials', start_date: '2026-10-19', end_date: '2027-04-18', block_days: 28, archived_at: null } as AppData['plans'][number];
+  d.plans = [own, batch];
+  d.planGoals = [{ id: 'pg1', plan_id: 'own', goal_id: 'gym' }];
+  d = run(d, opsStartChain(d, d.goals[0]!, own, today, { quarter: 'Gym habit locked in', month: 'Twenty sessions', week: 'Five sessions, legs twice' }));
+  const move = planMove(d, d.goals[0]!, batch, today);
+  assert.equal(move.notes.week, 'Five sessions, legs twice', 'the week goal carries over');
+  d = run(d, opsMoveGoals(d, [d.goals[0]!], { kind: 'plan', plan: batch }, today));
+  assert.equal(currentWindow(d, 'gym', today)?.id, 'batch');
+  assert.ok(d.plans.find((p) => p.id === 'own')!.archived_at, 'its old own clock had nothing left, so it is archived');
+  assert.ok(d.actions.some((a) => a.id === 'lift'), 'daily tasks stay');
+  const weekStep = d.planSteps.find((st) => st.plan_id === 'batch' && st.goal_id === 'gym' && st.level === 'week');
+  assert.equal(weekStep?.target_note, 'Five sessions, legs twice');
+  // Moving a whole group onto own clocks gives each goal its own window.
+  d = run(d, opsMoveGoals(d, [d.goals[0]!, d.goals[1]!], { kind: 'own', months: 3 }, today));
+  const w1 = currentWindow(d, 'gym', today)!;
+  const w2 = currentWindow(d, 'weight', today)!;
+  assert.ok(w1.solo && w2.solo && w1.id !== w2.id);
+});

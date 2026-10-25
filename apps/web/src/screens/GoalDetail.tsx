@@ -18,6 +18,7 @@ import { Icon, NumberInput, useToast } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
 import { GoalFiles } from '../components/Attachments.tsx';
 import { GoalGroupCard } from '../components/Connections.tsx';
+import { MoveSheet } from '../components/MoveSheet.tsx';
 
 /**
  * The lower half of the goal page: why it matters, the path chart, milestones,
@@ -28,6 +29,7 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
   const view = useView();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [msTitle, setMsTitle] = useState('');
   const [msDate, setMsDate] = useState(today);
   const plans = view.plansForGoal(goal.id);
@@ -152,7 +154,14 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
       <CompleteGoal goal={goal} />
 
       <div className="row-between xsmall muted">
-        <span>In: {plans.map((p) => p.name).join(', ') || 'no plan'}</span>
+        <span className="row-start" style={{ gap: 6 }}>
+          In: {plans.filter((p) => !p.archived_at && p.end_date >= today).map((p) => (p.solo ? 'its own clock' : p.name)).join(', ') || 'no running window'}
+          {!goal.archived_at && !goal.completed_at && (
+            <button className="link-btn small" onClick={() => setMoving(true)} style={{ padding: '0 4px' }}>
+              Move to…
+            </button>
+          )}
+        </span>
         <button
           className="link-btn small"
           style={{ color: 'var(--danger)' }}
@@ -166,6 +175,7 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
           {goal.archived_at ? 'Restore goal' : 'Archive goal'}
         </button>
       </div>
+      {moving && <MoveSheet goals={[goal]} onClose={() => setMoving(false)} />}
     </>
   );
 }

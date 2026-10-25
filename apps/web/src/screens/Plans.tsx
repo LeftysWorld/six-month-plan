@@ -18,6 +18,8 @@ import {
 import { useStore } from '../data/store.tsx';
 import { AddToGroupSheet, GroupNameSheet, GroupSheet, sharedTasksOf } from '../components/Connections.tsx';
 import { opsAddToGroup, opsRemoveFromGroup } from '../data/groups.ts';
+import { MoveSheet } from '../components/MoveSheet.tsx';
+import { currentWindow, type Destination } from '../data/move.ts';
 import { runningSchedule } from '../data/connect.ts';
 import { fmt, useView, type View } from '../data/derive.ts';
 import { opsArchivePlan, opsCreatePlan } from '../data/ops.ts';
@@ -124,8 +126,19 @@ export function Plans() {
   const [naming, setNaming] = useState<Goal[] | null>(null);
   const [openGroup, setOpenGroup] = useState<GoalGroup | null>(null);
   const [moving, setMoving] = useState<Goal | null>(null);
-  const dnd = useGoalDrag((goal, target) => {
+  const [movingGoals, setMovingGoals] = useState<{ goals: Goal[]; title?: string; dest: Destination | null } | null>(null);
+  const dnd = useGoalDrag((d, target) => {
+    const goal = d.goal;
     const [kind, id] = target.split(':') as [string, string | undefined];
+    if (kind === 'plan' && id) {
+      const plan = data.plans.find((x) => x.id === id);
+      if (plan) setMovingGoals({ goals: d.goals, title: d.group?.name, dest: { kind: 'plan', plan } });
+      return;
+    }
+    if (kind === 'own') {
+      setMovingGoals({ goals: d.goals, title: d.group?.name, dest: { kind: 'own', months: 6 } });
+      return;
+    }
     if (kind === 'goal' && id) {
       const other = data.goals.find((g) => g.id === id);
       if (!other) return;
@@ -195,18 +208,32 @@ export function Plans() {
       )}
 
       {sections.map(({ plan }) => (
-        <PlanLine key={plan.id} plan={plan} today={today} onMenu={() => setMenuFor(plan)} />
+        <PlanLine key={plan.id} plan={plan} today={today} onMenu={() => setMenuFor(plan)} goalIds={placed.filter((p) => p.plan.id === plan.id).map((p) => p.card.goal.id)} over={dnd.drag?.target === `plan:${plan.id}`} dragging={!!dnd.drag} />
       ))}
 
       {groups.map(({ group, members }) => (
-        <GroupCard key={group.id} group={group} members={members} dnd={dnd} onOpen={() => setOpenGroup(group)} onMove={setMoving} />
+        <GroupCard
+          key={group.id}
+          group={group}
+          members={members}
+          dnd={dnd}
+          onOpen={() => setOpenGroup(group)}
+          onMove={setMoving}
+          onMoveGroup={() => setMovingGoals({ goals: members.map((m) => m.card.goal), title: group.name, dest: null })}
+        />
       ))}
 
-      {(looseShown.length > 0 || dnd.drag?.goal.group_id) && (
+      {dnd.drag && (
+        <div className={`own-drop${dnd.drag.target === 'own' ? ' drop-on' : ''}`} data-drop="own">
+          Drop here to put {dnd.drag.group ? `${dnd.drag.group.name}'s goals each` : dnd.drag.goal.title} on {dnd.drag.group ? 'their' : 'its'} own clock
+        </div>
+      )}
+
+      {(looseShown.length > 0 || (!dnd.drag?.group && dnd.drag?.goal.group_id)) && (
         <section className={`loose-goals${dnd.drag?.target === 'loose' ? ' drop-on' : ''}`} data-drop="loose" aria-label="Not in a group">
           <div className="row-between" style={{ gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{groups.length ? 'Not in a group' : 'Your goals'}</span>
-            <span className="xsmall muted">{dnd.drag?.goal.group_id ? `Drop here to take ${dnd.drag.goal.title} out of its group` : 'Drag a goal onto another to group them'}</span>
+            <span className="xsmall muted">{!dnd.drag?.group && dnd.drag?.goal.group_id ? `Drop here to take ${dnd.drag.goal.title} out of its group` : 'Drag a goal onto another to group them, or onto a batch to move it'}</span>
           </div>
           <div className="loose-tiles">
             {looseShown.map((m) => (
@@ -219,7 +246,7 @@ export function Plans() {
       {dnd.drag && (
         <div className="drag-ghost" style={{ left: dnd.drag.x, top: dnd.drag.y }} aria-hidden="true">
           <span className="dot" style={{ background: dnd.drag.goal.color, marginRight: 8 }} />
-          {dnd.drag.goal.title}
+          {dnd.drag.group ? `${dnd.drag.group.name} · ${dnd.drag.goals.length} goals` : dnd.drag.goal.title}
           {dnd.drag.target && <span className="drag-ghost-hint">{dropHint(dnd.drag)}</span>}
         </div>
       )}
@@ -238,12 +265,15 @@ export function Plans() {
       {naming && <GroupNameSheet goals={naming} onClose={() => setNaming(null)} />}
       {openGroup && <GroupSheet group={openGroup} onClose={() => setOpenGroup(null)} />}
       {moving && <AddToGroupSheet goal={moving} onClose={() => setMoving(null)} />}
+      {movingGoals && <MoveSheet goals={movingGoals.goals} title={movingGoals.title} initial={movingGoals.dest} onClose={() => setMovingGoals(null)} />}
     </div>
   );
 }
 
 /** What letting go would do, shown on the dragged card. */
 function dropHint(d: GoalDrag): string {
+  if (d.target?.startsWith('plan:')) return 'Move into this batch';
+  if (d.target === 'own') return d.group ? 'Each on its own clock' : 'Put on its own clock';
   if (d.target === 'loose') return 'Take out of its group';
   if (d.target?.startsWith('group:')) return 'Add to this group';
   return 'Make a group';
@@ -262,7 +292,7 @@ interface GoalCardData {
 }
 
 /** The plan in one line: name (opens the plan menu), day count, a thin timeline, month and checkpoint. */
-function PlanLine({ plan, today, onMenu }: { plan: Plan; today: ISODate; onMenu: () => void }) {
+function PlanLine({ plan, today, onMenu, goalIds = [], over = false, dragging = false }: { plan: Plan; today: ISODate; onMenu: () => void; goalIds?: string[]; over?: boolean; dragging?: boolean }) {
   const started = plan.start_date <= today;
   const total = Math.max(1, daysBetween(plan.start_date, plan.end_date));
   const pos = (d: ISODate) => Math.max(0, Math.min(100, (daysBetween(plan.start_date, d) / total) * 100));
@@ -271,7 +301,7 @@ function PlanLine({ plan, today, onMenu }: { plan: Plan; today: ISODate; onMenu:
   const monthLeft = daysBetween(today, month.end);
   const used = started ? pos(today) : 0;
   return (
-    <div className="stack-sm" style={{ gap: 8 }}>
+    <div className={`plan-line${dragging ? ' droppable' : ''}${over ? ' drop-on' : ''}`} data-drop={`plan:${plan.id}`} data-goals={goalIds.join(',')}>
       <div className="row-between" style={{ gap: 10 }}>
         <button
           type="button"
@@ -300,6 +330,7 @@ function PlanLine({ plan, today, onMenu }: { plan: Plan; today: ISODate; onMenu:
           <span style={{ color: 'var(--gold)' }}>◆</span> Checkpoint {shortDate(checkpoint)}
         </span>
       </div>
+      {dragging && <span className="xsmall" style={{ color: over ? 'var(--accent-ink)' : 'var(--muted)', fontWeight: over ? 600 : 400 }}>{over ? `Release to move into ${plan.name}` : 'Drop here to move into this batch'}</span>}
     </div>
   );
 }
@@ -342,32 +373,48 @@ interface Placed {
   own: boolean;
 }
 
-/** What's being dragged and where it would land: on a goal, a group, or "not in a group". */
+/** What's being dragged (a goal, or a whole group) and where it would land. */
 interface GoalDrag {
+  /** The goal being dragged, or the group's first goal (for its colour) when a group is. */
   goal: Goal;
+  group: GoalGroup | null;
+  /** Every goal that moves: just the goal, or all of the group's goals. */
+  goals: Goal[];
   x: number;
   y: number;
   target: string | null;
 }
 
+type DragWhat = Pick<GoalDrag, 'goal' | 'group' | 'goals'>;
+
 /**
  * Drag goals like phone apps: grab the handle (or press and hold a card on a touch screen, or
- * drag it a few pixels with a mouse). Drop targets carry data-drop: "goal:<id>", "group:<id>"
- * or "loose". Returns the drag state and the handlers the cards need.
+ * drag it a few pixels with a mouse). A group drags by its handle too. Drop targets carry
+ * data-drop: "goal:<id>", "group:<id>" and "loose" (for goals), "plan:<id>" and "own" (for goals
+ * and groups). A batch line lists the goals already in it (data-goals), so dropping them there
+ * again does nothing.
  */
-function useGoalDrag(onDrop: (goal: Goal, target: string) => void) {
+function useGoalDrag(onDrop: (d: GoalDrag, target: string) => void) {
   const [drag, setDrag] = useState<GoalDrag | null>(null);
   const dragRef = useRef<GoalDrag | null>(null);
-  const pending = useRef<{ goal: Goal; x: number; y: number; touch: boolean; timer: number | null } | null>(null);
+  const pending = useRef<{ what: DragWhat; x: number; y: number; touch: boolean; handle: boolean; timer: number | null } | null>(null);
   const off = useRef<(() => void) | null>(null);
   const suppress = useRef(false);
   const dropRef = useRef(onDrop);
   dropRef.current = onDrop;
 
-  const targetAt = (x: number, y: number, goal: Goal): string | null => {
+  const targetAt = (x: number, y: number, what: DragWhat): string | null => {
     const el = document.elementFromPoint(x, y)?.closest('[data-drop]') as HTMLElement | null;
     const t = el?.dataset.drop ?? null;
-    if (!t || t === `goal:${goal.id}`) return null;
+    if (!t) return null;
+    if (t.startsWith('plan:')) {
+      const there = new Set((el?.dataset.goals ?? '').split(',').filter(Boolean));
+      return what.goals.every((g) => there.has(g.id)) ? null : t;
+    }
+    if (t === 'own') return t;
+    if (what.group) return null; // a group only goes into a batch or onto own clocks
+    const goal = what.goal;
+    if (t === `goal:${goal.id}`) return null;
     if (t === `group:${goal.group_id}`) return null; // already in it
     if (t === 'loose' && !goal.group_id) return null; // already on its own
     return t;
@@ -378,8 +425,8 @@ function useGoalDrag(onDrop: (goal: Goal, target: string) => void) {
     off.current?.();
     off.current = null;
   };
-  const begin = (goal: Goal, x: number, y: number) => {
-    const d = { goal, x, y, target: targetAt(x, y, goal) };
+  const begin = (what: DragWhat, x: number, y: number) => {
+    const d: GoalDrag = { ...what, x, y, target: targetAt(x, y, what) };
     dragRef.current = d;
     suppress.current = true;
     setDrag(d);
@@ -389,15 +436,15 @@ function useGoalDrag(onDrop: (goal: Goal, target: string) => void) {
       /* no vibration */
     }
   };
-  /** From the card: hold (touch) or move a few pixels (mouse). From the handle: any small move. */
-  const start = (e: ReactPointerEvent<HTMLElement>, goal: Goal, handle = false) => {
+  /** From a card: hold (touch) or move a few pixels (mouse). From a handle: any small move. */
+  const start = (e: ReactPointerEvent<HTMLElement>, what: DragWhat, handle = false) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     stop();
     const touch = e.pointerType !== 'mouse' && !handle;
-    const p = { goal, x: e.clientX, y: e.clientY, touch, timer: null as number | null };
+    const p = { what, x: e.clientX, y: e.clientY, touch, handle, timer: null as number | null };
     pending.current = p;
     suppress.current = false;
-    if (touch) p.timer = window.setTimeout(() => pending.current === p && begin(goal, p.x, p.y), 320);
+    if (touch) p.timer = window.setTimeout(() => pending.current === p && begin(what, p.x, p.y), 320);
     const move = (ev: PointerEvent) => {
       const q = pending.current;
       if (!dragRef.current && q) {
@@ -406,8 +453,8 @@ function useGoalDrag(onDrop: (goal: Goal, target: string) => void) {
           if (dist > 10) stop(); // scrolling, not dragging
           return;
         }
-        if (dist < (handle ? 4 : 6)) return;
-        begin(q.goal, ev.clientX, ev.clientY);
+        if (dist < (q.handle ? 4 : 6)) return;
+        begin(q.what, ev.clientX, ev.clientY);
       }
       const d = dragRef.current;
       if (!d) return;
@@ -415,7 +462,7 @@ function useGoalDrag(onDrop: (goal: Goal, target: string) => void) {
       window.getSelection()?.removeAllRanges();
       if (ev.clientY < 72) window.scrollBy(0, -12);
       else if (ev.clientY > window.innerHeight - 72) window.scrollBy(0, 12);
-      const next = { ...d, x: ev.clientX, y: ev.clientY, target: targetAt(ev.clientX, ev.clientY, d.goal) };
+      const next = { ...d, x: ev.clientX, y: ev.clientY, target: targetAt(ev.clientX, ev.clientY, d) };
       dragRef.current = next;
       setDrag(next);
     };
@@ -424,7 +471,7 @@ function useGoalDrag(onDrop: (goal: Goal, target: string) => void) {
       dragRef.current = null;
       stop();
       setDrag(null);
-      if (d?.target) dropRef.current(d.goal, d.target);
+      if (d?.target) dropRef.current(d, d.target);
     };
     const cancel = () => {
       dragRef.current = null;
@@ -514,7 +561,7 @@ function GoalTile({ placed, dnd, compact = false, onMove }: { placed: Placed; dn
   const week = chain.week;
   const weekText = isSet(week) ? [week.step?.target_value != null ? `${fmt(week.step.target_value)} ${goal.unit ?? ''}`.trim() : '', week.step?.target_note.trim() ?? ''].filter(Boolean).join(' · ') : '';
   const age = goal.type === 'number' && started ? readingAge(view, goal, today) : 0;
-  const dragging = dnd.drag?.goal.id === goal.id;
+  const dragging = !dnd.drag?.group && dnd.drag?.goal.id === goal.id;
   const over = dnd.drag?.target === `goal:${goal.id}`;
 
   const addExtra = (n: number) => {
@@ -532,7 +579,7 @@ function GoalTile({ placed, dnd, compact = false, onMove }: { placed: Placed; dn
       data-drop={goal.group_id ? undefined : `goal:${goal.id}`}
       onPointerDown={(e) => {
         if ((e.target as HTMLElement).closest('button:not(.goal-grip), input, select, textarea')) return;
-        dnd.start(e, goal);
+        dnd.start(e, { goal, group: null, goals: [goal] });
       }}
     >
       <div className="goal-tile-head">
@@ -542,7 +589,7 @@ function GoalTile({ placed, dnd, compact = false, onMove }: { placed: Placed; dn
           aria-label={`Drag ${goal.title} onto another goal or a group. Or press to choose a group.`}
           onPointerDown={(e) => {
             e.stopPropagation();
-            dnd.start(e, goal, true);
+            dnd.start(e, { goal, group: null, goals: [goal] }, true);
           }}
           onClick={() => !dnd.consumeClick() && onMove(goal)}
         >
@@ -597,16 +644,29 @@ function GoalTile({ placed, dnd, compact = false, onMove }: { placed: Placed; dn
 }
 
 /** A group of goals, like a phone folder: its name, its goals side by side and the tasks they share. */
-function GroupCard({ group, members, dnd, onOpen, onMove }: { group: GoalGroup; members: Placed[]; dnd: DragApi; onOpen: () => void; onMove: (g: Goal) => void }) {
+function GroupCard({ group, members, dnd, onOpen, onMove, onMoveGroup }: { group: GoalGroup; members: Placed[]; dnd: DragApi; onOpen: () => void; onMove: (g: Goal) => void; onMoveGroup: () => void }) {
   const view = useView();
   const { today } = useStore();
   const shared = sharedTasksOf(view, members.map((m) => m.card.goal));
   const over = dnd.drag?.target === `group:${group.id}`;
+  const lifted = dnd.drag?.group?.id === group.id;
   return (
-    <section className={`group-card${over ? ' drop-on' : ''}`} data-drop={`group:${group.id}`} aria-label={`Group: ${group.name}`}>
+    <section className={`group-card${over ? ' drop-on' : ''}${lifted ? ' lifted' : ''}`} data-drop={`group:${group.id}`} aria-label={`Group: ${group.name}`}>
       <div className="group-card-side">
-        <div className="row-between" style={{ gap: 8 }}>
-          <button type="button" className="group-card-name" onClick={onOpen} aria-label={`Open ${group.name}`}>
+        <div className="row-start" style={{ gap: 4, flexWrap: 'nowrap' }}>
+          <button
+            type="button"
+            className="goal-grip"
+            aria-label={`Drag ${group.name} onto a batch to move its goals`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              dnd.start(e, { goal: members[0]!.card.goal, group, goals: members.map((m) => m.card.goal) }, true);
+            }}
+            onClick={() => !dnd.consumeClick() && onMoveGroup()}
+          >
+            {GRIP}
+          </button>
+          <button type="button" className="group-card-name" onClick={onOpen} aria-label={`Open ${group.name}`} style={{ flex: 1 }}>
             {group.name}
             <Icon name="chevron" size={16} stroke={2.4} />
           </button>
@@ -690,6 +750,12 @@ function BatchMenu({ plan, onClose }: { plan: Plan; onClose: () => void }) {
   const toast = useToast();
   const goals = view.goalsForPlan(plan.id);
   const past = data.plans.filter((p) => !p.solo && (p.archived_at || p.end_date < today));
+  const [adding, setAdding] = useState<{ goals: Goal[]; title?: string } | null>(null);
+  // Goals running somewhere else now, and groups with any goal outside this batch.
+  const elsewhere = view.activeGoals.filter((g) => currentWindow(data, g.id, today)?.id !== plan.id);
+  const groupsOut = data.groups
+    .map((gr) => ({ gr, members: view.activeGoals.filter((g) => g.group_id === gr.id) }))
+    .filter(({ members }) => members.length > 1 && members.some((g) => currentWindow(data, g.id, today)?.id !== plan.id));
   return (
     <Sheet title={plan.name} onClose={onClose}>
       <span className="small muted" style={{ marginTop: -8 }}>
@@ -698,6 +764,39 @@ function BatchMenu({ plan, onClose }: { plan: Plan; onClose: () => void }) {
       <p className="small" style={{ margin: 0, color: 'var(--ink-2)' }}>
         Goals join a batch when you commit them from the backlog. They share its 3-month checkpoint and its reviews; one that joins part-way through simply has less time.
       </p>
+      {(elsewhere.length > 0 || groupsOut.length > 0) && (
+        <div className="stack-sm">
+          <span className="label">Add goals</span>
+          <span className="xsmall muted">Moves a goal here from where it runs now. Its daily tasks and history stay. On the Goals page you can also drag a goal or a group onto this batch.</span>
+          {groupsOut.map(({ gr, members }) => (
+            <div key={gr.id} className="list-row" style={{ gap: 8 }}>
+              <span className="grow">
+                <span className="small strong" style={{ display: 'block' }}>
+                  {gr.name}
+                </span>
+                <span className="xsmall muted">Group · {members.map((g) => g.title).join(', ')}</span>
+              </span>
+              <button className="btn small" onClick={() => setAdding({ goals: members, title: gr.name })}>
+                Move here
+              </button>
+            </div>
+          ))}
+          {elsewhere.map((g) => (
+            <div key={g.id} className="list-row" style={{ gap: 8 }}>
+              <span className="dot" style={{ background: g.color }} />
+              <span className="grow">
+                <span className="small strong" style={{ display: 'block' }}>
+                  {g.title}
+                </span>
+                <span className="xsmall muted">Now in {(() => { const w = currentWindow(data, g.id, today); return w ? (w.solo ? 'its own clock' : w.name) : 'no window'; })()}</span>
+              </span>
+              <button className="btn small" onClick={() => setAdding({ goals: [g] })}>
+                Move here
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {past.length > 0 && (
         <details>
           <summary className="label" style={{ cursor: 'pointer', minHeight: 32, display: 'flex', alignItems: 'center' }}>
@@ -723,6 +822,7 @@ function BatchMenu({ plan, onClose }: { plan: Plan; onClose: () => void }) {
       >
         Archive {plan.name}
       </button>
+      {adding && <MoveSheet goals={adding.goals} title={adding.title} initial={{ kind: 'plan', plan }} onClose={() => setAdding(null)} />}
     </Sheet>
   );
 }
