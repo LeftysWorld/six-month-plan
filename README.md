@@ -6,7 +6,7 @@ A personal web app for a six-month plan: goals at the top, today's list at the b
 
 Three places, one job each: **Today** to do, **Goals** to see and shape, **Review** to reflect.
 
-- **Today** (opens here): this week's days, a big done count, the **Up next** task with a start button, a one-line coach note, and your list. Tap the circle to check a task off (with Undo), tap the row for the log sheet (done, partial, minimum kept, skip, obstacles, move to another day, start a timer), or swipe left on a phone to finish it.
+- **Today** (opens here): this week's days, a big done count, the **Up next** task with a button to check it off, a one-line coach note, and your list. Tap the circle to check a task off (with Undo), tap the row for the log sheet (done, partial, minimum kept, skip, obstacles, minutes spent, move to another day), or swipe left on a phone to finish it.
   - **Check-in streak** that survives real life: logging any one thing counts, 2 freezes cover missed days, every 7 check-ins earns a freeze back, and a missed day can be earned back by logging 2 things the next day ("never miss twice").
   - **Morning plan** (before noon): yesterday's leftovers and a capacity check, with "move to tomorrow". **Evening wrap-up** (after 6 pm): tick what you did, roll the rest to tomorrow.
   - **Quick add** in plain words: "guitar 20m mon wed fri #guitar", "call mom tomorrow !", "stretch 10m daily".
@@ -27,7 +27,7 @@ Three places, one job each: **Today** to do, **Goals** to see and shape, **Revie
   - Mark a goal complete from its page (with a note on how it ended) or rate it Achieved in the retrospective; it moves to Completed with what it took, and can be reopened.
   - The Review tab shows the weekly review (with an honest time estimate) or, once done, next week at a glance; the change you committed to (also on Today, with an On it / Slipping check); a goals × weeks scorecard with week-goal results; insights with fixes (such as moving tasks off a weekday that keeps getting missed) and where your time went; the changes you've tried and whether they stuck; the next review; and past reviews.
   - A plan that starts Friday to Sunday folds its first few days into week 2 for review counts, averages and trends.
-- **Workout log** (sets × reps × weight, starts from your last workout) and a **focus timer** for any task (survives reloads).
+- **Workout log** (sets × reps × weight, starts from your last workout). There's no countdown or focus timer: you log what you did, including minutes, from the log sheet.
 - **Reminders** (see below): a morning push and an evening "keep your streak" push when the site is installed on your home screen, or a calendar feed. Open tasks also show in the browser tab title and on the home-screen icon.
 - **On a computer**: two-column layouts and keyboard shortcuts (N add, T Today, G Goals, R Review, ← → change day).
 - **Settings**: name, time zone, units, appearance (match device, dark, light), reminders, minutes available per weekday, export JSON/CSV, start from scratch.

@@ -85,14 +85,14 @@ export function Today() {
   function openSession(s: Session) {
     const kind = view.action(s.action_id)?.kind;
     if (!isFuture && kind === 'workout') navigate(`/workout/${s.id}`);
-    else if (!isFuture && kind === 'study') navigate(`/focus/${s.id}`);
     else setOpen(s);
   }
 
-  /** The play button: a workout opens the workout log; anything else starts the focus timer. */
+  /** The Up next button: a workout opens the workout log; anything else is checked off. */
   function start(s: Session) {
     const kind = view.action(s.action_id)?.kind;
-    navigate(kind === 'workout' ? `/workout/${s.id}` : `/focus/${s.id}`);
+    if (kind === 'workout' && !isFuture) navigate(`/workout/${s.id}`);
+    else toggle(s);
   }
 
   // Progress segments fill from the left: done, then partly done, then still to do.
@@ -475,9 +475,10 @@ function EveningWrap({ sessions, onDone }: { sessions: Session[]; onDone: () => 
   );
 }
 
-/** The focus card: the next thing to do, with a big start button. */
+/** The Up next card: the next thing to do, with a big button to check it off (or open the workout log). */
 function UpNext({ session, onStart, onOpen }: { session: Session; onStart: () => void; onOpen: () => void }) {
   const view = useView();
+  const isWorkout = view.action(session.action_id)?.kind === 'workout';
   const goal = view.goalsForAction(session.action_id)[0];
   const s = session;
   return (
@@ -496,10 +497,16 @@ function UpNext({ session, onStart, onOpen }: { session: Session; onStart: () =>
           </span>
         )}
       </button>
-      <button type="button" className="play-btn" aria-label={`Start ${s.title}`} onClick={onStart}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z" />
-        </svg>
+      <button type="button" className="play-btn" aria-label={isWorkout ? `Log ${s.title}` : `Mark ${s.title} done`} onClick={onStart}>
+        {isWorkout ? (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z" />
+          </svg>
+        ) : (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M5 12.5l4.5 4.5L19 7.5" />
+          </svg>
+        )}
       </button>
     </div>
   );

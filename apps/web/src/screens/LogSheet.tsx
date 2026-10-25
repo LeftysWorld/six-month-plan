@@ -64,15 +64,15 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
           {action?.cue ? ` · ${action.cue}` : ''}
         </div>
       )}
-      {session.status === 'planned' && (session.date ?? today) <= today && !moving && (
+      {action?.kind === 'workout' && session.status === 'planned' && (session.date ?? today) <= today && !moving && (
         <button
           className="btn"
           onClick={() => {
             onClose();
-            navigate(action?.kind === 'workout' ? `/workout/${session.id}` : `/focus/${session.id}`);
+            navigate(`/workout/${session.id}`);
           }}
         >
-          Start a timer{session.planned_minutes ? ` · ${session.planned_minutes} min` : ''}
+          Log sets and reps
         </button>
       )}
       {moving ? (

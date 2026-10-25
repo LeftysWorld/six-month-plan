@@ -23,7 +23,7 @@ const KINDS: { value: ActionKind; label: string; hint: string }[] = [
   { value: 'count', label: 'Count', hint: 'e.g. 3 applications' },
   { value: 'check', label: 'Just do it', hint: 'Done or not' },
   { value: 'workout', label: 'Workout', hint: 'Sets, reps, weight' },
-  { value: 'study', label: 'Study', hint: 'Timer and modules' },
+  { value: 'study', label: 'Study', hint: 'Hours toward a course' },
 ];
 
 /** Fields for a regular action: what, how much, how often, and the minimum version. */
