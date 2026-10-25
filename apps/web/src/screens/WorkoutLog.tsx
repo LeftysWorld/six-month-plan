@@ -5,6 +5,7 @@ import { useView } from '../data/derive.ts';
 import { opsLogSession, opsSaveWorkout } from '../data/ops.ts';
 import { navigate } from '../router.ts';
 import { BackLink, Empty, Icon, useToast } from '../components/ui.tsx';
+import { SessionFiles } from '../components/Attachments.tsx';
 
 interface SetDraft {
   weight: number | null;
@@ -175,6 +176,10 @@ export function WorkoutLog({ id }: { id: string }) {
           Add
         </button>
       </form>
+
+      <div className="card stack-sm">
+        <SessionFiles session={session} />
+      </div>
 
       <div className="btn-row">
         <button className="btn" onClick={() => save('partial')}>
