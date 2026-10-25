@@ -95,6 +95,9 @@ export function Flow({ goalId }: { goalId: string }) {
         <div className="row-start" style={{ gap: 10, flexWrap: 'nowrap' }}>
           <span className="dot" style={{ width: 11, height: 11, flex: 'none', background: goal.color }} />
           <h1 style={{ margin: 0 }}>{goal.title}</h1>
+          <button type="button" className="icon-btn title-edit" onClick={() => setEditing('goal')} aria-label="Edit goal name">
+            <Icon name="edit" size={17} />
+          </button>
         </div>
         <span className="small row-start" style={{ gap: 6, color: 'var(--muted)' }}>
           <span>{windowName}</span>
@@ -185,13 +188,18 @@ function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: (
   const { data, commit } = useStore();
   const toast = useToast();
   const [title, setTitle] = useState(goal.title);
+  const [why, setWhy] = useState(goal.why);
   const [done, setDone] = useState(goal.done_means);
   const [target, setTarget] = useState<number | null>(goal.target_value);
   return (
-    <Sheet title="6-month goal" onClose={onClose}>
+    <Sheet title="Edit goal" onClose={onClose}>
       <label className="field">
-        Goal
-        <input value={title} onChange={(e) => setTitle(e.target.value)} />
+        Name
+        <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="What you're working toward" />
+      </label>
+      <label className="field">
+        Why it matters
+        <textarea rows={2} value={why} onChange={(e) => setWhy(e.target.value)} placeholder="One line for the hard days" />
       </label>
       {goal.type === 'number' && (
         <label className="field">
@@ -206,7 +214,7 @@ function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: (
       <button
         className="btn primary"
         onClick={() => {
-          let ops = opsUpdateGoal(goal, { title: title.trim() || goal.title, done_means: done.trim(), ...(goal.type === 'number' ? { target_value: target } : {}) });
+          let ops = opsUpdateGoal(goal, { title: title.trim() || goal.title, why: why.trim(), done_means: done.trim(), ...(goal.type === 'number' ? { target_value: target } : {}) });
           if (goal.type === 'number' && target !== goal.target_value) {
             const now = new Date().toISOString();
             ops = [...ops, ...currentTargets(data.goalTargets, goal.id).map((t) => ({ kind: 'update', collection: 'goalTargets', id: t.id, patch: { superseded_at: now } }) as const)];
