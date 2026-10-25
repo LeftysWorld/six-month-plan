@@ -209,7 +209,9 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
       const draft = localStorage.getItem(draftKey(session.id));
       const parsed = draft ? (JSON.parse(draft) as Row[][]) : null;
       // A draft only fits if the plan still has the same exercises and sets.
-      if (parsed && parsed.length === plan.length && parsed.every((r, i) => r.length >= plan[i]!.sets)) return parsed;
+      if (parsed && parsed.length === plan.length && parsed.every((r, i) => r.length >= plan[i]!.sets)) {
+        return parsed.map((r, i) => r.map((x) => (x.done ? x : { ...x, weight: x.weight || (suggestions[i]!.weight == null ? '' : String(suggestions[i]!.weight)), reps: x.reps || String(plan[i]!.reps_max) })));
+      }
     } catch {
       // no draft
     }
@@ -217,7 +219,10 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
       // Extra sets you added last time you saved come back too.
       Array.from({ length: Math.max(e.sets, ...saved.filter((w) => w.exercise.toLowerCase() === e.name.toLowerCase()).map((w) => w.set_no)) }, (_, k) => {
         const s = saved.find((w) => w.exercise.toLowerCase() === e.name.toLowerCase() && w.set_no === k + 1);
-        return s ? { weight: s.weight == null ? '' : String(s.weight), reps: s.reps == null ? '' : String(s.reps), done: s.done } : { weight: '', reps: '', done: false };
+        if (s) return { weight: s.weight == null ? '' : String(s.weight), reps: s.reps == null ? '' : String(s.reps), done: s.done };
+        // Start from the plan: weight (or last time's) and the top of the rep range, ready to tick or type over.
+        const w = suggestions[plan.indexOf(e)]!.weight;
+        return { weight: w == null ? '' : String(w), reps: String(e.reps_max), done: false };
       }),
     );
   });
@@ -285,7 +290,7 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
     if (p) setRow(i, k, { weight: p.weight == null ? '' : String(p.weight), reps: p.reps == null ? '' : String(p.reps) });
   };
   /** One more set on an exercise, starting from the weight of its last set. */
-  const addSet = (i: number) => setRows((all) => all.map((r, a) => (a === i ? [...r, { weight: r.at(-1)?.weight ?? '', reps: '', done: false }] : r)));
+  const addSet = (i: number) => setRows((all) => all.map((r, a) => (a === i ? [...r, { weight: r.at(-1)?.weight ?? '', reps: r.at(-1)?.reps ?? String(plan[i]!.reps_max), done: false }] : r)));
   const removeSet = (i: number, k: number) => setRows((all) => all.map((r, a) => (a === i ? r.filter((_, b) => b !== k) : r)));
   const [another, setAnother] = useState(false);
   const workouts = data.actions.filter((a) => !a.archived_at && a.kind === 'workout' && a.workout_plan?.length);
@@ -407,30 +412,40 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
                             <button type="button" className="workout-prev num" disabled={!p || future} onClick={() => copyPrevious(i, k)} aria-label={p ? `Copy last time: ${p.weight ?? 'bodyweight'} by ${p.reps}` : 'No previous set'}>
                               {p ? `${p.weight == null ? 'BW' : fmt(p.weight)} × ${p.reps ?? '?'}` : '—'}
                             </button>
-                            <input
-                              className="input"
-                              type="number"
-                              inputMode="decimal"
-                              step="any"
-                              aria-label={`${e.name} set ${k + 1} weight`}
-                              disabled={future}
-                              placeholder={planWeight(i) != null ? fmt(planWeight(i)!) : /body/i.test(e.weight_note) ? 'BW' : '—'}
-                              value={r.weight}
-                              onChange={(x) => setRow(i, k, { weight: x.target.value })}
-                            />
-                            <input
-                              className="input"
-                              type="number"
-                              inputMode="numeric"
-                              aria-label={`${e.name} set ${k + 1} reps (${repsText(e)})`}
-                              disabled={future}
-                              placeholder={String(e.reps_max)}
-                              value={r.reps}
-                              onChange={(x) => setRow(i, k, { reps: x.target.value })}
-                            />
-                            <button type="button" className={`set-tick${r.done ? ' on' : ''}`} aria-pressed={r.done} aria-label={`Set ${k + 1} done`} disabled={future} onClick={() => tick(i, k)}>
+                            {future ? (
+                              <>
+                                <span className="workout-cell num">{r.weight || (/body/i.test(e.weight_note) ? 'BW' : '—')}</span>
+                                <span className="workout-cell num">{r.reps}</span>
+                              </>
+                            ) : (
+                              <>
+                                <input
+                                  className="input"
+                                  type="number"
+                                  inputMode="decimal"
+                                  step="any"
+                                  aria-label={`${e.name} set ${k + 1} weight`}
+                                  placeholder={/body/i.test(e.weight_note) ? 'BW' : '—'}
+                                  value={r.weight}
+                                  onFocus={(x) => x.target.select()}
+                                  onChange={(x) => setRow(i, k, { weight: x.target.value })}
+                                />
+                                <input
+                                  className="input"
+                                  type="number"
+                                  inputMode="numeric"
+                                  aria-label={`${e.name} set ${k + 1} reps (${repsText(e)})`}
+                                  value={r.reps}
+                                  onFocus={(x) => x.target.select()}
+                                  onChange={(x) => setRow(i, k, { reps: x.target.value })}
+                                />
+                              </>
+                            )}
+                            {!future && (
+                              <button type="button" className={`set-tick${r.done ? ' on' : ''}`} aria-pressed={r.done} aria-label={`Set ${k + 1} done`} onClick={() => tick(i, k)}>
                               <Icon name="check" size={16} stroke={2.6} />
                             </button>
+                            )}
                             {k >= e.sets && !r.done && (
                               <button type="button" className="link-btn xsmall workout-remove-set" onClick={() => removeSet(i, k)} aria-label={`Remove set ${k + 1}`}>
                                 Remove extra set
@@ -445,7 +460,7 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
                         </button>
                       )}
                       {!future && i === firstOpen(rows) && doneCount === 0 && (
-                        <span className="xsmall muted">Grey numbers are the plan ({repsText(e)} reps). Tick to log them as is, or type what you did first.</span>
+                        <span className="xsmall muted">Each set starts at the plan ({repsText(e)} reps). Did it as planned? Tick it. Otherwise tap the weight or reps, type what you did, then tick.</span>
                       )}
                     </div>
                   )}
@@ -471,8 +486,8 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
       </button>
       {day === today && workouts.length > 0 && (
         <div className="stack-sm">
-          <button type="button" className="link-btn small" onClick={() => setAnother(!another)}>
-            {another ? 'Cancel' : 'Do another workout today'}
+          <button type="button" className="btn small" onClick={() => setAnother(!another)}>
+            {another ? 'Cancel' : '+ Add another workout today'}
           </button>
           {another && (
             <div className="chips" role="group" aria-label="Pick a workout">
@@ -512,5 +527,40 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
         </div>
       )}
     </Sheet>
+  );
+}
+
+/** "+ Add a workout": pick one of your workouts to do (again) today; it's added as an extra. */
+export function AddWorkoutToday({ onAdded }: { onAdded?: () => void }) {
+  const { data, today, commit } = useStore();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const workouts = data.actions.filter((a) => !a.archived_at && a.kind === 'workout' && a.workout_plan?.length);
+  if (!workouts.length) return null;
+  return (
+    <div className="stack-sm">
+      <button type="button" className="btn ghost" onClick={() => setOpen(!open)}>
+        <Icon name="plus" size={18} stroke={2.2} /> {open ? 'Cancel' : 'Add a workout'}
+      </button>
+      {open && (
+        <div className="chips" role="group" aria-label="Pick a workout to do today">
+          {workouts.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className="chip"
+              onClick={() => {
+                commit(opsStartExtra(data, a, today).ops);
+                toast(`${a.title} added to today`);
+                setOpen(false);
+                onAdded?.();
+              }}
+            >
+              {a.title}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

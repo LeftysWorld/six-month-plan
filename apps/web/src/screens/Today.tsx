@@ -11,7 +11,7 @@ import { opsAddOneOff, opsEnsureWeek, opsLogSession, opsLogUnplanned, opsMoveSes
 import { href } from '../router.ts';
 import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
-import { WorkoutCardPlan } from '../components/Workout.tsx';
+import { AddWorkoutToday, WorkoutCardPlan } from '../components/Workout.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { useAddFiles } from '../components/Attachments.tsx';
 import { lastReading, measureLabel, measureOnToday, opsRecordReading, readingOn } from '../data/connect.ts';
@@ -348,6 +348,8 @@ export function Today() {
             ))}
           </div>
         )}
+
+        {isToday && <AddWorkoutToday />}
 
         {isFuture && (
           <button className="btn ghost" onClick={() => setAdding(true)}>
