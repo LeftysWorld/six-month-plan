@@ -64,8 +64,6 @@ export function Today() {
   const planned = [...sessions.filter((s) => s.status === 'planned'), ...(isToday ? trayGroups.map((g) => g.first) : [])].sort(
     (a, b) => Number(b.priority) - Number(a.priority),
   );
-  const next = !isFuture && day >= today ? planned[0] : undefined;
-  const later = planned.filter((s) => s !== next);
   const available = data.profile.available_minutes[isoWeekday(day) - 1] ?? 0;
   // "Any day this week" tasks go on the day you're looking at, unless that day has passed.
   const placeOn = day >= today ? day : today;
@@ -97,13 +95,6 @@ export function Today() {
     const kind = view.action(s.action_id)?.kind;
     if (!isFuture && kind === 'workout') navigate(`/workout/${s.id}`);
     else setOpen(s);
-  }
-
-  /** The Up next button: a workout opens the workout log; anything else is checked off. */
-  function start(s: Session) {
-    const kind = view.action(s.action_id)?.kind;
-    if (kind === 'workout' && !isFuture) navigate(`/workout/${s.id}`);
-    else toggle(s);
   }
 
   // Progress segments fill from the left: done, then partly done, then still to do.
@@ -260,7 +251,6 @@ export function Today() {
           <CommitmentCard review={commitment.review} text={commitment.text} forWeek={commitment.forWeek} today={today} compact />
         )}
 
-        {next && <UpNext session={next} hint={hintFor(next)} onStart={() => start(next)} onOpen={() => openSession(next)} />}
         {coach && (
           <p className="coach only-narrow">
             <Icon name="sparkle" size={16} />
@@ -276,10 +266,13 @@ export function Today() {
           </div>
         )}
 
-        {later.length > 0 && (
-          <TaskGroup title={isFuture ? 'Planned' : isToday ? 'Later today' : 'Not logged'} sessions={later} hint={hintFor} onToggle={toggle} onOpen={openSession} swipe={!isFuture} />
+        {planned.length + done.length > 0 && (
+          <div className="task-cards">
+            {[...planned, ...done].map((s) => (
+              <TaskCard key={s.id} session={s} hint={hintFor(s)} onToggle={() => toggle(s)} onOpen={() => openSession(s)} swipe={!isFuture && s.status === 'planned'} />
+            ))}
+          </div>
         )}
-        {done.length > 0 && <TaskGroup title={isToday ? 'Done' : 'Logged'} sessions={done} onToggle={toggle} onOpen={openSession} swipe={false} />}
 
         {isFuture && (
           <button className="btn ghost" onClick={() => setAdding(true)}>
@@ -486,78 +479,10 @@ function EveningWrap({ sessions, onDone }: { sessions: Session[]; onDone: () => 
   );
 }
 
-/** The Up next card: the next thing to do, with a big button to check it off (or open the workout log). */
-function UpNext({ session, hint, onStart, onOpen }: { session: Session; hint?: string | null; onStart: () => void; onOpen: () => void }) {
-  const view = useView();
-  const isWorkout = view.action(session.action_id)?.kind === 'workout';
-  const goal = view.goalsForAction(session.action_id)[0];
-  const s = session;
-  return (
-    <div className="up-next-card" style={{ marginTop: 8 }}>
-      <button type="button" className="grow stack-sm" onClick={onOpen} aria-label={`${session.title}: details`} style={{ gap: 6, background: 'none', border: 0, padding: 0, textAlign: 'left', color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
-        <span className="mono" style={{ color: 'var(--accent-ink)' }}>
-          Up next{s.planned_minutes ? ` · ${minutesText(s.planned_minutes)}` : ''}
-        </span>
-        <span style={{ fontSize: 21, fontWeight: 600, letterSpacing: '-0.03em', lineHeight: 1.15 }}>{s.title}</span>
-        {hint && <span className="small" style={{ color: 'var(--amber-ink)' }}>{hint}</span>}
-        {(goal || s.planned_count) && (
-          <span className="row-start small" style={{ color: 'var(--ink-2)', gap: 7, flexWrap: 'nowrap' }}>
-            {goal && <span className="dot" style={{ width: 7, height: 7, background: goal.color, boxShadow: `0 0 10px ${goal.color}` }} />}
-            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {[s.planned_count ? `${s.planned_count} planned` : null, goal?.title].filter(Boolean).join(' · ')}
-            </span>
-          </span>
-        )}
-      </button>
-      <button type="button" className="play-btn" aria-label={isWorkout ? `Log ${s.title}` : `Mark ${s.title} done`} onClick={onStart}>
-        {isWorkout ? (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z" />
-          </svg>
-        ) : (
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M5 12.5l4.5 4.5L19 7.5" />
-          </svg>
-        )}
-      </button>
-    </div>
-  );
-}
-
-function TaskGroup({
-  title,
-  sessions,
-  hint,
-  onToggle,
-  onOpen,
-  swipe,
-}: {
-  title: string;
-  sessions: Session[];
-  hint?: (s: Session) => string | null;
-  onToggle: (s: Session) => void;
-  onOpen: (s: Session) => void;
-  swipe: boolean;
-}) {
-  return (
-    <div>
-      <div className="row-between" style={{ margin: '14px 2px 2px' }}>
-        <span className="label">{title}</span>
-        <span className="label">{sessions.length}</span>
-      </div>
-      <div className="task-list">
-        {sessions.map((s) => (
-          <TaskRow key={s.id} session={s} hint={hint?.(s)} onToggle={() => onToggle(s)} onOpen={() => onOpen(s)} swipe={swipe && s.status === 'planned'} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const SWIPE_DONE = 84;
 
-/** One task: tap the ring to check it, tap the row for details, swipe left to finish it. */
-function TaskRow({ session, hint, onToggle, onOpen, swipe }: { session: Session; hint?: string | null; onToggle: () => void; onOpen: () => void; swipe: boolean }) {
+/** One task card: tap the round button to check it off, tap the card for the log sheet (or the workout log), swipe left to finish it. */
+function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session; hint?: string | null; onToggle: () => void; onOpen: () => void; swipe: boolean }) {
   const view = useView();
   const { data } = useStore();
   const action = view.action(session.action_id);
@@ -615,44 +540,42 @@ function TaskRow({ session, hint, onToggle, onOpen, swipe }: { session: Session;
     setDx(0);
   };
 
+  const logged = s.status === 'done' || s.status === 'partial' || s.status === 'minimum';
+
   return (
-    <div className="task-wrap">
+    <div className="task-card-wrap">
       {swipe && dx < 0 && (
         <div className="swipe-action" style={{ opacity: Math.min(1, -dx / SWIPE_DONE) }} aria-hidden="true">
           <Icon name="check" size={16} stroke={2.6} /> Done
         </div>
       )}
       <div
-        className={`task${dx ? ' dragging' : ''}`}
+        className={`up-next-card task-card${dx ? ' dragging' : ''}${s.status !== 'planned' ? ' logged' : ''}`}
         style={{ transform: dx ? `translateX(${dx}px)` : undefined }}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
       >
-        <button className="chk" aria-label={label} onClick={onToggle}>
-          <span className={`ring ${ring}`}>
-            {s.status === 'done' && <Icon name="check" size={14} stroke={3} />}
-            {(s.status === 'partial' || s.status === 'minimum') && <Icon name="minus" size={14} stroke={3} />}
-          </span>
-        </button>
-        <button className="body" onClick={() => !dx && onOpen()}>
-          <span className="grow">
-            <span className={`title ${s.status === 'done' ? 'done' : ''}`} style={{ display: 'block' }}>
-              {s.title}
-              {s.planned_count && s.status === 'planned' ? ` ×${s.planned_count}` : ''}
+        <button type="button" className="task-card-body" onClick={() => !dx && onOpen()} aria-label={`${s.title}: details`}>
+          {right && (
+            <span className="mono" style={{ color: logged ? 'var(--accent-ink)' : 'var(--ink-2)' }}>
+              {right}
             </span>
-            {meta && (
-              <span className="meta" style={{ color: s.status === 'minimum' || s.status === 'partial' ? 'var(--amber-ink)' : undefined }}>
-                {goal && <span className="dot" style={{ width: 6, height: 6, background: goal.color }} />}
-                {meta}
-              </span>
-            )}
+          )}
+          <span className={`task-card-title${s.status === 'done' ? ' done' : ''}`}>
+            {s.title}
+            {s.planned_count && s.status === 'planned' ? ` ×${s.planned_count}` : ''}
           </span>
-          <span className="min" style={{ color: s.status === 'done' ? 'var(--accent-ink)' : undefined }}>
-            {right}
-            {s.status === 'done' ? ' ✓' : ''}
-          </span>
+          {meta && (
+            <span className="task-card-meta" style={{ color: s.status === 'minimum' || s.status === 'partial' ? 'var(--amber-ink)' : undefined }}>
+              {goal && <span className="dot" style={{ width: 7, height: 7, background: goal.color, boxShadow: `0 0 10px ${goal.color}` }} />}
+              <span>{meta}</span>
+            </span>
+          )}
+        </button>
+        <button type="button" className={`tick-btn ${ring}`} aria-label={label} onClick={onToggle}>
+          {s.status === 'done' || s.status === 'planned' ? <Icon name="check" size={22} stroke={2.6} /> : s.status === 'skipped' ? <Icon name="x" size={20} stroke={2.4} /> : <Icon name="minus" size={22} stroke={2.6} />}
         </button>
       </div>
     </div>

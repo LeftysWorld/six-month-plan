@@ -961,3 +961,22 @@ button.day-cell { border: 0; cursor: pointer; font: inherit; color: var(--ink); 
 .file-name { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-remove { position: absolute; top: -6px; right: -6px; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: var(--sheet-bg, var(--surface)); color: var(--ink-2); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: var(--shadow-1); }
 @keyframes file-pulse { 50% { opacity: 0.5; } }
+
+/* ---------- Today: one list of task cards ---------- */
+.task-cards { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.task-card-wrap { position: relative; }
+.task-card-wrap .swipe-action { top: 0; bottom: 0; border-radius: 26px; }
+.task-card { position: relative; transition: transform 0.25s var(--spring), opacity 0.2s; touch-action: pan-y; }
+.task-card.dragging { transition: none; }
+.task-card.logged { opacity: 0.72; }
+.task-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; background: none; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.task-card-title { font-size: 21px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15; }
+.task-card-title.done { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.task-card-meta { display: flex; align-items: center; gap: 7px; font-size: 14px; color: var(--ink-2); min-width: 0; }
+.task-card-meta > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tick-btn { width: 56px; height: 56px; flex: none; border-radius: 50%; border: 2px solid var(--border-strong); background: transparent; color: var(--faint); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s var(--spring), background 0.15s, border-color 0.15s, color 0.15s; }
+.tick-btn:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
+.tick-btn:active { transform: scale(0.9); }
+.tick-btn.done { background: var(--gradient); border-color: transparent; color: var(--on-accent); box-shadow: 0 10px 30px -12px rgba(124, 104, 255, 0.6); animation: pop 0.35s var(--spring); }
+.tick-btn.part { background: var(--amber-soft); border-color: var(--amber); color: var(--amber-ink); }
+.tick-btn.skip { background: var(--fill-strong); border-color: var(--border-strong); color: var(--muted); }
