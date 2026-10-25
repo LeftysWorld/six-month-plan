@@ -22,7 +22,7 @@ const KINDS: { value: ActionKind; label: string; hint: string }[] = [
   { value: 'minutes', label: 'Minutes', hint: 'Practice for a time' },
   { value: 'count', label: 'Count', hint: 'e.g. 3 applications' },
   { value: 'check', label: 'Just do it', hint: 'Done or not' },
-  { value: 'workout', label: 'Workout', hint: 'Sets, reps, weight' },
+  { value: 'workout', label: 'Workout', hint: 'Counts on the workouts-per-week chart' },
   { value: 'study', label: 'Study', hint: 'Hours toward a course' },
   { value: 'photo', label: 'Photo', hint: 'Take a photo each time' },
 ];

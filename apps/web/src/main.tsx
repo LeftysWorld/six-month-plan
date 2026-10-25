@@ -7,10 +7,10 @@ import { registerServiceWorker } from './push.ts';
 
 applyTheme();
 
-// The focus timer is gone; drop any timer state it left behind.
+// The focus timer and workout clock are gone; drop any timer state they left behind.
 try {
   Object.keys(localStorage)
-    .filter((k) => k.startsWith('six.study.'))
+    .filter((k) => k.startsWith('six.study.') || k.startsWith('six.timer.'))
     .forEach((k) => localStorage.removeItem(k));
 } catch {
   /* storage unavailable */

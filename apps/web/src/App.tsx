@@ -19,7 +19,6 @@ import { WeeklyReview } from './screens/WeeklyReview.tsx';
 import { ReviewDetail, ReviewList } from './screens/ReviewPast.tsx';
 import { Progress } from './screens/Progress.tsx';
 import { Settings } from './screens/Settings.tsx';
-import { WorkoutLog } from './screens/WorkoutLog.tsx';
 import { setAppBadge } from './push.ts';
 import { WelcomeBack } from './screens/WelcomeBack.tsx';
 import { Flow } from './screens/Flow.tsx';
@@ -197,9 +196,6 @@ function Shell(props: ShellProps) {
       break;
     case 'settings':
       screen = <Settings {...props} />;
-      break;
-    case 'workout':
-      screen = <WorkoutLog id={s1 ?? ''} />;
       break;
     default:
       screen = <Today />;

@@ -8,7 +8,7 @@ import { parseQuickAdd } from '../data/parse.ts';
 import { blankTask, opsAddTask, withOps } from '../data/breakdown.ts';
 import { chainFor, opsEnsureStep, stepFor } from '../data/chain.ts';
 import { opsAddOneOff, opsLogSession, opsLogUnplanned, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
-import { href, navigate } from '../router.ts';
+import { href } from '../router.ts';
 import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
@@ -123,10 +123,9 @@ export function Today() {
     }
   }
 
+  /** Every task, workouts included, opens the same log sheet. */
   function openSession(s: Session) {
-    const kind = view.action(s.action_id)?.kind;
-    if (!isFuture && kind === 'workout') navigate(`/workout/${s.id}`);
-    else setOpen(s);
+    setOpen(s);
   }
 
   // Progress segments fill from the left: done, then partly done, then still to do.
@@ -534,7 +533,7 @@ function EveningWrap({ sessions, onDone }: { sessions: Session[]; onDone: () => 
 
 const SWIPE_DONE = 84;
 
-/** One task card: tap the round button to check it off, tap the card for the log sheet (or the workout log), swipe left to finish it. */
+/** One task card: tap the round button to check it off, tap the card for the log sheet, swipe left to finish it. */
 function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session; hint?: string | null; onToggle: () => void; onOpen: () => void; swipe: boolean }) {
   const view = useView();
   const { data } = useStore();

@@ -3,7 +3,7 @@ import { addDays, shortDate, weekDates, weekStart, weekdayName, type Session, ty
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/derive.ts';
 import { opsLogSession, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
-import { href, navigate } from '../router.ts';
+import { href } from '../router.ts';
 import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
 import { SessionFiles } from '../components/Attachments.tsx';
 import { lastReading, opsRecordReading, readingOn } from '../data/connect.ts';
@@ -79,17 +79,6 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
           Supports: {goal.title}
           {action?.cue ? ` · ${action.cue}` : ''}
         </div>
-      )}
-      {action?.kind === 'workout' && session.status === 'planned' && (session.date ?? today) <= today && !moving && (
-        <button
-          className="btn"
-          onClick={() => {
-            onClose();
-            navigate(`/workout/${session.id}`);
-          }}
-        >
-          Log sets and reps
-        </button>
       )}
       {moving ? (
         <div className="stack-sm">
