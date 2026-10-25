@@ -303,5 +303,26 @@ export function buildDemoData(): AppData {
     const week = weekOf(g);
     Object.assign(data, withOps(data, opsAddTask(data, g, week, { ...blankTask(week, today), ...patch }, today)));
   }
+
+  // The goal backlog: two ideas selected for the next commitment, the rest waiting in order.
+  const ideas: [string, string, 'selected' | 'backlog', number][] = [
+    ['Run a half marathon', 'Builds on the cardio from the weight goal.', 'selected', 40],
+    ['Pass the PMP exam', 'Prerequisites are done; the exam is what is left.', 'selected', 25],
+    ['Build an AI side project end to end', 'Ship something small with an agent and evals.', 'backlog', 30],
+    ['Conversational Spanish', '', 'backlog', 12],
+    ['Read 12 books', 'One a month, mostly product and history.', 'backlog', 70],
+    ['Cook 30 new recipes', '', 'backlog', 5],
+  ];
+  data.ideas = ideas.map(([title, note, status, age], i) => ({
+    id: id(),
+    title,
+    note,
+    status,
+    rank: i + 1,
+    goal_id: null,
+    created_at: `${addDays(today, -age)}T12:00:00.000Z`,
+    selected_at: status === 'selected' ? `${addDays(today, -3)}T12:00:00.000Z` : null,
+    started_at: null,
+  }));
   return data;
 }

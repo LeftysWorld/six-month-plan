@@ -24,6 +24,7 @@ import { StudyLog } from './screens/StudyLog.tsx';
 import { setAppBadge } from './push.ts';
 import { WelcomeBack } from './screens/WelcomeBack.tsx';
 import { Flow } from './screens/Flow.tsx';
+import { Backlog } from './screens/Backlog.tsx';
 
 const MODE_KEY = 'six.mode';
 
@@ -138,7 +139,7 @@ function Shell(props: ShellProps) {
     setAppBadge(openToday);
   }, [openToday]);
 
-  // Keyboard shortcuts on a computer: N add, T today, G goals, R review.
+  // Keyboard shortcuts on a computer: N add, T today, G goals, B backlog, R review.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -151,6 +152,7 @@ function Shell(props: ShellProps) {
         setAdding(true);
       } else if (k === 't') navigate('/today');
       else if (k === 'g') navigate('/goals');
+      else if (k === 'b') navigate('/goals/backlog');
       else if (k === 'r') navigate('/review');
     };
     window.addEventListener('keydown', onKey);
@@ -166,9 +168,14 @@ function Shell(props: ShellProps) {
       break;
     case 'plans':
     case 'goals':
-      if (s0 === 'goals' && s1 === 'new') screen = <GoalNew planId={route.query.get('plan')} />;
+      if (s0 === 'goals' && s1 === 'new') screen = <GoalNew planId={route.query.get('plan')} ideaId={route.query.get('idea')} />;
+      else if (s0 === 'goals' && s1 === 'backlog') screen = <Backlog />;
       else if (s0 === 'goals' && s1) screen = <Flow goalId={s1} />;
       else screen = <Plans planId={s0 === 'plans' ? s1 ?? null : route.query.get('plan')} />;
+      break;
+    case 'backlog':
+    case 'ideas':
+      screen = <Backlog />;
       break;
     case 'flow':
       screen = <Flow goalId={s1 ?? ''} />;
@@ -198,7 +205,7 @@ function Shell(props: ShellProps) {
       screen = <Today />;
   }
 
-  const tab = s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'flow' || s0 === 'actions' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
+  const tab = s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'flow' || s0 === 'actions' || s0 === 'backlog' || s0 === 'ideas' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
 
   return (
     <div className="shell">
@@ -209,7 +216,7 @@ function Shell(props: ShellProps) {
           <NavLink to="/goals" icon="plans" label="Goals" current={tab === 'goals'} />
           <NavLink to="/review" icon="review" label="Review" current={tab === 'review'} />
         </nav>
-        <button type="button" className="dock-add" aria-label="Add a task or log something unplanned" onClick={() => setAdding(true)}>
+        <button type="button" className="dock-add" aria-label="Add a task, log something or save a goal idea" onClick={() => setAdding(true)}>
           <Icon name="plus" size={24} stroke={2.4} />
           <span className="dock-add-label">Add or log</span>
         </button>

@@ -455,3 +455,30 @@ test('review suggestions skip one-time tasks and sessions that have not happened
   // Reviewed on Sunday the 18th: the meal prep is today, not missed.
   assert.deepEqual(reviewSuggestions([chat, prep], schedules, sessions, '2026-10-12', { today: '2026-10-18' }), []);
 });
+
+test('backlog: columns in order, reorder, room in selected, age', async () => {
+  const { column, reorder, hasRoom, rankAtEnd, rankAtTop, ageInDays, SELECTED_LIMIT } = await import('../src/index.ts');
+  const idea = (id: string, rank: number, status: 'backlog' | 'selected' | 'started' | 'discarded' = 'backlog') => ({
+    id, title: id, note: '', status, rank, goal_id: null, created_at: '2026-10-01T00:00:00.000Z', selected_at: null, started_at: null,
+  });
+  const ideas = [idea('c', 3), idea('a', 1), idea('b', 2), idea('s', 1, 'selected')];
+  assert.deepEqual(column(ideas, 'backlog').map((i) => i.id), ['a', 'b', 'c']);
+  assert.equal(rankAtEnd(ideas, 'backlog'), 4);
+  assert.equal(rankAtTop(ideas, 'backlog'), 0);
+  assert.equal(rankAtEnd(ideas, 'started'), 1);
+  // Moving b up swaps it with a; the top idea can't move up; c to the top goes before a.
+  assert.deepEqual(reorder(ideas, 'b', 'up'), [{ id: 'b', rank: 1 }, { id: 'a', rank: 2 }]);
+  assert.deepEqual(reorder(ideas, 'a', 'up'), []);
+  assert.deepEqual(reorder(ideas, 'c', 'down'), []);
+  assert.deepEqual(reorder(ideas, 'c', 'top'), [{ id: 'c', rank: 0 }]);
+  // Equal ranks still swap.
+  const tied = [idea('x', 1), idea('y', 1)];
+  const moved = reorder(tied, 'y', 'up');
+  const after = tied.map((i) => ({ ...i, rank: moved.find((m) => m.id === i.id)?.rank ?? i.rank }));
+  assert.deepEqual(column(after, 'backlog').map((i) => i.id), ['y', 'x']);
+  // Selected holds up to the limit.
+  assert.equal(SELECTED_LIMIT, 3);
+  assert.equal(hasRoom(ideas), true);
+  assert.equal(hasRoom([...ideas, idea('s2', 2, 'selected'), idea('s3', 3, 'selected')]), false);
+  assert.equal(ageInDays({ created_at: '2026-10-01T00:00:00.000Z' }, new Date('2026-10-25T12:00:00.000Z')), 24);
+});

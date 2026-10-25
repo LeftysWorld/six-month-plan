@@ -4,6 +4,7 @@ import type {
   ActionSchedule,
   ChangeLogEntry,
   Goal,
+  GoalIdea,
   GoalTarget,
   Measurement,
   MeasurementType,
@@ -37,6 +38,8 @@ export interface AppData {
   weekPlans: WeekPlan[];
   reviews: Review[];
   changeLog: ChangeLogEntry[];
+  /** The goal backlog: ideas, selected for next commitment, started, discarded. */
+  ideas: GoalIdea[];
 }
 
 export type CollectionKey = Exclude<keyof AppData, 'profile'>;
@@ -59,6 +62,7 @@ export const TABLES: Record<CollectionKey, string> = {
   weekPlans: 'week_plans',
   reviews: 'reviews',
   changeLog: 'change_log',
+  ideas: 'goal_ideas',
 };
 
 export const COLLECTIONS = Object.keys(TABLES) as CollectionKey[];
@@ -92,6 +96,7 @@ export function emptyData(): AppData {
     weekPlans: [],
     reviews: [],
     changeLog: [],
+    ideas: [],
   };
 }
 

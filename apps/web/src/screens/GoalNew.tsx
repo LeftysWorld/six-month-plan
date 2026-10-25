@@ -5,6 +5,7 @@ import { fmt, useView } from '../data/derive.ts';
 import { opsCreateGoal } from '../data/ops.ts';
 import { navigate } from '../router.ts';
 import { blankTask, opsAddTask, withOps } from '../data/breakdown.ts';
+import { opsStartIdea } from '../data/backlog.ts';
 import { chainFor, opsStartChain } from '../data/chain.ts';
 import { BackLink, Empty, GOAL_COLORS, NumberInput, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
@@ -15,7 +16,8 @@ const TYPES: { value: GoalType; title: string; sub: string }[] = [
   { value: 'finish', title: 'Finish something', sub: 'Dated steps' },
 ];
 
-export function GoalNew({ planId }: { planId: string | null }) {
+/** Set up a goal. Started from a backlog idea (ideaId), its title and why come from the idea. */
+export function GoalNew({ planId, ideaId = null }: { planId: string | null; ideaId?: string | null }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
@@ -23,7 +25,8 @@ export function GoalNew({ planId }: { planId: string | null }) {
   const existing = plan ? view.goalsForPlan(plan.id) : [];
 
   const [step, setStep] = useState(1);
-  const [title, setTitle] = useState('');
+  const idea = ideaId ? data.ideas.find((i) => i.id === ideaId && i.status !== 'started') ?? null : null;
+  const [title, setTitle] = useState(idea?.title ?? '');
   const [type, setType] = useState<GoalType>('practice');
   // "Reach a number" fields start empty: placeholders show examples, nothing is pre-filled.
   const [unit, setUnit] = useState('');
@@ -35,7 +38,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
   const [dateFocused, setDateFocused] = useState(false);
   const dateRef = useRef<HTMLInputElement>(null);
   const [edits, setEdits] = useState<Record<string, number>>({});
-  const [why, setWhy] = useState('');
+  const [why, setWhy] = useState(idea?.note ?? '');
   const [doneMeans, setDoneMeans] = useState('');
   const [milestones, setMilestones] = useState([{ title: '', due_date: addDays(today, 28) }]);
   const color = GOAL_COLORS[existing.length % GOAL_COLORS.length]!;
@@ -112,6 +115,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
       const week = chainFor(next, goal, plan, today < plan.start_date ? plan.start_date : today).week.step!;
       all.push(...opsAddTask(next, goal, week, { ...blankTask(week, today), title: firstTask.trim(), when: 'days', days: taskDays, minutes: taskMinutes, through: null }, today));
     }
+    if (idea) all.push(...opsStartIdea(withOps(data, all), idea.id, goalId));
     commit(all);
     toast(`Added ${title.trim()}. It's set up through this week.`);
     navigate(`/goals/${goalId}`);
@@ -120,7 +124,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
   return (
     <div className="stack">
       <div className="row-between">
-        <BackLink label="Cancel" fallback="/goals" />
+        <BackLink label="Cancel" fallback={idea ? '/goals/backlog' : '/goals'} />
         <span className="small muted">
           {plan.name} · step {step} of 3
         </span>
@@ -134,6 +138,7 @@ export function GoalNew({ planId }: { planId: string | null }) {
       {step === 1 && (
         <div className="stack">
           <h1>What do you want to be true in six months?</h1>
+          {idea && <span className="pill none" style={{ alignSelf: 'flex-start' }}>From your backlog · selected for next commitment</span>}
           <label className="field">
             Goal
             <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Comfortable on guitar" />

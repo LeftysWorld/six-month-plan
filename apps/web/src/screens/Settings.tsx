@@ -260,7 +260,7 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
         </button>
       )}
       <p className="xsmall muted" style={{ textAlign: 'center', margin: 0 }}>
-        On a computer: N add · T Today · G Goals · R Review · ← → change day on Today
+        On a computer: N add · T Today · G Goals · B Backlog · R Review · ← → change day on Today
       </p>
       <p className="xsmall muted" style={{ textAlign: 'center' }}>
         Six Months · v0.1 · build {typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev'}

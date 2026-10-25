@@ -239,3 +239,22 @@ export interface ChangeLogEntry {
   review_id: string | null;
   created_at: string;
 }
+
+/** Where a goal idea is in the backlog: waiting, selected for the next commitment, started as a goal, or let go. */
+export type IdeaStatus = 'backlog' | 'selected' | 'started' | 'discarded';
+
+/** A goal you might want: written down in a line, ordered by importance, pulled in when there's room. */
+export interface GoalIdea {
+  id: string;
+  title: string;
+  /** Why it matters, or anything worth remembering. */
+  note: string;
+  status: IdeaStatus;
+  /** Order within its column: lower comes first (more important). */
+  rank: number;
+  /** The goal it became, once started. */
+  goal_id: string | null;
+  created_at: string;
+  selected_at: string | null;
+  started_at: string | null;
+}

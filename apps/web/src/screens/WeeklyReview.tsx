@@ -35,6 +35,7 @@ import type { AppData, Op, ReviewPayload } from '../data/model.ts';
 import { opsArchiveAction, opsArchiveGoal, opsCompleteReview, opsCreatePlan, opsLinkGoalToPlan, opsReplacePath, opsUpdateGoal } from '../data/ops.ts';
 import { catchUp, catchUpPlan, chainFor, isSet, opsSetLevel, type ChainLevel } from '../data/chain.ts';
 import { withOps } from '../data/breakdown.ts';
+import { selectedIdeas } from '../data/backlog.ts';
 import { actionLookup, commitmentTrail, obstacleSentence, planTrend, timeAverages, trendFor, weekdaySentence } from '../data/insights.ts';
 import { navigate, useRoute } from '../router.ts';
 import { BackLink, Empty, NumberInput, OBSTACLES, PacePill, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
@@ -691,10 +692,18 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
       )}
 
       {step === 2 && kind === 'quarter' && plan && (
-        <Decide goals={goals} fields={nextFields} draft={draft} set={set} view={view} plan={plan} nextMonday={nextMonday} />
+        <>
+          <Decide goals={goals} fields={nextFields} draft={draft} set={set} view={view} plan={plan} nextMonday={nextMonday} />
+          <SelectedIdeas when="Dropping or finishing a goal makes room for one of these." />
+        </>
       )}
 
-      {step === 2 && kind === 'retro' && plan && <NextPlan goals={goals} draft={draft} set={set} />}
+      {step === 2 && kind === 'retro' && plan && (
+        <>
+          <NextPlan goals={goals} draft={draft} set={set} />
+          <SelectedIdeas when="Good candidates for your next plan, alongside the goals you carry over." />
+        </>
+      )}
 
       <div className="btn-row">
         {step > 0 ? (
@@ -1129,6 +1138,29 @@ function NextPlan({ goals, draft, set }: { goals: Goal[]; draft: Draft; set: (p:
         </div>
       )}
     </>
+  );
+}
+
+/** Ideas selected for the next commitment, shown where you decide what comes next (3-month and retro). */
+function SelectedIdeas({ when }: { when: string }) {
+  const { data } = useStore();
+  const ideas = selectedIdeas(data);
+  if (!ideas.length) return null;
+  return (
+    <div className="card stack-sm">
+      <span className="label" style={{ color: 'var(--accent-ink)' }}>
+        Selected for next commitment
+      </span>
+      <ol style={{ margin: 0, paddingLeft: 20 }}>
+        {ideas.map((i) => (
+          <li key={i.id} className="small" style={{ padding: '3px 0' }}>
+            <b style={{ fontWeight: 550 }}>{i.title}</b>
+            {i.note ? <span className="muted"> · {i.note}</span> : null}
+          </li>
+        ))}
+      </ol>
+      <span className="xsmall muted">{when} Start them from Goals › Backlog after you save.</span>
+    </div>
   );
 }
 

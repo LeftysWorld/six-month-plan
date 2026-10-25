@@ -8,13 +8,14 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const supabaseConfigured = Boolean(url && anonKey);
 
-const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql and 20261025000000_review_overhaul.sql';
+const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql, 20261025000000_review_overhaul.sql and 20261026000000_goal_backlog.sql';
+const BACKLOG_MIGRATION = 'supabase/migrations/20261026000000_goal_backlog.sql';
 
 /** Set when the database is missing a newer migration; the app shows it as a banner. */
 export let schemaWarning: string | null = null;
 
 function isMissingBreakdown(message: string): boolean {
-  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
 }
 
 let client: SupabaseClient | null = null;
@@ -61,6 +62,7 @@ const NUMERIC_FIELDS: Record<string, string[]> = {
   measurements: ['value'],
   workout_sets: ['weight'],
   reviews: ['actions_done', 'minutes_planned', 'minutes_done'],
+  goal_ideas: ['rank'],
 };
 
 /** A network failure is worth retrying; a database refusal is not. */
@@ -86,6 +88,11 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
             // A database set up before the goal breakdown existed: keep the app usable and say what to run.
             if (key === 'planSteps' && isMissingBreakdown(e.message)) {
               schemaWarning = `Your database needs the goal breakdown update. In Supabase → SQL Editor, run ${BREAKDOWN_MIGRATION}, then reload.`;
+              return [];
+            }
+            // A database without the backlog table still loads; the backlog just can't save yet.
+            if (key === 'ideas' && isMissingBreakdown(e.message)) {
+              schemaWarning ??= `Your database needs the goal backlog update. In Supabase → SQL Editor, run ${BACKLOG_MIGRATION}, then reload.`;
               return [];
             }
             throw e;
@@ -149,14 +156,14 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
     async wipeAll(): Promise<void> {
       // Children first so nothing is left pointing at a deleted row (the foreign keys cascade anyway).
       const order = [
-        'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
+        'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
         'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
         'plan_steps', 'plan_goals', 'goals', 'plans', 'measurement_types',
       ];
       for (const table of order) {
         const { error } = await sb.from(table).delete().eq('user_id', userId);
         // An older database without the breakdown table has nothing to delete there.
-        if (error && !(table === 'plan_steps' && isMissingBreakdown(error.message))) throw new Error(`${table}: ${error.message}`);
+        if (error && !((table === 'plan_steps' || table === 'goal_ideas') && isMissingBreakdown(error.message))) throw new Error(`${table}: ${error.message}`);
       }
     },
   };

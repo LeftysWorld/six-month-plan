@@ -20,6 +20,7 @@ Three places, one job each: **Today** to do, **Goals** to see and shape, **Revie
   - **Weekly** (opens Saturday): look back (did last week's planned change happen, hit / partly / missed for each week goal, tasks and time done, recent weeks chart, measurements), reflect (patterns such as your most-missed weekday and top obstacle, past wins, what went well, what got in the way, what to change), plan next week (next week's goals, a time check against what you've actually been doing, move any task to any day or take it out).
   - **Suggested changes**: pause a task nothing happened on for 3 weeks, move a weekday that keeps getting missed, lower or raise how often, or add a minimum version.
   - **Month**: the month goals, then set next month's goals. **3-month checkpoint**: keep, adjust (new target and redrawn path) or drop each goal, then set the next 3 months. **Retrospective**: what worked, what didn't, what carries over, then start the next plan with the goals you carry. A missed review stays open until the next one of its kind opens.
+  - Goals › Backlog (or press B) is a Kanban-style backlog of goal ideas: write an idea in a line, order the backlog by importance, and pull the top ideas into **Selected for next commitment** (limit 3). Start a selected idea and the goal setup opens with its title and why filled in. Ideas can also be added from the + sheet, and the selected ones show up at the 3-month checkpoint and the retrospective.
   - The Review tab shows the weekly review (with an honest time estimate) or, once done, next week at a glance; the change you committed to (also on Today, with an On it / Slipping check); a goals × weeks scorecard with week-goal results; insights with fixes (such as moving tasks off a weekday that keeps getting missed) and where your time went; the changes you've tried and whether they stuck; the next review; and past reviews.
   - A plan that starts Friday to Sunday folds its first few days into week 2 for review counts, averages and trends.
 - **Workout log** (sets × reps × weight, starts from your last workout) and a **focus timer** for any task (survives reloads).
@@ -42,7 +43,7 @@ Open http://localhost:5173. With no Supabase settings, the app runs in demo mode
 ## Connect Supabase (your real data)
 
 1. Create a free project at https://supabase.com.
-2. In the dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in order: first `20261016000000_initial_schema.sql`, then `20261019000000_goal_breakdown.sql`, then `20261021000000_reminders_and_cues.sql`, then `20261025000000_review_overhaul.sql`. (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
+2. In the dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in order: first `20261016000000_initial_schema.sql`, then `20261019000000_goal_breakdown.sql`, then `20261021000000_reminders_and_cues.sql`, then `20261025000000_review_overhaul.sql`, then `20261026000000_goal_backlog.sql`. (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
 3. **Authentication → URL Configuration**: set **Site URL** to where the app runs (`http://localhost:5173` for now) and add your deployed URL under **Redirect URLs** later.
 4. **Project Settings → API**: copy the project URL and the `anon` public key.
 5. Create `apps/web/.env.local`:
@@ -117,7 +118,7 @@ Pace is judged by month (no 4-week blocks). Number goals compare the 7-day avera
 
 ## Updating an existing database
 
-After pulling a new version, run any migration in `supabase/migrations/` you haven't run yet (each is safe to run more than once). The review overhaul needs `20261025000000_review_overhaul.sql`; until it's run, the app shows a banner and reviews won't keep the new answers.
+After pulling a new version, run any migration in `supabase/migrations/` you haven't run yet (each is safe to run more than once). The review overhaul needs `20261025000000_review_overhaul.sql`; until it's run, the app shows a banner and reviews won't keep the new answers. The goal backlog needs `20261026000000_goal_backlog.sql`; until it's run, the app shows a banner and ideas can't be saved.
 
 ## Not in this version
 

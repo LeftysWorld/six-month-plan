@@ -13,6 +13,7 @@ import { href, navigate } from '../router.ts';
 import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
 import { CommitmentCard } from '../components/Commitment.tsx';
+import { opsAddIdea } from '../data/backlog.ts';
 import { currentCommitment } from '../data/insights.ts';
 
 const FULL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -635,7 +636,8 @@ export function QuickAdd({ date, onClose }: { date: ISODate; onClose: () => void
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
-  const [tab, setTab] = useState<'task' | 'log'>('task');
+  const [tab, setTab] = useState<'task' | 'log' | 'idea'>('task');
+  const [idea, setIdea] = useState('');
   const [text, setText] = useState('');
   const [minutesEdit, setMinutesEdit] = useState<number | null>(null);
   const [priorityEdit, setPriority] = useState(false);
@@ -686,10 +688,35 @@ export function QuickAdd({ date, onClose }: { date: ISODate; onClose: () => void
           New task
         </button>
         <button role="tab" aria-selected={tab === 'log'} onClick={() => setTab('log')} disabled={actions.length === 0}>
-          Log something extra
+          Log extra
+        </button>
+        <button role="tab" aria-selected={tab === 'idea'} onClick={() => setTab('idea')}>
+          Goal idea
         </button>
       </div>
-      {tab === 'task' ? (
+      {tab === 'idea' ? (
+        <form
+          className="stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!idea.trim()) return;
+            commit(opsAddIdea(data, idea).ops);
+            toast('Added to your goal backlog');
+            onClose();
+          }}
+        >
+          <label className="field">
+            Goal idea
+            <input autoFocus value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="e.g. Run a half marathon" />
+          </label>
+          <span className="xsmall muted" style={{ marginTop: -8 }}>
+            It goes to the bottom of your backlog. Order it and select it from Goals › Backlog.
+          </span>
+          <button className="btn primary" type="submit" disabled={!idea.trim()}>
+            Add to backlog
+          </button>
+        </form>
+      ) : tab === 'task' ? (
         <form
           className="stack"
           onSubmit={(e) => {

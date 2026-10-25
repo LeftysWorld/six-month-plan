@@ -32,6 +32,7 @@ import type { AppData, Op } from '../data/model.ts';
 import { href, navigate } from '../router.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { ChainSheet } from './Flow.tsx';
+import { GoalsSwitch } from './Backlog.tsx';
 
 /** Create a plan: name, start, end (defaults to six months). */
 export function PlanForm({ onDone }: { onDone?: () => void }) {
@@ -107,7 +108,10 @@ export function Plans({ planId = null }: { planId?: string | null }) {
               {initial}
             </a>
           </div>
-          <h1 style={{ marginTop: -4 }}>Goals</h1>
+          <div className="row-between" style={{ alignItems: 'center', gap: 12, marginTop: -4, flexWrap: 'wrap' }}>
+            <h1>Goals</h1>
+            <GoalsSwitch current="goals" />
+          </div>
           <PlanForm />
         </>
       )}
@@ -149,7 +153,10 @@ function PlanGoals({ plan, initial, onMenu }: { plan: Plan; initial: string; onM
           {initial}
         </a>
       </div>
-      <h1 style={{ marginTop: -4 }}>Goals</h1>
+      <div className="row-between" style={{ alignItems: 'center', gap: 12, marginTop: -4, flexWrap: 'wrap' }}>
+        <h1>Goals</h1>
+        <GoalsSwitch current="goals" />
+      </div>
 
       <PlanLine plan={plan} today={today} onMenu={onMenu} />
 
