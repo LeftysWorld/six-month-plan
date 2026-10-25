@@ -9,6 +9,17 @@ export interface Db {
   apply(op: Op): Promise<void>;
   /** Delete every plan, goal, task, log and review. Settings (name, time zone, hours) are kept. */
   wipeAll(): Promise<void>;
+  /** File storage for attachments. Needs a connection (uploads aren't queued offline). */
+  files: FileStore;
+}
+
+export interface FileStore {
+  /** Save a file and return its storage path. */
+  upload(id: string, name: string, file: Blob): Promise<string>;
+  /** A URL the browser can show or download (short-lived for Supabase). */
+  url(path: string): Promise<string>;
+  /** Delete files. Missing files are ignored. */
+  remove(paths: string[]): Promise<void>;
 }
 
 export class SaveError extends Error {

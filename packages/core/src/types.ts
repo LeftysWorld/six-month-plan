@@ -163,6 +163,20 @@ export interface Session {
   logged_at: string | null;
 }
 
+/** A photo or any other file attached to a logged task. The bytes live in file storage; this row says where. */
+export interface Attachment {
+  id: string;
+  session_id: string;
+  action_id: string | null;
+  /** Where the file lives in storage. */
+  path: string;
+  /** The file name as picked. */
+  name: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
 export interface WorkoutSet {
   id: string;
   session_id: string;

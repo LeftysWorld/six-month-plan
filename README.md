@@ -27,6 +27,8 @@ Three places, one job each: **Today** to do, **Goals** to see and shape, **Revie
   - Mark a goal complete from its page (with a note on how it ended) or rate it Achieved in the retrospective; it moves to Completed with what it took, and can be reopened.
   - The Review tab shows the weekly review (with an honest time estimate) or, once done, next week at a glance; the change you committed to (also on Today, with an On it / Slipping check); a goals × weeks scorecard with week-goal results; insights with fixes (such as moving tasks off a weekday that keeps getting missed) and where your time went; the changes you've tried and whether they stuck; the next review; and past reviews.
   - A plan that starts Friday to Sunday folds its first few days into week 2 for review counts, averages and trends.
+- **Photos and files on any task**: in the log sheet, **Add a photo or file** (camera, photo library or any file type, up to 50 MB each). Photos are shrunk to 2048 px before upload. Every file on a goal's tasks shows on the goal page under **Photos and files**, newest first, labelled by day (a daily progress photo becomes a timeline). Files are private: they're stored in your Supabase project's `attachments` bucket, one folder per user, and opened with short-lived links. In demo mode they stay in this browser.
+- **Times-a-week tasks** ("5 times a week") show on Today's list with how many are left ("4 left this week · 2 days left"); checking one off puts it on today.
 - **Workout log** (sets × reps × weight, starts from your last workout). There's no countdown or focus timer: you log what you did, including minutes, from the log sheet.
 - **Reminders** (see below): a morning push and an evening "keep your streak" push when the site is installed on your home screen, or a calendar feed. Open tasks also show in the browser tab title and on the home-screen icon.
 - **On a computer**: two-column layouts and keyboard shortcuts (N add, T Today, G Goals, R Review, ← → change day).
@@ -47,7 +49,7 @@ Open http://localhost:5173. With no Supabase settings, the app runs in demo mode
 ## Connect Supabase (your real data)
 
 1. Create a free project at https://supabase.com.
-2. In the dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in order: first `20261016000000_initial_schema.sql`, then `20261019000000_goal_breakdown.sql`, then `20261021000000_reminders_and_cues.sql`, then `20261025000000_review_overhaul.sql`, then `20261026000000_goal_backlog.sql`, then `20261027000000_completed_goals_and_readiness.sql`, then `20261028000000_idea_prep.sql`, then `20261029000000_batches_and_own_clocks.sql`. (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
+2. In the dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in order: first `20261016000000_initial_schema.sql`, then `20261019000000_goal_breakdown.sql`, then `20261021000000_reminders_and_cues.sql`, then `20261025000000_review_overhaul.sql`, then `20261026000000_goal_backlog.sql`, then `20261027000000_completed_goals_and_readiness.sql`, then `20261028000000_idea_prep.sql`, then `20261029000000_batches_and_own_clocks.sql`, then `20261030000000_attachments.sql`. (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
 3. **Authentication → URL Configuration**: set **Site URL** to where the app runs (`http://localhost:5173` for now) and add your deployed URL under **Redirect URLs** later.
 4. **Project Settings → API**: copy the project URL and the `anon` public key.
 5. Create `apps/web/.env.local`:
@@ -75,7 +77,8 @@ Any static host works (Netlify, Cloudflare Pages): the app uses `#/` URLs, so no
 
 ## Backups and the free plan
 
-- The Supabase free plan has no automatic backups. Use **Settings → Export everything** regularly (JSON, plus CSV for sessions and measurements).
+- The Supabase free plan has no automatic backups. Use **Settings → Export everything** regularly (JSON, plus CSV for sessions and measurements). The export lists your attachments but doesn't include the files; download those from Supabase → Storage → `attachments`.
+- Free storage is 1 GB; a shrunk progress photo is usually 300–600 KB, so a daily photo for six months is well under 150 MB.
 - Free projects pause after a week without activity. Daily use keeps it awake; if it pauses, restore it from the Supabase dashboard.
 
 ## Project structure
@@ -122,7 +125,7 @@ Pace is judged by month (no 4-week blocks). Number goals compare the 7-day avera
 
 ## Updating an existing database
 
-After pulling a new version, run any migration in `supabase/migrations/` you haven't run yet (each is safe to run more than once). The review overhaul needs `20261025000000_review_overhaul.sql`; until it's run, the app shows a banner and reviews won't keep the new answers. The goal backlog needs `20261026000000_goal_backlog.sql`, completed goals need `20261027000000_completed_goals_and_readiness.sql`, prepare-and-commit needs `20261028000000_idea_prep.sql`, and batches and own clocks need `20261029000000_batches_and_own_clocks.sql`; until they're run, the app shows a banner and those can't be saved.
+After pulling a new version, run any migration in `supabase/migrations/` you haven't run yet (each is safe to run more than once). The review overhaul needs `20261025000000_review_overhaul.sql`; until it's run, the app shows a banner and reviews won't keep the new answers. The goal backlog needs `20261026000000_goal_backlog.sql`, completed goals need `20261027000000_completed_goals_and_readiness.sql`, prepare-and-commit needs `20261028000000_idea_prep.sql`, batches and own clocks need `20261029000000_batches_and_own_clocks.sql`, and photos and files on tasks need `20261030000000_attachments.sql`; until they're run, the app shows a banner and those can't be saved.
 
 ## Not in this version
 

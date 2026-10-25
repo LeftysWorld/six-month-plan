@@ -47,15 +47,26 @@ export function Today() {
 
   const sessions = view.sessionsOn(day);
   const done = sessions.filter((s) => s.status !== 'planned');
-  const planned = sessions.filter((s) => s.status === 'planned').sort((a, b) => Number(b.priority) - Number(a.priority));
-  const next = !isFuture && day >= today ? planned[0] : undefined;
-  const later = planned.filter((s) => s !== next);
-  const available = data.profile.available_minutes[isoWeekday(day) - 1] ?? 0;
   const tray = view.unplacedThisWeek();
   const trayGroups = [...new Map(tray.map((s) => [s.action_id ?? s.id, s])).values()].map((s) => ({
     first: s,
     count: tray.filter((t) => (t.action_id ?? t.id) === (s.action_id ?? s.id)).length,
   }));
+  // Times-a-week tasks with sessions left show on today's list, one row each; logging one puts it on today.
+  const daysLeft = 8 - isoWeekday(today);
+  const trayLeft = new Map(isToday ? trayGroups.map(({ first, count }) => [first.id, count]) : []);
+  const hintFor = (s: Session): string | null => {
+    const left = trayLeft.get(s.id);
+    if (left == null) return null;
+    const urgent = left >= daysLeft;
+    return `${left} left this week${urgent ? (daysLeft === 1 ? ' · last day' : ` · ${daysLeft} days left`) : ''}`;
+  };
+  const planned = [...sessions.filter((s) => s.status === 'planned'), ...(isToday ? trayGroups.map((g) => g.first) : [])].sort(
+    (a, b) => Number(b.priority) - Number(a.priority),
+  );
+  const next = !isFuture && day >= today ? planned[0] : undefined;
+  const later = planned.filter((s) => s !== next);
+  const available = data.profile.available_minutes[isoWeekday(day) - 1] ?? 0;
   // "Any day this week" tasks go on the day you're looking at, unless that day has passed.
   const placeOn = day >= today ? day : today;
 
@@ -74,7 +85,7 @@ export function Today() {
       return;
     }
     if (s.status === 'planned') {
-      commit(opsLogSession(s, { status: 'done' }));
+      commit(opsLogSession(s, { status: 'done', on: today }));
       toast(`${s.title} done`, () => commit(opsRestoreSession(before)));
     } else {
       commit(opsLogSession(s, { status: 'planned', actual_minutes: null, actual_count: null }));
@@ -126,7 +137,7 @@ export function Today() {
     </div>
   );
 
-  const anyDay = trayGroups.length > 0 && (
+  const anyDay = !isToday && trayGroups.length > 0 && (
     <div className="stack-sm">
       <div className="label" style={{ margin: '6px 2px 0' }}>
         Any day this week
@@ -249,7 +260,7 @@ export function Today() {
           <CommitmentCard review={commitment.review} text={commitment.text} forWeek={commitment.forWeek} today={today} compact />
         )}
 
-        {next && <UpNext session={next} onStart={() => start(next)} onOpen={() => openSession(next)} />}
+        {next && <UpNext session={next} hint={hintFor(next)} onStart={() => start(next)} onOpen={() => openSession(next)} />}
         {coach && (
           <p className="coach only-narrow">
             <Icon name="sparkle" size={16} />
@@ -258,7 +269,7 @@ export function Today() {
         )}
         {isFuture && <span className="xsmall muted">Coming up. You can check these off on the day.</span>}
 
-        {sessions.length === 0 && (
+        {sessions.length === 0 && planned.length === 0 && (
           <div className="card empty">
             <h3 style={{ marginBottom: 6 }}>Nothing planned {isToday ? 'today' : `on ${fullDay(day)}`}.</h3>
             Add a task, or rest. Rest counts.
@@ -266,7 +277,7 @@ export function Today() {
         )}
 
         {later.length > 0 && (
-          <TaskGroup title={isFuture ? 'Planned' : isToday ? 'Later today' : 'Not logged'} sessions={later} onToggle={toggle} onOpen={openSession} swipe={!isFuture} />
+          <TaskGroup title={isFuture ? 'Planned' : isToday ? 'Later today' : 'Not logged'} sessions={later} hint={hintFor} onToggle={toggle} onOpen={openSession} swipe={!isFuture} />
         )}
         {done.length > 0 && <TaskGroup title={isToday ? 'Done' : 'Logged'} sessions={done} onToggle={toggle} onOpen={openSession} swipe={false} />}
 
@@ -476,7 +487,7 @@ function EveningWrap({ sessions, onDone }: { sessions: Session[]; onDone: () => 
 }
 
 /** The Up next card: the next thing to do, with a big button to check it off (or open the workout log). */
-function UpNext({ session, onStart, onOpen }: { session: Session; onStart: () => void; onOpen: () => void }) {
+function UpNext({ session, hint, onStart, onOpen }: { session: Session; hint?: string | null; onStart: () => void; onOpen: () => void }) {
   const view = useView();
   const isWorkout = view.action(session.action_id)?.kind === 'workout';
   const goal = view.goalsForAction(session.action_id)[0];
@@ -488,6 +499,7 @@ function UpNext({ session, onStart, onOpen }: { session: Session; onStart: () =>
           Up next{s.planned_minutes ? ` · ${minutesText(s.planned_minutes)}` : ''}
         </span>
         <span style={{ fontSize: 21, fontWeight: 600, letterSpacing: '-0.03em', lineHeight: 1.15 }}>{s.title}</span>
+        {hint && <span className="small" style={{ color: 'var(--amber-ink)' }}>{hint}</span>}
         {(goal || s.planned_count) && (
           <span className="row-start small" style={{ color: 'var(--ink-2)', gap: 7, flexWrap: 'nowrap' }}>
             {goal && <span className="dot" style={{ width: 7, height: 7, background: goal.color, boxShadow: `0 0 10px ${goal.color}` }} />}
@@ -515,12 +527,14 @@ function UpNext({ session, onStart, onOpen }: { session: Session; onStart: () =>
 function TaskGroup({
   title,
   sessions,
+  hint,
   onToggle,
   onOpen,
   swipe,
 }: {
   title: string;
   sessions: Session[];
+  hint?: (s: Session) => string | null;
   onToggle: (s: Session) => void;
   onOpen: (s: Session) => void;
   swipe: boolean;
@@ -533,7 +547,7 @@ function TaskGroup({
       </div>
       <div className="task-list">
         {sessions.map((s) => (
-          <TaskRow key={s.id} session={s} onToggle={() => onToggle(s)} onOpen={() => onOpen(s)} swipe={swipe && s.status === 'planned'} />
+          <TaskRow key={s.id} session={s} hint={hint?.(s)} onToggle={() => onToggle(s)} onOpen={() => onOpen(s)} swipe={swipe && s.status === 'planned'} />
         ))}
       </div>
     </div>
@@ -543,8 +557,9 @@ function TaskGroup({
 const SWIPE_DONE = 84;
 
 /** One task: tap the ring to check it, tap the row for details, swipe left to finish it. */
-function TaskRow({ session, onToggle, onOpen, swipe }: { session: Session; onToggle: () => void; onOpen: () => void; swipe: boolean }) {
+function TaskRow({ session, hint, onToggle, onOpen, swipe }: { session: Session; hint?: string | null; onToggle: () => void; onOpen: () => void; swipe: boolean }) {
   const view = useView();
+  const { data } = useStore();
   const action = view.action(session.action_id);
   const goal = view.goalsForAction(session.action_id)[0];
   const s = session;
@@ -561,6 +576,9 @@ function TaskRow({ session, onToggle, onOpen, swipe }: { session: Session; onTog
   if (s.status === 'partial') meta = s.planned_count ? `Partial · ${s.actual_count ?? 0} of ${s.planned_count}` : 'Partial';
   if (s.status === 'skipped') meta = s.obstacles.length ? `Skipped · ${s.obstacles.join(', ')}` : 'Skipped';
   if (s.origin === 'unplanned') meta = 'Logged extra';
+  if (hint && s.status === 'planned') meta = [hint, meta].filter(Boolean).join(' · ');
+  const fileCount = data.attachments.filter((a) => a.session_id === s.id).length;
+  if (fileCount > 0) meta = [meta, fileCount === 1 ? '1 file' : `${fileCount} files`].filter(Boolean).join(' · ');
 
   const right =
     s.status === 'done' || s.status === 'partial' || s.status === 'minimum'

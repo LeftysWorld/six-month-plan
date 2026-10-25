@@ -41,7 +41,7 @@ function clock(seconds: number): string {
 }
 
 export function WorkoutLog({ id }: { id: string }) {
-  const { data, commit } = useStore();
+  const { data, commit, today } = useStore();
   const view = useView();
   const toast = useToast();
   const session = data.sessions.find((s) => s.id === id);
@@ -89,7 +89,7 @@ export function WorkoutLog({ id }: { id: string }) {
     );
     commit([
       ...opsSaveWorkout(data, session.id, sets),
-      ...opsLogSession(session, { status, actual_minutes: Math.max(1, Math.round(elapsed / 60)) }),
+      ...opsLogSession(session, { status, actual_minutes: Math.max(1, Math.round(elapsed / 60)), on: today }),
     ]);
     localStorage.removeItem(timerKey);
     toast(status === 'done' ? 'Workout finished' : 'Saved as partial');

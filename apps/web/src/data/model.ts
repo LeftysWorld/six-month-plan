@@ -2,6 +2,7 @@ import type {
   Action,
   ActionGoal,
   ActionSchedule,
+  Attachment,
   ChangeLogEntry,
   Goal,
   GoalIdea,
@@ -40,6 +41,8 @@ export interface AppData {
   changeLog: ChangeLogEntry[];
   /** The goal backlog: ideas, selected for next commitment, started, discarded. */
   ideas: GoalIdea[];
+  /** Photos and files attached to logged tasks (the files themselves are in file storage). */
+  attachments: Attachment[];
 }
 
 export type CollectionKey = Exclude<keyof AppData, 'profile'>;
@@ -63,6 +66,7 @@ export const TABLES: Record<CollectionKey, string> = {
   reviews: 'reviews',
   changeLog: 'change_log',
   ideas: 'goal_ideas',
+  attachments: 'attachments',
 };
 
 export const COLLECTIONS = Object.keys(TABLES) as CollectionKey[];
@@ -106,6 +110,7 @@ export function emptyData(): AppData {
     reviews: [],
     changeLog: [],
     ideas: [],
+    attachments: [],
   };
 }
 

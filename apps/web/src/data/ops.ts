@@ -7,6 +7,7 @@ import {
   type Action,
   type ActionKind,
   type ActionSchedule,
+  type Attachment,
   type Goal,
   type GoalType,
   type ISODate,
@@ -41,6 +42,8 @@ export interface SessionLog {
   actual_count?: number | null;
   note?: string;
   obstacles?: string[];
+  /** For an "any day this week" session (no date yet): the day it was done on. */
+  on?: ISODate;
 }
 
 export function opsLogSession(session: Session, log: SessionLog): Op[] {
@@ -52,6 +55,7 @@ export function opsLogSession(session: Session, log: SessionLog): Op[] {
   if (log.actual_count !== undefined) patch.actual_count = log.actual_count;
   if (log.note !== undefined) patch.note = log.note;
   if (log.obstacles !== undefined) patch.obstacles = log.obstacles;
+  if (log.on && !session.date && log.status !== 'planned') patch.date = log.on;
   if (log.status === 'done') {
     if (log.actual_minutes === undefined && session.actual_minutes == null) patch.actual_minutes = session.planned_minutes;
     if (log.actual_count === undefined && session.actual_count == null) patch.actual_count = session.planned_count;
@@ -469,4 +473,14 @@ export function opsProfile(patch: Partial<Profile>): Op[] {
 
 export function opsCompleteReview(payload: ReviewPayload): Op[] {
   return [{ kind: 'review', payload }];
+}
+
+/** Record a file that was just uploaded for a session. */
+export function opsAddAttachment(session: Session, file: { id: string; path: string; name: string; mime_type: string; size_bytes: number }): Op[] {
+  const row: Attachment = { ...file, session_id: session.id, action_id: session.action_id, created_at: nowISO() };
+  return [{ kind: 'insert', collection: 'attachments', rows: [row as unknown as Row] }];
+}
+
+export function opsRemoveAttachment(attachment: Attachment): Op[] {
+  return [{ kind: 'delete', collection: 'attachments', id: attachment.id }];
 }

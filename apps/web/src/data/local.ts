@@ -1,6 +1,7 @@
 import type { Db } from './db.ts';
 import { applyOp, emptyData, normalizeData, type AppData, type Op } from './model.ts';
 import { buildDemoData } from './seed.ts';
+import { createLocalFiles } from './files-local.ts';
 
 const KEY = 'six.demo.v1';
 
@@ -23,8 +24,10 @@ function write(data: AppData): void {
 
 /** Demo mode: everything lives in this browser's localStorage. */
 export function createLocalDb(): Db {
+  const files = createLocalFiles();
   return {
     mode: 'demo',
+    files,
     async loadAll(): Promise<AppData> {
       const existing = read();
       if (existing) return existing;
@@ -39,6 +42,7 @@ export function createLocalDb(): Db {
     async wipeAll(): Promise<void> {
       const current = read() ?? emptyData();
       write({ ...emptyData(), profile: current.profile });
+      await files.clear().catch(() => {});
     },
   };
 }

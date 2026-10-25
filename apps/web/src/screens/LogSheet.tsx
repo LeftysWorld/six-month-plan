@@ -5,6 +5,7 @@ import { useView } from '../data/derive.ts';
 import { opsLogSession, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
 import { href, navigate } from '../router.ts';
 import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
+import { SessionFiles } from '../components/Attachments.tsx';
 
 /** Log an item beyond a one-tap check: amount, state, obstacles, note, or move it. */
 export function LogSheet({ session, onClose }: { session: Session; onClose: () => void }) {
@@ -39,6 +40,7 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
         actual_minutes: minutes,
         obstacles,
         note,
+        on: today,
       }),
     );
     toast(`${session.title}: ${states.find((s) => s.value === status)?.title.toLowerCase()}`, () => commit(opsRestoreSession(before)));
@@ -161,6 +163,7 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
             Note
             <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
+          <SessionFiles session={session} />
           <div className="btn-row">
             <button className="btn" onClick={() => setMoving(true)}>
               Move to another day

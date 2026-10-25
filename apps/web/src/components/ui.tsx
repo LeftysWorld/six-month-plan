@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { PACE_TEXT, type PaceLabel, type Progress } from '@six/core';
+import { createPortal } from 'react-dom';
 import { fmt } from '../data/derive.ts';
 import { goBack } from '../router.ts';
 
@@ -133,7 +134,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
       previous?.focus?.();
     };
   }, [onClose]);
-  return (
+  // Render at the top of the page: a card with backdrop-filter traps fixed children inside its own layer.
+  return createPortal(
     <div className="sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}>
         <div className="grabber" />
@@ -145,7 +147,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

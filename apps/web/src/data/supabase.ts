@@ -8,14 +8,14 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const supabaseConfigured = Boolean(url && anonKey);
 
-const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql, 20261025000000_review_overhaul.sql, 20261026000000_goal_backlog.sql, 20261027000000_completed_goals_and_readiness.sql, 20261028000000_idea_prep.sql and 20261029000000_batches_and_own_clocks.sql';
+const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql, 20261025000000_review_overhaul.sql, 20261026000000_goal_backlog.sql, 20261027000000_completed_goals_and_readiness.sql, 20261028000000_idea_prep.sql, 20261029000000_batches_and_own_clocks.sql and 20261030000000_attachments.sql';
 const BACKLOG_MIGRATION = 'supabase/migrations/20261026000000_goal_backlog.sql';
 
 /** Set when the database is missing a newer migration; the app shows it as a banner. */
 export let schemaWarning: string | null = null;
 
 function isMissingBreakdown(message: string): boolean {
-  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas|completion_note|done_means|goals\.completed_at|\bprep\b|\bsolo\b/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas|completion_note|done_means|goals\.completed_at|\bprep\b|\bsolo\b|attachments/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
 }
 
 let client: SupabaseClient | null = null;
@@ -75,9 +75,42 @@ function toSaveError(error: { message: string; code?: string } | null): SaveErro
   return new SaveError(error.message, retryable);
 }
 
+const BUCKET = 'attachments';
+
+/** Storage keys allow a limited character set; keep the name readable but safe. */
+function safeName(name: string): string {
+  const cleaned = name.normalize('NFKD').replace(/[^\w.\-]+/g, '_').replace(/_+/g, '_');
+  return cleaned.slice(-80) || 'file';
+}
+
 export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
+  const urlCache = new Map<string, { url: string; until: number }>();
   return {
     mode: 'supabase',
+
+    files: {
+      async upload(id, name, file) {
+        // The first folder must be the user's id: the storage policies check it.
+        const path = `${userId}/${id}/${safeName(name)}`;
+        const { error } = await sb.storage.from(BUCKET).upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+        if (error) throw new Error(error.message);
+        return path;
+      },
+      async url(path) {
+        const hit = urlCache.get(path);
+        if (hit && hit.until > Date.now()) return hit.url;
+        const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(path, 3600);
+        if (error || !data) throw new Error(error?.message ?? 'No link for this file');
+        urlCache.set(path, { url: data.signedUrl, until: Date.now() + 50 * 60_000 });
+        return data.signedUrl;
+      },
+      async remove(paths) {
+        if (paths.length === 0) return;
+        const { error } = await sb.storage.from(BUCKET).remove(paths);
+        if (error) throw new Error(error.message);
+        for (const p of paths) urlCache.delete(p);
+      },
+    },
 
     async loadAll(): Promise<AppData> {
       const data = emptyData();
@@ -91,6 +124,11 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
               return [];
             }
             // A database without the backlog table still loads; the backlog just can't save yet.
+            // A database without the attachments table still loads; files just can't be added yet.
+            if (key === 'attachments' && isMissingBreakdown(e.message)) {
+              schemaWarning ??= `Your database needs the attachments update. In Supabase → SQL Editor, run supabase/migrations/20261030000000_attachments.sql, then reload.`;
+              return [];
+            }
             if (key === 'ideas' && isMissingBreakdown(e.message)) {
               schemaWarning ??= `Your database needs the goal backlog update. In Supabase → SQL Editor, run ${BACKLOG_MIGRATION}, then reload.`;
               return [];
@@ -173,16 +211,20 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
     },
 
     async wipeAll(): Promise<void> {
+      // The files themselves first: deleting the rows doesn't remove them from storage.
+      const { data: files } = await sb.from('attachments').select('path').eq('user_id', userId);
+      const paths = ((files ?? []) as { path: string }[]).map((f) => f.path);
+      for (let i = 0; i < paths.length; i += 100) await sb.storage.from(BUCKET).remove(paths.slice(i, i + 100));
       // Children first so nothing is left pointing at a deleted row (the foreign keys cascade anyway).
       const order = [
-        'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
+        'attachments', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
         'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
         'plan_steps', 'plan_goals', 'goals', 'plans', 'measurement_types',
       ];
       for (const table of order) {
         const { error } = await sb.from(table).delete().eq('user_id', userId);
         // An older database without the breakdown table has nothing to delete there.
-        if (error && !((table === 'plan_steps' || table === 'goal_ideas') && isMissingBreakdown(error.message))) throw new Error(`${table}: ${error.message}`);
+        if (error && !((table === 'plan_steps' || table === 'goal_ideas' || table === 'attachments') && isMissingBreakdown(error.message))) throw new Error(`${table}: ${error.message}`);
       }
     },
   };
