@@ -90,11 +90,11 @@ export function buildDemoData(): AppData {
   const guitar = goal({ title: 'Comfortable on guitar', type: 'practice', color: '#FF7A45', why: 'Play for myself at the end of the day.', done_means: '3 songs recorded start to finish' });
   const splits = goal({ title: 'Near full splits', type: 'practice', color: '#E8559B', why: 'Move without stiffness.', done_means: 'Under 3 in from the floor' });
   const career = goal({ title: 'Land a product role', type: 'practice', color: '#8B6CF6', why: 'Work on AI products I care about.', done_means: 'Signed offer' });
-  const jhu = goal({ title: 'JHU AI certificate', type: 'finish', color: '#C9A227', why: 'Credibility for AI product roles.', done_means: 'All modules passed' });
-  const aigp = goal({ title: 'Pass the AIGP exam', type: 'finish', color: '#C9A227', why: 'AI governance credibility.', done_means: 'Exam passed' });
+  const jhu = goal({ title: 'JHU AI certificate', type: 'finish', color: '#3FB6C9', why: 'Credibility for AI product roles.', done_means: 'All modules passed' });
+  const aigp = goal({ title: 'Pass the AIGP exam', type: 'finish', color: '#3FB6C9', why: 'AI governance credibility.', done_means: 'Exam passed' });
   // A goal already finished early in the plan, so Completed has something to show.
   const finishedAt = `${addDays(today, -2)}T18:00:00.000Z`;
-  const course = goal({ title: 'Finish the agents course', type: 'finish', color: '#3FB6C9', why: 'Hands-on with agents and evals.', done_means: 'All lessons and the capstone done', completed_at: finishedAt, completion_note: 'Done two weeks early. Short evening sessions worked better than weekend marathons.' });
+  const course = goal({ title: 'Finish the agents course', type: 'finish', color: '#94A3B8', why: 'Hands-on with agents and evals.', done_means: 'All lessons and the capstone done', completed_at: finishedAt, completion_note: 'Done two weeks early. Short evening sessions worked better than weekend marathons.' });
   data.goals = [weight, strength, guitar, splits, career, jhu, aigp, course];
   data.planGoals = [
     ...[weight, strength, guitar, splits, career, jhu, course].map((g) => ({ id: id(), plan_id: plan.id, goal_id: g.id })),

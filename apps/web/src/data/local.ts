@@ -1,5 +1,5 @@
 import type { Db } from './db.ts';
-import { applyOp, emptyData, type AppData, type Op } from './model.ts';
+import { applyOp, emptyData, normalizeData, type AppData, type Op } from './model.ts';
 import { buildDemoData } from './seed.ts';
 
 const KEY = 'six.demo.v1';
@@ -7,7 +7,7 @@ const KEY = 'six.demo.v1';
 function read(): AppData | null {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? ({ ...emptyData(), ...JSON.parse(raw) } as AppData) : null;
+    return raw ? normalizeData({ ...emptyData(), ...JSON.parse(raw) } as AppData) : null;
   } catch {
     return null;
   }

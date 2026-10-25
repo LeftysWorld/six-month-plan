@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Db } from './db.ts';
 import { SaveError } from './db.ts';
-import { COLLECTIONS, TABLES, defaultProfile, emptyData, type AppData, type Op } from './model.ts';
+import { COLLECTIONS, TABLES, defaultProfile, emptyData, normalizeData, type AppData, type Op } from './model.ts';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -128,7 +128,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
         if (insertError) throw new Error(`profiles: ${insertError.message}`);
         data.profile = fresh;
       }
-      return data;
+      return normalizeData(data);
     },
 
     async apply(op: Op): Promise<void> {

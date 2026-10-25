@@ -97,7 +97,7 @@ export function StudyLog({ id }: { id: string }) {
               cy="95"
               r={r}
               fill="none"
-              stroke={goals[0]?.color ?? '#C9A227'}
+              stroke={goals[0]?.color ?? '#7C9CFF'}
               strokeWidth="12"
               strokeLinecap="round"
               strokeDasharray={circumference}

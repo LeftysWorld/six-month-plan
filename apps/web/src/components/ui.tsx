@@ -226,6 +226,7 @@ export function NumberInput({
 export const WEEKDAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 export const WEEKDAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-export const GOAL_COLORS = ['#5B8CFF', '#22B07D', '#FF7A45', '#E8559B', '#8B6CF6', '#C9A227'];
+// Goal colours: clear on graphite and on white, no yellow or lime.
+export const GOAL_COLORS = ['#5B8CFF', '#22B07D', '#FF7A45', '#E8559B', '#8B6CF6', '#3FB6C9'];
 
 export const OBSTACLES = ['Time', 'Energy', 'Schedule', 'Unclear task'];

@@ -67,6 +67,15 @@ export const TABLES: Record<CollectionKey, string> = {
 
 export const COLLECTIONS = Object.keys(TABLES) as CollectionKey[];
 
+/** Colours retired from the palette, shown as their replacement (the olive-yellow became teal). */
+const RETIRED_COLORS: Record<string, string> = { '#c9a227': '#3FB6C9' };
+
+/** Tidy loaded data for display: retired goal colours are swapped for their replacement. */
+export function normalizeData(data: AppData): AppData {
+  if (!data.goals.some((g) => RETIRED_COLORS[g.color?.toLowerCase()])) return data;
+  return { ...data, goals: data.goals.map((g) => (RETIRED_COLORS[g.color?.toLowerCase()] ? { ...g, color: RETIRED_COLORS[g.color.toLowerCase()]! } : g)) };
+}
+
 export function defaultProfile(): Profile {
   return {
     display_name: '',
