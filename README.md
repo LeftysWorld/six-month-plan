@@ -125,6 +125,8 @@ Pace is judged by month (no 4-week blocks). Number goals compare the 7-day avera
 
 ## Updating an existing database
 
+**From PyCharm (or any terminal) instead of the SQL Editor:** `pip install "psycopg[binary]"`, then `python scripts/run_migration.py` runs the newest migration (or name files: `python scripts/run_migration.py supabase/migrations/20261030000000_attachments.sql`). It asks for the connection string from Supabase → **Connect** → **Session pooler** → URI, with your database password filled in.
+
 After pulling a new version, run any migration in `supabase/migrations/` you haven't run yet (each is safe to run more than once). The review overhaul needs `20261025000000_review_overhaul.sql`; until it's run, the app shows a banner and reviews won't keep the new answers. The goal backlog needs `20261026000000_goal_backlog.sql`, completed goals need `20261027000000_completed_goals_and_readiness.sql`, prepare-and-commit needs `20261028000000_idea_prep.sql`, batches and own clocks need `20261029000000_batches_and_own_clocks.sql`, and photos and files on tasks need `20261030000000_attachments.sql`; until they're run, the app shows a banner and those can't be saved.
 
 ## Not in this version
