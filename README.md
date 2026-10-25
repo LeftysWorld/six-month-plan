@@ -16,7 +16,11 @@ Three places, one job each: **Today** to do, **Goals** to see and shape, **Revie
   - **Catch-up math** next to anything behind: "2 extra a week for the next 2 weeks catches you up", "1.3 lb a week reaches 207.8 by Nov 1".
   - **Daily tasks**: set days, times a week, or one day; for this week, the month, 3 months, the plan or no end date; with an optional "after ___, at ___" cue that shows on Today.
   - Why it matters, the path chart, milestones, measurements and change history.
-- **Review**: the weekly review in **three steps** (look back incl. measurements, reflect incl. suggested changes, plan next week incl. next week's goals with "any day" tasks placed on your lightest days), progress tiles (plan pace rings, weight trend, this week, check-ins, plan vs actual), month / 3-month / retrospective reviews, and charts.
+- **Review**: one flow for every review, each with its own last step.
+  - **Weekly** (opens Saturday): look back (did last week's planned change happen, hit / partly / missed for each week goal, tasks and time done, recent weeks chart, measurements), reflect (patterns such as your most-missed weekday and top obstacle, past wins, what went well, what got in the way, what to change), plan next week (next week's goals, a time check against what you've actually been doing, move any task to any day or take it out).
+  - **Suggested changes**: pause a task nothing happened on for 3 weeks, move a weekday that keeps getting missed, lower or raise how often, or add a minimum version.
+  - **Month**: the month goals, then set next month's goals. **3-month checkpoint**: keep, adjust (new target and redrawn path) or drop each goal, then set the next 3 months. **Retrospective**: what worked, what didn't, what carries over, then start the next plan with the goals you carry. A missed review stays open until the next one of its kind opens.
+  - The Review tab shows open reviews, your weekly review count, an insights card (weekly trend, time, obstacles, weekday pattern, how often your changes stuck), progress tiles, and past reviews you can open.
 - **Workout log** (sets × reps × weight, starts from your last workout) and a **focus timer** for any task (survives reloads).
 - **Reminders** (see below): a morning push and an evening "keep your streak" push when the site is installed on your home screen, or a calendar feed. Open tasks also show in the browser tab title and on the home-screen icon.
 - **On a computer**: two-column layouts and keyboard shortcuts (N add, T Today, G Goals, R Review, ← → change day).
@@ -37,7 +41,7 @@ Open http://localhost:5173. With no Supabase settings, the app runs in demo mode
 ## Connect Supabase (your real data)
 
 1. Create a free project at https://supabase.com.
-2. In the dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in order: first `20261016000000_initial_schema.sql`, then `20261019000000_goal_breakdown.sql`, then `20261021000000_reminders_and_cues.sql`. (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
+2. In the dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in order: first `20261016000000_initial_schema.sql`, then `20261019000000_goal_breakdown.sql`, then `20261021000000_reminders_and_cues.sql`, then `20261025000000_review_overhaul.sql`. (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
 3. **Authentication → URL Configuration**: set **Site URL** to where the app runs (`http://localhost:5173` for now) and add your deployed URL under **Redirect URLs** later.
 4. **Project Settings → API**: copy the project URL and the `anon` public key.
 5. Create `apps/web/.env.local`:
@@ -79,6 +83,7 @@ six-month-plan/
 │   ├── src/schedule.ts                  schedules → sessions, credit for done/partial/minimum
 │   ├── src/pace.ts                      plan vs actual, pace labels, number-goal status
 │   ├── src/suggest.ts                   weekly review suggestions
+│   ├── src/review.ts                    review tallies, weekly trend, patterns, which reviews are due
 │   ├── src/types.ts                     row types shared with the database
 │   └── test/core.test.ts                unit tests (npm test)
 ├── apps/web/                            React app (Vite)
@@ -108,6 +113,10 @@ Pace is judged by month (no 4-week blocks). Number goals compare the 7-day avera
 | `npm test` | Run the core unit tests |
 | `npm run typecheck` | Type-check both packages |
 | `npm run build` | Type-check and build the web app into `apps/web/dist` |
+
+## Updating an existing database
+
+After pulling a new version, run any migration in `supabase/migrations/` you haven't run yet (each is safe to run more than once). The review overhaul needs `20261025000000_review_overhaul.sql`; until it's run, the app shows a banner and reviews won't keep the new answers.
 
 ## Not in this version
 

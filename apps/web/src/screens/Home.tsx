@@ -4,7 +4,7 @@ import { useStore } from '../data/store.tsx';
 import { fmt, useView, type GoalPace, type View } from '../data/derive.ts';
 import { checkInStreak } from '../data/habit.ts';
 import { href } from '../router.ts';
-import { PaceBar, PacePill } from '../components/ui.tsx';
+import { PacePill } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
 import { StreakDots } from './Today.tsx';
 
@@ -131,31 +131,6 @@ export function ProgressBento({ plan }: { plan: Plan }) {
           <StreakDots streak={streak} />
         </div>
 
-        <div className="tile wide">
-          <div className="row-between">
-            <span className="label">Plan vs actual</span>
-            <span className="mono" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10 }}>
-              <span style={{ width: 2, height: 11, background: 'var(--ink)', display: 'inline-block' }} />
-              where you should be
-            </span>
-          </div>
-          <div>
-            {horizons.map((h) => (
-              <a key={h.key} className="horizon" href={href(h.key === 'today' ? '/today' : h.key === 'week' ? '/review' : h.key === 'plan' ? '/plans' : `/plans/${plan.id}`)} style={{ textDecoration: 'none', color: 'inherit' }}>
-                <div style={{ fontSize: 14.5, fontWeight: 600, letterSpacing: '-0.01em' }}>
-                  {h.name} <span className="xsmall muted" style={{ fontWeight: 400 }}>· {h.detail}</span>
-                </div>
-                <div className="row-start" style={{ flexWrap: 'nowrap' }}>
-                  <span className="num" style={{ fontSize: 14 }}>
-                    {fmt(h.progress.actual, 0)}/{h.progress.planned}
-                  </span>
-                  <PacePill label={h.progress.label} text={h.progress.label === 'behind' ? `Behind ${Math.max(1, Math.round(h.progress.expected - h.progress.actual))}` : undefined} />
-                </div>
-                <PaceBar progress={h.progress} />
-              </a>
-            ))}
-          </div>
-        </div>
       </div>
 
       <p className="mono" style={{ textAlign: 'center', margin: '6px 0 0' }}>

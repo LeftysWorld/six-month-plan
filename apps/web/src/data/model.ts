@@ -113,7 +113,10 @@ export interface ReviewPayload {
   schedule_changes: {
     end_schedule_id: string;
     end_on: string;
-    new_schedule: ActionSchedule;
+    /** The task the change is for. */
+    action_id: string;
+    /** null pauses the task from the day after end_on. */
+    new_schedule: ActionSchedule | null;
     summary: string;
     old_value: unknown;
     new_value: unknown;
@@ -127,7 +130,9 @@ export interface ReviewPayload {
     old_value: unknown;
     new_value: unknown;
   }[];
-  week_plan: WeekPlan;
+  /** Only the weekly review plans a week. */
+  week_plan?: WeekPlan | null;
+  /** Next week's sessions; status 'moved' takes a session out of the week. */
   sessions: Session[];
 }
 
@@ -179,18 +184,18 @@ export function applyReviewPayload(data: AppData, p: ReviewPayload): AppData {
       ...next,
       schedules: [
         ...next.schedules.map((s) => (s.id === c.end_schedule_id ? { ...s, effective_to: c.end_on } : s)),
-        c.new_schedule,
+        ...(c.new_schedule ? [c.new_schedule] : []),
       ],
       changeLog: [
         ...next.changeLog,
         {
           id: crypto.randomUUID(),
           entity: 'action_schedule',
-          entity_id: c.new_schedule.action_id,
+          entity_id: c.new_schedule?.action_id ?? c.action_id,
           summary: c.summary,
           old_value: c.old_value,
           new_value: c.new_value,
-          effective_from: c.new_schedule.effective_from,
+          effective_from: c.new_schedule?.effective_from ?? addOneDay(c.end_on),
           review_id: p.review.id,
           created_at: now,
         },
@@ -219,10 +224,10 @@ export function applyReviewPayload(data: AppData, p: ReviewPayload): AppData {
       ],
     };
   }
-  next = {
-    ...next,
-    weekPlans: [...next.weekPlans.filter((w) => w.week_start !== p.week_plan.week_start), p.week_plan],
-  };
+  if (p.week_plan) {
+    const plan = p.week_plan;
+    next = { ...next, weekPlans: [...next.weekPlans.filter((w) => w.week_start !== plan.week_start), plan] };
+  }
   const byKey = new Map(next.sessions.filter((s) => s.action_id).map((s) => [sessionKey(s), s]));
   const updated = [...next.sessions];
   for (const s of p.sessions) {
@@ -230,11 +235,18 @@ export function applyReviewPayload(data: AppData, p: ReviewPayload): AppData {
     if (existing) {
       if (existing.status === 'planned') {
         const i = updated.indexOf(existing);
-        updated[i] = { ...existing, date: s.date, planned_minutes: s.planned_minutes, planned_count: s.planned_count };
+        const removed = s.status === 'moved';
+        updated[i] = { ...existing, date: s.date, planned_minutes: s.planned_minutes, planned_count: s.planned_count, status: removed ? 'moved' : 'planned', note: removed ? s.note : existing.note };
       }
     } else {
-      updated.push(s);
+      updated.push({ ...s, status: s.status === 'moved' ? 'moved' : 'planned' });
     }
   }
   return { ...next, sessions: updated };
+}
+
+function addOneDay(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
