@@ -14,6 +14,7 @@ import {
   type Plan,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
+import { ConnectionStrip } from '../components/Connections.tsx';
 import { fmt, useView, type View } from '../data/derive.ts';
 import { opsArchivePlan, opsCreatePlan } from '../data/ops.ts';
 import {
@@ -325,6 +326,7 @@ function GoalCard({ card, plan, ownClock = false }: { card: GoalCardData; plan: 
         </a>
         <span style={{ flex: 'none', fontSize: 13, fontWeight: 600, color: ink }}>{word}</span>
       </div>
+      <ConnectionStrip goal={goal} />
       {ownClock && (
         <div className="own-clock" role="img" aria-label={`Own clock: day ${Math.min(planDayNumber(plan, today), planTotalDays(plan))} of ${planTotalDays(plan)}, ends ${shortDate(plan.end_date)}`}>
           <span className="mono">

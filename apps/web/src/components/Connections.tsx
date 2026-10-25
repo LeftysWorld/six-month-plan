@@ -21,7 +21,7 @@ export function ConnectedGoals({ goal }: { goal: Goal }) {
   const canConnect = view.activeGoals.some((g) => g.id !== goal.id && !connections.some((c) => c.goal.id === g.id));
 
   return (
-    <div className="card stack-sm">
+    <div className="card stack-sm" id="connected-goals" style={{ scrollMarginTop: 12 }}>
       <div className="row-between">
         <span className="label">Connected goals</span>
         {canConnect && (
@@ -81,6 +81,42 @@ export function ConnectedGoals({ goal }: { goal: Goal }) {
       })}
       {connecting && <ConnectSheet goal={goal} onClose={() => setConnecting(false)} />}
       {sharingFrom && <ShareTaskSheet goal={goal} onlyGoalId={sharingFrom} onClose={() => setSharingFrom(null)} onShared={(m) => toast(m)} />}
+    </div>
+  );
+}
+
+/**
+ * A one-line row of connected goals, shown near the top of a goal page and on the Goals list.
+ * Each chip opens that goal; the count says how many daily tasks they share. With `editable`, a
+ * Connect chip opens the connect sheet, and "Details" jumps to the full Connected goals card.
+ */
+export function ConnectionStrip({ goal, editable = false }: { goal: Goal; editable?: boolean }) {
+  const view = useView();
+  const [connecting, setConnecting] = useState(false);
+  const connections = view.connectionsFor(goal.id).filter((c) => !c.goal.completed_at);
+  const canConnect = view.activeGoals.some((g) => g.id !== goal.id && !connections.some((c) => c.goal.id === g.id));
+  if (connections.length === 0 && !(editable && canConnect)) return null;
+  return (
+    <div className="connection-strip" aria-label="Connected goals">
+      <span className="mono">{connections.length ? 'CONNECTED' : 'NOT CONNECTED'}</span>
+      {connections.map(({ goal: g, shared }) => (
+        <a key={g.id} className="connection-chip" href={href(`/goals/${g.id}`)} title={shared.length ? `Shares: ${shared.map((a) => a.title).join(', ')}` : 'Connected by hand'}>
+          <span className="dot" style={{ width: 7, height: 7, background: g.color }} />
+          {g.title}
+          {shared.length > 0 && <span className="muted"> · {shared.length} shared</span>}
+        </a>
+      ))}
+      {editable && canConnect && (
+        <button type="button" className="connection-chip add" onClick={() => setConnecting(true)}>
+          + Connect a goal
+        </button>
+      )}
+      {editable && connections.length > 0 && (
+        <button type="button" className="link-btn small" onClick={() => document.getElementById('connected-goals')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          Details
+        </button>
+      )}
+      {connecting && <ConnectSheet goal={goal} onClose={() => setConnecting(false)} />}
     </div>
   );
 }

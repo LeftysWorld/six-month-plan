@@ -40,7 +40,7 @@ import {
 import { BackLink, Empty, Icon, PacePill, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
 import { opsUnshareTask } from '../data/connect.ts';
-import { ShareTaskSheet } from '../components/Connections.tsx';
+import { ConnectionStrip, ShareTaskSheet } from '../components/Connections.tsx';
 
 /**
  * One page per goal: the goal chain, top to bottom, then this week's daily tasks.
@@ -111,6 +111,7 @@ export function Flow({ goalId }: { goalId: string }) {
           {goal.type !== 'number' && <span className="small" style={{ color: 'var(--ink-2)' }}>{pace.summary}</span>}
           {pace.label !== 'none' && <PacePill label={pace.label} />}
         </div>
+        <ConnectionStrip goal={goal} editable />
         {fix && (
           <p className="coach" style={{ padding: 0 }}>
             <Icon name="sparkle" size={16} />
