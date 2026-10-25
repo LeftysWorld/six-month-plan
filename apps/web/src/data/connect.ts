@@ -149,3 +149,58 @@ export function matchingTasks(groups: ShareGroup[], typed: string): { action: Ac
       .map((t) => ({ ...t, goal: g.goal })),
   );
 }
+
+// ---------- One measurement per name per goal ----------
+
+const measureKey = (name: string, unit: string) => `${name.trim().toLowerCase()}|${unit.trim().toLowerCase()}`;
+
+/** The goal a measurement belongs to: the goal it was added to, or the goal it is the main number of. */
+export function measureOwner(data: AppData, typeId: string): string | null {
+  const t = data.measurementTypes.find((m) => m.id === typeId);
+  return data.goals.find((g) => g.measurement_type_id === typeId)?.id ?? t?.goal_id ?? null;
+}
+
+/** An active measurement with this name and unit on the goal, if there is one (so a second isn't made). */
+export function findMeasure(data: AppData, goalId: string, name: string, unit: string): string | null {
+  const key = measureKey(name, unit);
+  return data.measurementTypes.find((t) => !t.archived_at && measureKey(t.name, t.unit) === key && measureOwner(data, t.id) === goalId)?.id ?? null;
+}
+
+/**
+ * Merge measurements a goal has twice (same name and unit, e.g. two "Weight (lb)"): the goal's
+ * main one is kept, readings move onto it (on a day both have one, the kept one's stays), tasks
+ * and goals point at it, and the copy is archived. Runs when the app opens.
+ */
+export function opsMergeDuplicateMeasures(data: AppData): Op[] {
+  const ops: Op[] = [];
+  const groups = new Map<string, string[]>();
+  for (const t of data.measurementTypes) {
+    if (t.archived_at) continue;
+    const owner = measureOwner(data, t.id);
+    if (!owner) continue;
+    const key = `${owner}|${measureKey(t.name, t.unit)}`;
+    groups.set(key, [...(groups.get(key) ?? []), t.id]);
+  }
+  for (const ids of groups.values()) {
+    if (ids.length < 2) continue;
+    const keep = ids.find((id) => data.goals.some((g) => g.measurement_type_id === id)) ?? ids[0]!;
+    const keptDays = new Set(data.measurements.filter((m) => m.type_id === keep).map((m) => m.measured_on));
+    for (const dup of ids.filter((id) => id !== keep)) {
+      for (const m of data.measurements.filter((x) => x.type_id === dup)) {
+        if (keptDays.has(m.measured_on)) ops.push({ kind: 'delete', collection: 'measurements', id: m.id });
+        else {
+          keptDays.add(m.measured_on);
+          ops.push({ kind: 'update', collection: 'measurements', id: m.id, patch: { type_id: keep } });
+        }
+      }
+      for (const a of data.actions.filter((x) => x.measurement_type_id === dup)) {
+        ops.push({ kind: 'update', collection: 'actions', id: a.id, patch: { measurement_type_id: keep } });
+      }
+      for (const g of data.goals.filter((x) => x.measurement_type_id === dup)) {
+        ops.push({ kind: 'update', collection: 'goals', id: g.id, patch: { measurement_type_id: keep } });
+      }
+      ops.push({ kind: 'update', collection: 'measurementTypes', id: dup, patch: { archived_at: new Date().toISOString() } });
+    }
+  }
+  return ops;
+}

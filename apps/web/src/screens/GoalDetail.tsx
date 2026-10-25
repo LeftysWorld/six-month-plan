@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { shortDate, type Goal, type MeasurementType, type Plan } from '@six/core';
+import { findMeasure } from '../data/connect.ts';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView } from '../data/derive.ts';
 import {
@@ -135,7 +136,7 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
         </div>
       )}
 
-      <Measurements goal={goal} types={types} onAdd={(msg) => toast(msg.startsWith('Stopped') ? msg : `Added ${msg}`)} />
+      <Measurements goal={goal} types={types} onAdd={(msg) => toast(/^(Stopped|Already)/.test(msg) ? msg : `Added ${msg}`)} />
 
       {history.length > 0 && (
         <details className="card tight">
@@ -261,7 +262,7 @@ export function GoalRecord({ goal }: { goal: Goal }) {
       )}
 
       <GoalFiles actionIds={actionIds} />
-      <Measurements goal={goal} types={goal.type === 'number' ? types.filter((t) => t.id !== goal.measurement_type_id) : types} onAdd={(msg) => toast(msg.startsWith('Stopped') ? msg : `Added ${msg}`)} />
+      <Measurements goal={goal} types={goal.type === 'number' ? types.filter((t) => t.id !== goal.measurement_type_id) : types} onAdd={(msg) => toast(/^(Stopped|Already)/.test(msg) ? msg : `Added ${msg}`)} />
     </>
   );
 }
@@ -428,7 +429,7 @@ export function GoalEdit({ goal, onSaved }: { goal: Goal; onSaved?: () => void }
 }
 
 function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementType[]; onAdd: (name: string) => void }) {
-  const { today, commit } = useStore();
+  const { data, today, commit } = useStore();
   const view = useView();
   const [values, setValues] = useState<Record<string, number | null>>({});
   const [newName, setNewName] = useState('');
@@ -450,6 +451,10 @@ function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementTy
           onSubmit={(e) => {
             e.preventDefault();
             if (!newName.trim()) return;
+            if (findMeasure(data, goal.id, newName, newUnit)) {
+              onAdd(`Already tracking ${newName.trim().toLowerCase()}`);
+              return;
+            }
             commit(opsAddMeasurementType({ name: newName.trim(), unit: newUnit.trim(), cadence_days: cadence, goal_id: goal.id }));
             onAdd(newName.trim());
             setNewName('');

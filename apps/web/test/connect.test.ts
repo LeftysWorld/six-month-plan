@@ -235,3 +235,20 @@ test('seasons: this season is the batch running today, next is the one after; tr
   assert.equal(t.prog, 23, '214 → 209.6 of the way to 195');
   assert.ok(t.exp > 0 && t.exp < t.prog, 'ahead of even pace');
 });
+
+test('a goal with the same measurement twice gets them merged onto its main one', async () => {
+  const { opsMergeDuplicateMeasures, findMeasure } = await import('../src/data/connect.ts');
+  const d = base();
+  d.goals = d.goals.map((g) => (g.id === 'weight' ? { ...g, type: 'number', measurement_type_id: 'w1' } : g));
+  const t = (id: string, goal_id: string | null) => ({ id, name: 'Weight', unit: 'lb', cadence_days: 7, goal_id, archived_at: null });
+  d.measurementTypes = [t('w1', null), t('w2', 'weight')];
+  const m = (id: string, type_id: string, measured_on: string, value: number) => ({ id, type_id, value, measured_on, source: 'manual', note: '' });
+  d.measurements = [m('a', 'w1', '2026-10-25', 195), m('b', 'w2', '2026-10-25', 194), m('c', 'w2', '2026-10-26', 194.5)];
+  d.actions = [...d.actions, { ...d.actions[0]!, id: 'weigh', kind: 'measure', measurement_type_id: 'w2' }];
+  const out = run(d, opsMergeDuplicateMeasures(d));
+  assert.deepEqual(out.measurementTypes.filter((x) => !x.archived_at).map((x) => x.id), ['w1']);
+  assert.deepEqual(out.measurements.map((x) => [x.type_id, x.measured_on, x.value]), [['w1', '2026-10-25', 195], ['w1', '2026-10-26', 194.5]]);
+  assert.equal(out.actions.find((a) => a.id === 'weigh')!.measurement_type_id, 'w1');
+  assert.deepEqual(opsMergeDuplicateMeasures(out), [], 'nothing left to merge');
+  assert.equal(findMeasure(out, 'weight', ' weight ', 'LB'), 'w1');
+});

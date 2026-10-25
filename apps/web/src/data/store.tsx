@@ -5,6 +5,7 @@ import { SaveError } from './db.ts';
 import { applyOp, type AppData, type Op } from './model.ts';
 import { opsEnsureWeek } from './ops.ts';
 import { opsFoldLinksIntoGroups } from './groups.ts';
+import { opsMergeDuplicateMeasures } from './connect.ts';
 
 export interface SyncState {
   /** Changes waiting to be saved. */
@@ -139,6 +140,9 @@ export function StoreProvider({ db, initial, children }: { db: Db; initial: AppD
     if (db.schemaWarning?.()) return;
     const ops = opsFoldLinksIntoGroups(data);
     if (ops.length > 0) commit(ops);
+    // A goal that ended up with the same measurement twice (two "Weight"s) gets them merged.
+    const merge = opsMergeDuplicateMeasures(ops.length ? ops.reduce(applyOp, data) : data);
+    if (merge.length > 0) commit(merge);
     // Only when the app opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

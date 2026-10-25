@@ -19,6 +19,7 @@ import {
   type Session,
 } from '@six/core';
 import { applyOp, type AppData, type Op } from './model.ts';
+import { findMeasure } from './connect.ts';
 
 /**
  * The goal breakdown: 6 months (the goal) → 3 months → months → weeks → daily tasks.
@@ -255,9 +256,12 @@ export interface TaskInput {
 }
 
 /** The measurement a measure task records: an existing one, or a new one created with the task. */
-function measureFor(input: TaskInput, goalId: string): { id: string | null; ops: Op[] } {
+function measureFor(data: AppData, input: TaskInput, goalId: string): { id: string | null; ops: Op[] } {
   if (input.kind !== 'measure') return { id: null, ops: [] };
   if (input.newMeasure && input.newMeasure.name.trim()) {
+    // Already tracking one with this name? Use it, so the goal's chart gets the readings.
+    const existing = findMeasure(data, goalId, input.newMeasure.name, input.newMeasure.unit);
+    if (existing) return { id: existing, ops: [] };
     const id = newId();
     const row = { id, name: input.newMeasure.name.trim(), unit: input.newMeasure.unit.trim(), cadence_days: 1, goal_id: goalId, archived_at: null };
     return { id, ops: [{ kind: 'insert', collection: 'measurementTypes', rows: rows([row]) }] };
@@ -292,7 +296,7 @@ export function applyFrom(step: PlanStep, today: ISODate): ISODate {
 }
 
 export function opsAddTask(data: AppData, goal: Goal, step: PlanStep, input: TaskInput, today: ISODate): Op[] {
-  const measure = measureFor(input, goal.id);
+  const measure = measureFor(data, input, goal.id);
   const goalIds = [...new Set([goal.id, ...(input.goalIds ?? [])])];
   const action: Action = {
     id: newId(),
@@ -331,7 +335,7 @@ function plannedFrom(sessions: Session[], actionId: string, from: ISODate): Sess
 
 /** Change a task from `from` on. Earlier days keep the old version. */
 export function opsEditTask(data: AppData, action: Action, input: TaskInput, from: ISODate, today: ISODate, goalId?: string): Op[] {
-  const measure = measureFor(input, goalId ?? data.actionGoals.find((ag) => ag.action_id === action.id)?.goal_id ?? '');
+  const measure = measureFor(data, input, goalId ?? data.actionGoals.find((ag) => ag.action_id === action.id)?.goal_id ?? '');
   const ops: Op[] = [
     ...measure.ops,
     {
