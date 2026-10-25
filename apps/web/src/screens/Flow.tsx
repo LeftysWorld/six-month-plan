@@ -851,8 +851,7 @@ function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain
   const { data, today } = useStore();
   const view = useView();
   const seasonTarget = goal.type === 'number' && goal.target_value != null ? `${fmt(goal.target_value)} ${goal.unit ?? ''}`.trim() : '';
-  // Soonest first: this week → this month → 3 months → the season.
-  const lines: { key: ChainLevel | 'goal'; name: string; text: string; when: string; status: { text: string; label: PaceLabel } | null; current: boolean }[] = [
+  const longestFirst: { key: ChainLevel | 'goal'; name: string; text: string; when: string; status: { text: string; label: PaceLabel } | null; current: boolean }[] = [
     {
       key: 'goal',
       name: plan.solo ? 'Own clock' : 'Season',
@@ -875,7 +874,9 @@ function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain
         current: level === 'week',
       };
     }),
-  ].reverse();
+  ];
+  // Soonest first: this week → this month → 3 months → the season.
+  const lines = [...longestFirst].reverse();
   return (
     <section className="card plan-card" aria-label="The plan">
       <b className="plan-card-title">The plan</b>
