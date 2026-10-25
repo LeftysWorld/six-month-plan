@@ -1179,14 +1179,31 @@ button.week-day:active { transform: scale(0.9); }
 .workout-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .workout-card-ex .num { flex: none; color: var(--muted); font-size: 12.5px; }
 .workout-card-sum { margin-top: 4px; font-size: 13px; color: var(--accent-ink); }
-.workout-ex { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line-2); padding-top: 12px; }
-.workout-ex-head { display: flex; flex-direction: column; gap: 2px; }
+.workout-progress { display: block; height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+.workout-progress i { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
+.workout-ex { border: 1px solid var(--line-2); border-radius: 14px; background: var(--card, transparent); }
+.workout-ex-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; min-height: 56px; }
+.workout-ex-badge { flex: none; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; background: var(--fill); color: var(--muted); }
+.workout-ex-badge.done { background: var(--accent); color: #fff; }
+.workout-ex-name { display: block; font-weight: 600; }
+.workout-did { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; align-items: center; }
+.workout-chip { font-size: 12.5px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-variant-numeric: tabular-nums; }
+.workout-chip.short { background: var(--amber-soft, rgba(232, 160, 40, 0.14)); color: var(--amber-ink); }
+.workout-ex-body { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
+.workout-up { font-size: 13px; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-ink); }
 .workout-sets { display: flex; flex-direction: column; gap: 6px; }
-.workout-sets-head, .workout-set { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 44px; gap: 8px; align-items: center; }
-.workout-set .input { text-align: center; padding-left: 6px; padding-right: 6px; }
-.workout-set.done .input { background: var(--fill); color: var(--muted); }
+.workout-set { display: grid; grid-template-columns: 26px minmax(0, 1fr) 68px 58px 44px; gap: 6px; align-items: center; border-radius: 10px; padding: 2px 4px; }
+.workout-set.head { padding-top: 0; padding-bottom: 0; }
+.workout-set .input { text-align: center; padding-left: 4px; padding-right: 4px; min-height: 44px; font-size: 16px; }
+.workout-set .input::placeholder { color: var(--muted); opacity: 1; }
+.workout-set.done { background: var(--accent-soft); }
+.workout-set.done .input { background: transparent; }
+.workout-prev { border: 0; background: none; padding: 0; text-align: left; font: inherit; font-size: 13px; color: var(--muted); min-height: 44px; cursor: pointer; }
+.workout-prev:disabled { cursor: default; }
 .set-tick { width: 44px; height: 44px; border-radius: 12px; border: 1.5px solid var(--line); background: none; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.set-tick.on { background: var(--accent, #22B07D); border-color: transparent; color: #fff; }
+.set-tick.on { background: var(--accent); border-color: transparent; color: #fff; }
+.rest-bar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 14px; background: var(--sheet-bg, var(--surface)); border: 1px solid var(--line); box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.08); }
+.rest-time { display: block; font-size: 22px; }
 .plan-ex-no { flex: none; width: 22px; text-align: center; font-weight: 600; color: var(--muted); font-size: 13px; }
 .plan-ex-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .plan-ex-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }

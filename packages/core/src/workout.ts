@@ -120,3 +120,27 @@ export function suggestWeight(ex: PlannedExercise, last: DoneSet[] | null, step 
   if (atTop.length >= ex.sets && atTop.every((s) => (s.reps ?? 0) >= ex.reps_max)) return { weight: top + step, why: 'up' };
   return { weight: top, why: 'last' };
 }
+
+const short = (n: number) => String(Math.round(n * 100) / 100);
+
+/** "55 × 12, 12, 11" when every set used one weight; "55×12, 50×10" when it changed; "BW × 15, 14" without weight. */
+export function setsText(sets: { weight: number | null; reps: number | null }[]): string {
+  if (!sets.length) return '';
+  const weights = new Set(sets.map((s) => s.weight));
+  const reps = sets.map((s) => (s.reps == null ? '?' : String(s.reps)));
+  if (weights.size === 1) {
+    const w = sets[0]!.weight;
+    return `${w == null ? 'BW' : short(w)} × ${reps.join(', ')}`;
+  }
+  return sets.map((s) => `${s.weight == null ? 'BW' : short(s.weight)}×${s.reps ?? '?'}`).join(', ');
+}
+
+/** A rest like "2–3 min", "90 s" or "60s" in seconds (a range takes its middle); null when there's none. */
+export function restSeconds(rest: string): number | null {
+  const m = /(\d+(?:\.\d+)?)(?:\s*[–-]\s*(\d+(?:\.\d+)?))?\s*(min|m\b|minutes?|s\b|sec|seconds?)?/i.exec(rest);
+  if (!m) return null;
+  const lo = Number(m[1]);
+  const hi = m[2] ? Number(m[2]) : lo;
+  const mins = /^m/i.test(m[3] ?? '') || (!m[3] && hi <= 5);
+  return Math.round(((lo + hi) / 2) * (mins ? 60 : 1));
+}

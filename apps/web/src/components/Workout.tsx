@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { parseWorkoutPlan, repsText, suggestWeight, targetText, weekdayName, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
+import { parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView } from '../data/derive.ts';
 import { opsLogSession, opsRestoreSession, opsSaveWorkout } from '../data/ops.ts';
@@ -116,17 +116,32 @@ export function WorkoutPlanEditor({ plan, details, unit, onChange }: { plan: Pla
   );
 }
 
-// ---------- The plan on Today's card ----------
+// ---------- The plan (or what you did) on Today's card ----------
 
-/** The day's exercises on the Today card, and once logged, how many sets got done. */
+/** Before: the day's exercises and targets. After: what you actually did, exercise by exercise. */
 export function WorkoutCardPlan({ session, plan }: { session: Session; plan: PlannedExercise[] }) {
   const { data } = useStore();
   const unit = data.profile.units;
-  const sets = data.workoutSets.filter((w) => w.session_id === session.id);
+  const sets = data.workoutSets.filter((w) => w.session_id === session.id && w.done);
   if (session.status !== 'planned' && sets.length) {
     const planned = plan.reduce((n, e) => n + e.sets, 0);
-    const done = sets.filter((s) => s.done).length;
-    return <span className="workout-card-sum">{done} of {planned} sets done</span>;
+    const names = [...new Set([...plan.map((e) => e.name), ...sets.map((s) => s.exercise)])];
+    return (
+      <span className="workout-card-plan">
+        <span className="workout-card-sum">
+          {sets.length} of {planned} sets done
+        </span>
+        {names.map((n) => {
+          const mine = sets.filter((s) => s.exercise.toLowerCase() === n.toLowerCase()).sort((a, b) => a.set_no - b.set_no);
+          return (
+            <span key={n} className="workout-card-ex">
+              <span className="workout-card-name">{n}</span>
+              <span className="num">{mine.length ? setsText(mine) : 'skipped'}</span>
+            </span>
+          );
+        })}
+      </span>
+    );
   }
   if (session.status !== 'planned') return null;
   return (
@@ -144,6 +159,7 @@ export function WorkoutCardPlan({ session, plan }: { session: Session; plan: Pla
 // ---------- Logging a workout ----------
 
 interface Row {
+  /** What you typed; empty means the grey planned value. */
   weight: string;
   reps: string;
   done: boolean;
@@ -165,11 +181,15 @@ function lastTime(data: AppData, session: Session): Map<string, DoneSet[]> {
 }
 
 const draftKey = (sessionId: string) => `six.workout.${sessionId}`;
+const clock = (t: number) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 
 /**
- * The workout log: every exercise of the plan with a row per set. Weight starts at the plan's (or
- * last time's, plus 5 once you hit the top of the range on every set); you type the reps and tick
- * the set. Progress is kept on this device until you finish, so a locked phone loses nothing.
+ * The workout log, laid out like the gym apps people stick with: one exercise open at a time,
+ * a row per set (set · previous · weight · reps · ✓). The plan's weight and reps sit in each row
+ * in grey, so ticking a set you did as planned is one tap; type over them when you did something
+ * else, or tap Previous to copy last time. Ticking a set starts the exercise's rest timer. A
+ * finished exercise folds to what you actually did. Progress is kept on this device until you
+ * finish, so a locked phone loses nothing.
  */
 export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Session; plan: PlannedExercise[]; onClose: () => void; onMore: () => void }) {
   const { data, today, commit } = useStore();
@@ -182,6 +202,7 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
   const last = lastTime(data, session);
   const saved = data.workoutSets.filter((w) => w.session_id === session.id);
   const suggestions = plan.map((e) => suggestWeight(e, last.get(e.name.toLowerCase()) ?? null));
+  const planWeight = (i: number) => suggestions[i]!.weight;
 
   const [rows, setRows] = useState<Row[][]>(() => {
     try {
@@ -192,16 +213,18 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
     } catch {
       // no draft
     }
-    return plan.map((e, i) =>
+    return plan.map((e) =>
       Array.from({ length: e.sets }, (_, k) => {
         const s = saved.find((w) => w.exercise.toLowerCase() === e.name.toLowerCase() && w.set_no === k + 1);
-        if (s) return { weight: s.weight == null ? '' : String(s.weight), reps: s.reps == null ? '' : String(s.reps), done: s.done };
-        const w = suggestions[i]!.weight;
-        return { weight: w == null ? '' : String(w), reps: '', done: false };
+        return s ? { weight: s.weight == null ? '' : String(s.weight), reps: s.reps == null ? '' : String(s.reps), done: s.done } : { weight: '', reps: '', done: false };
       }),
     );
   });
+  const firstOpen = (r: Row[][]) => r.findIndex((sets) => sets.some((x) => !x.done));
+  const [open, setOpen] = useState<number>(() => (future ? -1 : Math.max(0, firstOpen(rows))));
   const [note, setNote] = useState(session.note);
+  const [restEnd, setRestEnd] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (future) return;
@@ -212,11 +235,53 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
     }
   }, [rows, future, session.id]);
 
-  const setRow = (i: number, k: number, patch: Partial<Row>) => setRows(rows.map((r, a) => (a === i ? r.map((x, b) => (b === k ? { ...x, ...patch } : x)) : r)));
+  // The rest timer counts to a time (not by ticks), so it stays right after the phone sleeps.
+  useEffect(() => {
+    if (restEnd == null) return;
+    const id = window.setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= restEnd) {
+        setRestEnd(null);
+        navigator.vibrate?.([200, 100, 200]);
+      }
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [restEnd]);
+  const restLeft = restEnd == null ? 0 : Math.max(0, Math.ceil((restEnd - now) / 1000));
+
+  const setRow = (i: number, k: number, patch: Partial<Row>) => setRows((all) => all.map((r, a) => (a === i ? r.map((x, b) => (b === k ? { ...x, ...patch } : x)) : r)));
+  /** A set's weight and reps as logged: what you typed, or the grey planned value. */
+  const actual = (i: number, k: number) => {
+    const r = rows[i]![k]!;
+    const w = r.weight.trim() === '' ? planWeight(i) : Number(r.weight);
+    const reps = r.reps.trim() === '' ? plan[i]!.reps_max : Number(r.reps);
+    return { weight: w != null && Number.isFinite(w) ? w : null, reps: Number.isFinite(reps) ? reps : null };
+  };
   const tick = (i: number, k: number) => {
     const r = rows[i]![k]!;
-    // Ticking a set with no reps typed counts the top of the range: change it if you did fewer.
-    setRow(i, k, { done: !r.done, reps: !r.done && r.reps.trim() === '' ? String(plan[i]!.reps_max) : r.reps });
+    if (r.done) {
+      setRow(i, k, { done: false });
+      return;
+    }
+    const a = actual(i, k);
+    const next = rows.map((sets, x) => (x === i ? sets.map((y, z) => (z === k ? { weight: a.weight == null ? '' : String(a.weight), reps: a.reps == null ? '' : String(a.reps), done: true } : y)) : sets));
+    setRows(next);
+    const secs = restSeconds(plan[i]!.rest);
+    const exerciseDone = next[i]!.every((y) => y.done);
+    if (exerciseDone) {
+      // Fold the finished exercise to what you did, and open the next one with sets left.
+      setOpen(firstOpen(next));
+    }
+    const allDone = next.every((sets) => sets.every((y) => y.done));
+    if (secs && !allDone) {
+      setNow(Date.now());
+      setRestEnd(Date.now() + secs * 1000);
+    }
+  };
+  const copyPrevious = (i: number, k: number) => {
+    const p = last.get(plan[i]!.name.toLowerCase())?.[k];
+    if (p) setRow(i, k, { weight: p.weight == null ? '' : String(p.weight), reps: p.reps == null ? '' : String(p.reps) });
   };
   const doneCount = rows.flat().filter((r) => r.done).length;
   const total = rows.flat().length;
@@ -224,7 +289,7 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
   function finish() {
     const before = session;
     const sets: Omit<WorkoutSet, 'id' | 'session_id'>[] = plan.flatMap((e, i) =>
-      rows[i]!.map((r, k) => ({ exercise: e.name, set_no: k + 1, weight: r.weight.trim() === '' ? null : Number(r.weight), reps: r.reps.trim() === '' ? null : Number(r.reps), done: r.done })).filter((s) => s.done || s.reps != null),
+      rows[i]!.map((r, k) => ({ exercise: e.name, set_no: k + 1, ...actual(i, k), done: r.done })).filter((s, k) => s.done || rows[i]![k]!.reps.trim() !== ''),
     );
     const status = doneCount >= total ? 'done' : 'partial';
     const saveOps = opsSaveWorkout(data, session.id, sets);
@@ -245,11 +310,23 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
 
   return (
     <Sheet title={session.title} onClose={onClose}>
-      <div className="row-between small muted" style={{ marginTop: -8 }}>
-        <span>
-          {plan.length} exercises · {total} sets{session.planned_minutes ? ` · about ${session.planned_minutes} min` : ''}
-        </span>
-        {!future && <span className="num">{doneCount}/{total}</span>}
+      <div className="stack-sm" style={{ marginTop: -8, gap: 8 }}>
+        <div className="row-between small muted">
+          <span>
+            {future ? `${plan.length} exercises · ${total} sets` : `${doneCount} of ${total} sets`}
+            {session.planned_minutes ? ` · about ${session.planned_minutes} min` : ''}
+          </span>
+          {!future && doneCount > 0 && (
+            <button type="button" className="btn small primary" onClick={finish}>
+              {session.status === 'planned' ? 'Finish' : 'Save'}
+            </button>
+          )}
+        </div>
+        {!future && (
+          <span className="workout-progress" aria-hidden="true">
+            <i style={{ width: `${total ? (doneCount / total) * 100 : 0}%` }} />
+          </span>
+        )}
       </div>
       {future && <div className="banner info">This is the plan for {weekdayName(day)}. You can log it on the day.</div>}
       {action?.details?.trim() && (
@@ -258,69 +335,107 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
           <div className="task-details-body">{action.details}</div>
         </details>
       )}
-      {plan.map((e, i) => {
-        const prev = last.get(e.name.toLowerCase());
-        const sug = suggestions[i]!;
-        return (
-          <section key={i} className="workout-ex" aria-label={e.name}>
-            <div className="workout-ex-head">
-              <b>{e.name}</b>
-              <span className="small muted num">
-                {targetText(e, unit)}
-                {e.rest ? ` · rest ${e.rest}` : ''}
-              </span>
-              {e.note && <span className="xsmall muted">{e.note}</span>}
-              {prev && (
-                <span className="xsmall muted">
-                  Last time: {prev.filter((s) => s.done).map((s) => `${s.weight != null ? fmt(s.weight) : 'BW'}×${s.reps ?? '?'}`).join(', ') || 'not done'}
+      <div className="stack-sm" style={{ gap: 8 }}>
+        {plan.map((e, i) => {
+          const prev = last.get(e.name.toLowerCase());
+          const sug = suggestions[i]!;
+          const mine = rows[i]!;
+          const done = mine.filter((r) => r.done).length;
+          const finished = done === e.sets;
+          const isOpen = open === i;
+          const did = mine.map((r, k) => ({ ...actual(i, k), done: r.done })).filter((s) => s.done);
+          return (
+            <section key={i} className={`workout-ex${isOpen ? ' open' : ''}`} aria-label={e.name}>
+              <button type="button" className="workout-ex-head" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? -1 : i)}>
+                <span className={`workout-ex-badge${finished ? ' done' : ''}`}>{finished ? <Icon name="check" size={13} stroke={3} /> : i + 1}</span>
+                <span className="grow" style={{ minWidth: 0 }}>
+                  <b className="workout-ex-name">{e.name}</b>
+                  {did.length > 0 && !isOpen ? (
+                    <span className="workout-did">
+                      {did.map((s, k) => (
+                        <span key={k} className={`workout-chip${(s.reps ?? 0) < e.reps_min ? ' short' : ''}`}>
+                          {s.weight == null ? 'BW' : fmt(s.weight)} × {s.reps ?? '?'}
+                        </span>
+                      ))}
+                      {done < e.sets && <span className="xsmall muted">{e.sets - done} not done</span>}
+                    </span>
+                  ) : (
+                    <span className="xsmall muted num">
+                      {targetText({ ...e, weight: sug.weight }, unit)}
+                      {e.rest ? ` · rest ${e.rest}` : ''}
+                    </span>
+                  )}
                 </span>
+                {!future && (
+                  <span className="xsmall muted num" style={{ flex: 'none' }}>
+                    {done}/{e.sets}
+                  </span>
+                )}
+                <span style={{ transform: isOpen ? 'rotate(-90deg)' : 'rotate(90deg)', display: 'inline-flex', color: 'var(--muted)', flex: 'none' }}>
+                  <Icon name="chevron" size={14} stroke={2.2} />
+                </span>
+              </button>
+              {isOpen && (
+                <div className="workout-ex-body">
+                  {sug.why === 'up' && !future && (
+                    <span className="workout-up">
+                      ↑ Up to {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time
+                    </span>
+                  )}
+                  {e.note && <span className="xsmall muted">{e.note}</span>}
+                  {!future && (
+                    <div className="workout-sets" role="table" aria-label={`${e.name} sets`}>
+                      <span className="workout-set head xsmall muted" role="row">
+                        <span>Set</span>
+                        <span>Previous</span>
+                        <span>{unit}</span>
+                        <span>Reps</span>
+                        <span />
+                      </span>
+                      {mine.map((r, k) => {
+                        const p = prev?.[k];
+                        return (
+                          <div key={k} className={`workout-set${r.done ? ' done' : ''}`} role="row">
+                            <span className="num small">{k + 1}</span>
+                            <button type="button" className="workout-prev num" disabled={!p} onClick={() => copyPrevious(i, k)} aria-label={p ? `Copy last time: ${p.weight ?? 'bodyweight'} by ${p.reps}` : 'No previous set'}>
+                              {p ? `${p.weight == null ? 'BW' : fmt(p.weight)} × ${p.reps ?? '?'}` : '—'}
+                            </button>
+                            <input
+                              className="input"
+                              type="number"
+                              inputMode="decimal"
+                              step="any"
+                              aria-label={`${e.name} set ${k + 1} weight`}
+                              placeholder={planWeight(i) != null ? fmt(planWeight(i)!) : /body/i.test(e.weight_note) ? 'BW' : '—'}
+                              value={r.weight}
+                              onChange={(x) => setRow(i, k, { weight: x.target.value })}
+                            />
+                            <input
+                              className="input"
+                              type="number"
+                              inputMode="numeric"
+                              aria-label={`${e.name} set ${k + 1} reps (${repsText(e)})`}
+                              placeholder={String(e.reps_max)}
+                              value={r.reps}
+                              onChange={(x) => setRow(i, k, { reps: x.target.value })}
+                            />
+                            <button type="button" className={`set-tick${r.done ? ' on' : ''}`} aria-pressed={r.done} aria-label={`Set ${k + 1} done`} onClick={() => tick(i, k)}>
+                              <Icon name="check" size={16} stroke={2.6} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {i === firstOpen(rows) && doneCount === 0 && (
+                        <span className="xsmall muted">Grey numbers are the plan ({repsText(e)} reps). Tick to log them as is, or type what you did first.</span>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
-              {sug.why === 'up' && !future && (
-                <span className="xsmall" style={{ color: 'var(--accent-ink)' }}>
-                  ↑ {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time
-                </span>
-              )}
-            </div>
-            {!future && (
-              <div className="workout-sets">
-                <span className="workout-sets-head xsmall muted">
-                  <span>Set</span>
-                  <span>{unit}</span>
-                  <span>Reps ({repsText(e)})</span>
-                  <span />
-                </span>
-                {rows[i]!.map((r, k) => (
-                  <div key={k} className={`workout-set${r.done ? ' done' : ''}`}>
-                    <span className="num small">{k + 1}</span>
-                    <input
-                      className="input"
-                      type="number"
-                      inputMode="decimal"
-                      step="any"
-                      aria-label={`${e.name} set ${k + 1} weight`}
-                      placeholder={e.weight_note || '—'}
-                      value={r.weight}
-                      onChange={(x) => setRow(i, k, { weight: x.target.value })}
-                    />
-                    <input
-                      className="input"
-                      type="number"
-                      inputMode="numeric"
-                      aria-label={`${e.name} set ${k + 1} reps`}
-                      placeholder={String(e.reps_max)}
-                      value={r.reps}
-                      onChange={(x) => setRow(i, k, { reps: x.target.value })}
-                    />
-                    <button type="button" className={`set-tick${r.done ? ' on' : ''}`} aria-pressed={r.done} aria-label={`Set ${k + 1} done`} onClick={() => tick(i, k)}>
-                      <Icon name="check" size={16} stroke={2.6} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })}
+            </section>
+          );
+        })}
+      </div>
       {!future && (
         <>
           <label className="field">
@@ -335,6 +450,23 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
       <button type="button" className="link-btn small" onClick={onMore}>
         Skip, move to another day, or add a photo
       </button>
+      {restEnd != null && (
+        <div className="rest-bar" role="timer" aria-live="off">
+          <span className="grow">
+            <span className="xsmall muted">Rest</span>
+            <b className="num rest-time">{clock(restLeft)}</b>
+          </span>
+          <button type="button" className="btn small" onClick={() => setRestEnd((t) => (t == null ? t : Math.max(Date.now(), t - 15000)))}>
+            −15s
+          </button>
+          <button type="button" className="btn small" onClick={() => setRestEnd((t) => (t == null ? t : t + 15000))}>
+            +15s
+          </button>
+          <button type="button" className="btn small" onClick={() => setRestEnd(null)}>
+            Skip
+          </button>
+        </div>
+      )}
     </Sheet>
   );
 }

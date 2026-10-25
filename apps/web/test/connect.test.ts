@@ -267,3 +267,15 @@ test("Today's numbers: a goal's main number by default, extras only when turned 
   assert.equal(measureOnToday(d, 'w'), false, 'the main number can be turned off too');
   assert.equal(measureLabel(d.measurementTypes[1]!), 'Body fat (%)');
 });
+
+test('workout summaries and rest times', async () => {
+  const { setsText, restSeconds } = await import('@six/core');
+  assert.equal(setsText([{ weight: 55, reps: 12 }, { weight: 55, reps: 12 }, { weight: 55, reps: 11 }]), '55 × 12, 12, 11');
+  assert.equal(setsText([{ weight: 55, reps: 12 }, { weight: 50, reps: 10 }]), '55×12, 50×10');
+  assert.equal(setsText([{ weight: null, reps: 15 }, { weight: null, reps: 14 }]), 'BW × 15, 14');
+  assert.equal(restSeconds('2–3 min'), 150);
+  assert.equal(restSeconds('90 s'), 90);
+  assert.equal(restSeconds('2 min'), 120);
+  assert.equal(restSeconds('90 s after each round'), 90);
+  assert.equal(restSeconds(''), null);
+});
