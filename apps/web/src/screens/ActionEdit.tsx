@@ -56,8 +56,10 @@ export function ActionEdit({ id, goalId }: { id: string | null; goalId: string |
       <h1>{existing ? existing.title : 'New action'}</h1>
       {goal && (
         <div className="small muted row-start">
-          <span className="dot" style={{ background: goal.color }} />
-          Supports: {goal.title}
+          {[goal, ...view.goalsForAction(existing?.id ?? null).filter((g) => g.id !== goal.id)].map((g) => (
+            <span key={g.id} className="dot" style={{ background: g.color }} />
+          ))}
+          Supports: {[goal, ...view.goalsForAction(existing?.id ?? null).filter((g) => g.id !== goal.id)].map((g) => g.title).join(', ')}
         </div>
       )}
       {existing && current && (

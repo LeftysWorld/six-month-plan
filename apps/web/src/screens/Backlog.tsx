@@ -722,7 +722,22 @@ function CommitSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void })
         {!short && line('3 MO', prep.quarter, periods.quarter.end)}
         {line('MONTH', prep.month, periods.month.end)}
         {line('WEEK', prep.week, periods.week.end)}
-        {task && (
+        {(prep.reuse ?? []).map((id) => view.action(id)).filter((a) => !!a && !a.archived_at).map((a) => (
+          <div key={a!.id} className="commit-line">
+            <span className="mono">SHARED</span>
+            <span>
+              {a!.title}
+              <span className="xsmall muted"> · with {view.goalsForAction(a!.id).map((g) => g.title).join(', ')}</span>
+            </span>
+          </div>
+        ))}
+        {(prep.connect ?? []).length > 0 && (
+          <div className="commit-line">
+            <span className="mono">LINKED</span>
+            <span>{(prep.connect ?? []).map((id) => view.goal(id)?.title).filter(Boolean).join(', ')}</span>
+          </div>
+        )}
+        {task && task.title.trim() && (
           <div className="commit-line">
             <span className="mono">DAILY</span>
             <span>

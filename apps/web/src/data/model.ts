@@ -6,6 +6,7 @@ import type {
   ChangeLogEntry,
   Goal,
   GoalIdea,
+  GoalLink,
   GoalTarget,
   Measurement,
   MeasurementType,
@@ -43,6 +44,8 @@ export interface AppData {
   ideas: GoalIdea[];
   /** Photos and files attached to logged tasks (the files themselves are in file storage). */
   attachments: Attachment[];
+  /** Goals connected by hand. Goals that share a task are connected too, without a row here. */
+  goalLinks: GoalLink[];
 }
 
 export type CollectionKey = Exclude<keyof AppData, 'profile'>;
@@ -67,6 +70,7 @@ export const TABLES: Record<CollectionKey, string> = {
   changeLog: 'change_log',
   ideas: 'goal_ideas',
   attachments: 'attachments',
+  goalLinks: 'goal_links',
 };
 
 export const COLLECTIONS = Object.keys(TABLES) as CollectionKey[];
@@ -111,6 +115,7 @@ export function emptyData(): AppData {
     changeLog: [],
     ideas: [],
     attachments: [],
+    goalLinks: [],
   };
 }
 

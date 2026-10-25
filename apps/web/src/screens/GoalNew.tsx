@@ -95,6 +95,11 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
   const [taskTitle, setTaskTitle] = useState(prep.task?.title ?? '');
   const [taskDays, setTaskDays] = useState<number[]>(prep.task?.days ?? [1, 3, 5]);
   const [taskMinutes, setTaskMinutes] = useState(prep.task?.minutes ?? 30);
+  // Goals to connect it to when committed, and their tasks it will share (logged once, counts for both).
+  const [connect, setConnect] = useState<string[]>(prep.connect ?? []);
+  const [reuse, setReuse] = useState<string[]>(prep.reuse ?? []);
+  const otherGoals = view.activeGoals;
+  const liveTasks = (goalId: string) => view.actionsForGoal(goalId).filter((a) => data.schedules.some((s) => s.action_id === a.id && s.effective_to == null));
   const startPoint = baseline != null ? { date: startDate, value: baseline } : null;
   const targetAt = (d: string) => (type === 'number' && startPoint && path.length ? fmt(valueOnPath(startPoint, path, d)) : null);
 
@@ -124,7 +129,7 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
     ...(short ? [] : [{ key: 'quarter', label: own ? 'First 3 months' : '3-month goal', ok: !!chainNotes.quarter.trim() }]),
     { key: 'month', label: own ? 'First month' : 'This month’s goal', ok: !!chainNotes.month.trim() },
     { key: 'week', label: own ? 'First week' : 'This week’s goal', ok: !!chainNotes.week.trim() },
-    { key: 'task', label: 'A daily task with its days', ok: !!firstTask.trim() && taskDays.length > 0 && taskMinutes > 0 },
+    { key: 'task', label: 'A daily task with its days (or a shared one)', ok: (!!firstTask.trim() && taskDays.length > 0 && taskMinutes > 0) || reuse.length > 0 },
   ];
   const isReady = ready.every((r) => r.ok);
   const stale = (level: 'quarter' | 'month' | 'week') => !!periods && isStale(prep, level, periods[level].start) && chainNotes[level] === (prep[level] ?? '');
@@ -151,6 +156,8 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
       month_of: periods.month.start,
       week_of: periods.week.start,
       task: { title: firstTask.trim(), days: taskDays, minutes: taskMinutes },
+      connect,
+      reuse: reuse.filter((id) => connect.some((g) => view.actionsForGoal(g).some((a) => a.id === id))),
       clock: own ? 'own' : 'batch',
       months: own ? months : undefined,
       plan_id: own ? undefined : plan.id,
@@ -451,6 +458,53 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
             </label>
             <span className="xsmall muted">Once committed, it lands on Today on those days. Add more tasks on the goal page.</span>
           </div>
+          {otherGoals.length > 0 && (
+            <div className="card stack-sm">
+              <span className="label">Connect to your other goals (optional)</span>
+              <span className="xsmall muted">Connected goals show on each other's page and sit together in reviews. Pick their tasks to share: one task, logged once, counting for both.</span>
+              <div className="chips" role="group" aria-label="Goals to connect">
+                {otherGoals.map((g) => {
+                  const on = connect.includes(g.id);
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      className="chip"
+                      aria-pressed={on}
+                      onClick={() => {
+                        setConnect(on ? connect.filter((x) => x !== g.id) : [...connect, g.id]);
+                        if (on) setReuse(reuse.filter((id) => !liveTasks(g.id).some((a) => a.id === id)));
+                      }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
+                    >
+                      <span className="dot" style={{ width: 7, height: 7, background: g.color }} />
+                      {g.title}
+                    </button>
+                  );
+                })}
+              </div>
+              {connect.map((gid) => {
+                const g = view.goal(gid);
+                const tasks = liveTasks(gid);
+                if (!g || tasks.length === 0) return null;
+                return (
+                  <div key={gid} className="stack-sm">
+                    <span className="xsmall muted">Share from {g.title}:</span>
+                    <div className="chips" role="group" aria-label={`Tasks to share from ${g.title}`}>
+                      {tasks.map((a) => {
+                        const on = reuse.includes(a.id);
+                        return (
+                          <button key={a.id} type="button" className="chip" aria-pressed={on} onClick={() => setReuse(on ? reuse.filter((x) => x !== a.id) : [...reuse, a.id])}>
+                            {a.title}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="card stack-sm ready-list" aria-label="Ready to commit">
             <span className="label">To commit this goal</span>
             {ready.map((r) => (

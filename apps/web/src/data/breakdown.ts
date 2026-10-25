@@ -66,8 +66,8 @@ export function startPoint(data: AppData, goal: Goal, plan: Plan): PathPoint | n
 export interface WeekTask {
   action: Action;
   schedule: ActionSchedule;
-  /** planned in this week, carried over from an earlier week, or an ongoing action from goal setup */
-  origin: 'here' | 'carried' | 'ongoing';
+  /** planned in this week, carried over from an earlier week, an ongoing action from goal setup, or planned on another goal and shared with this one */
+  origin: 'here' | 'carried' | 'ongoing' | 'shared';
 }
 
 /** Tasks for a goal whose schedule touches the given dates. */
@@ -80,7 +80,8 @@ export function tasksInRange(data: AppData, goalId: string, range: DateRange, st
       .filter((s) => s.action_id === action.id && s.effective_from <= range.end && (s.effective_to == null || s.effective_to >= range.start))
       .sort((a, b) => (a.effective_from < b.effective_from ? 1 : -1))[0];
     if (!schedule) continue;
-    const origin = action.step_id && action.step_id === stepId ? 'here' : action.step_id ? 'carried' : 'ongoing';
+    const step = action.step_id ? data.planSteps.find((s) => s.id === action.step_id) : undefined;
+    const origin = action.step_id && action.step_id === stepId ? 'here' : step && step.goal_id !== goalId ? 'shared' : action.step_id ? 'carried' : 'ongoing';
     out.push({ action, schedule, origin });
   }
   return out.sort((a, b) => Number(b.action.priority) - Number(a.action.priority) || a.action.title.localeCompare(b.action.title));
@@ -243,6 +244,23 @@ export interface TaskInput {
   minLabel: string;
   /** "After coffee, at my desk": when the task happens (optional). */
   cue: string;
+  /** Every goal the task supports (the goal you're on is always one of them). Defaults to just that goal. */
+  goalIds?: string[];
+  /** For a measure task: the measurement it records. */
+  measurementTypeId?: string | null;
+  /** For a measure task: a new measurement to create for it (when none fits). */
+  newMeasure?: { name: string; unit: string } | null;
+}
+
+/** The measurement a measure task records: an existing one, or a new one created with the task. */
+function measureFor(input: TaskInput, goalId: string): { id: string | null; ops: Op[] } {
+  if (input.kind !== 'measure') return { id: null, ops: [] };
+  if (input.newMeasure && input.newMeasure.name.trim()) {
+    const id = newId();
+    const row = { id, name: input.newMeasure.name.trim(), unit: input.newMeasure.unit.trim(), cadence_days: 1, goal_id: goalId, archived_at: null };
+    return { id, ops: [{ kind: 'insert', collection: 'measurementTypes', rows: rows([row]) }] };
+  }
+  return { id: input.measurementTypeId ?? null, ops: [] };
 }
 
 function scheduleFor(actionId: string, input: TaskInput, from: ISODate): ActionSchedule {
@@ -272,6 +290,8 @@ export function applyFrom(step: PlanStep, today: ISODate): ISODate {
 }
 
 export function opsAddTask(data: AppData, goal: Goal, step: PlanStep, input: TaskInput, today: ISODate): Op[] {
+  const measure = measureFor(input, goal.id);
+  const goalIds = [...new Set([goal.id, ...(input.goalIds ?? [])])];
   const action: Action = {
     id: newId(),
     title: input.title.trim(),
@@ -286,12 +306,14 @@ export function opsAddTask(data: AppData, goal: Goal, step: PlanStep, input: Tas
     archived_at: null,
     // Only sent when used, so a database without the cue column still works.
     ...(input.cue.trim() ? { cue: input.cue.trim() } : {}),
+    ...(measure.id ? { measurement_type_id: measure.id } : {}),
   };
   const schedule = scheduleFor(action.id, input, applyFrom(step, today));
   const ops: Op[] = [
+    ...measure.ops,
     { kind: 'insert', collection: 'actions', rows: rows([action]) },
     { kind: 'insert', collection: 'schedules', rows: rows([schedule]) },
-    { kind: 'insert', collection: 'actionGoals', rows: rows([{ id: newId(), action_id: action.id, goal_id: goal.id }]) },
+    { kind: 'insert', collection: 'actionGoals', rows: rows(goalIds.map((g) => ({ id: newId(), action_id: action.id, goal_id: g }))) },
   ];
   return [...ops, ...opsGenerateThisWeek(withOps(data, ops), today)];
 }
@@ -304,8 +326,10 @@ function plannedFrom(sessions: Session[], actionId: string, from: ISODate): Sess
 }
 
 /** Change a task from `from` on. Earlier days keep the old version. */
-export function opsEditTask(data: AppData, action: Action, input: TaskInput, from: ISODate, today: ISODate): Op[] {
+export function opsEditTask(data: AppData, action: Action, input: TaskInput, from: ISODate, today: ISODate, goalId?: string): Op[] {
+  const measure = measureFor(input, goalId ?? data.actionGoals.find((ag) => ag.action_id === action.id)?.goal_id ?? '');
   const ops: Op[] = [
+    ...measure.ops,
     {
       kind: 'update',
       collection: 'actions',
@@ -318,9 +342,16 @@ export function opsEditTask(data: AppData, action: Action, input: TaskInput, fro
         min_label: input.minLabel.trim(),
         priority: input.priority,
         ...(input.cue.trim() || action.cue ? { cue: input.cue.trim() } : {}),
+        ...(measure.id || action.measurement_type_id ? { measurement_type_id: measure.id } : {}),
       },
     },
   ];
+  if (input.goalIds?.length) {
+    const want = new Set(input.goalIds);
+    const have = data.actionGoals.filter((ag) => ag.action_id === action.id);
+    for (const ag of have) if (!want.has(ag.goal_id)) ops.push({ kind: 'delete', collection: 'actionGoals', id: ag.id });
+    for (const g of want) if (!have.some((ag) => ag.goal_id === g)) ops.push({ kind: 'insert', collection: 'actionGoals', rows: rows([{ id: newId(), action_id: action.id, goal_id: g }]) });
+  }
   const live = data.schedules.filter((s) => s.action_id === action.id && (s.effective_to == null || s.effective_to >= from));
   for (const s of live) {
     if (s.effective_from >= from) ops.push({ kind: 'delete', collection: 'schedules', id: s.id });
@@ -391,6 +422,8 @@ export function inputFromTask(t: WeekTask, week: PlanStep): TaskInput {
     priority: t.action.priority,
     minLabel: t.action.min_label,
     cue: t.action.cue ?? '',
+    measurementTypeId: t.action.measurement_type_id ?? null,
+    newMeasure: null,
   };
 }
 

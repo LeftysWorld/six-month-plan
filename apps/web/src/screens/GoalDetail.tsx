@@ -17,6 +17,7 @@ import { navigate } from '../router.ts';
 import { Icon, NumberInput, useToast } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
 import { GoalFiles } from '../components/Attachments.tsx';
+import { ConnectedGoals } from '../components/Connections.tsx';
 
 /**
  * The lower half of the goal page: why it matters, the path chart, milestones,
@@ -61,6 +62,8 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
           </>
         )}
       </div>
+
+      <ConnectedGoals goal={goal} />
 
       {goal.type === 'number' && pace.number && plan && (
         <div className="card stack-sm">

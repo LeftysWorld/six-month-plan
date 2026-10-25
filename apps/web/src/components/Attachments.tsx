@@ -89,18 +89,17 @@ function FileThumb({ file, caption, onRemove }: { file: Attachment; caption?: st
   );
 }
 
-/** Photos and files on one task: add from the camera roll, the camera or files; tap to open; × to remove. */
-export function SessionFiles({ session }: { session: Session }) {
-  const { data, db, commit } = useStore();
+/**
+ * Upload picked files to a session: photos are shrunk first; each file that uploads is recorded
+ * right away. Returns how many were added. `uploading` counts files still on their way.
+ */
+export function useAddFiles() {
+  const { db, commit } = useStore();
   const toast = useToast();
-  const input = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
-  const files = data.attachments.filter((a) => a.session_id === session.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
-
-  async function add(list: FileList | null) {
+  async function addFiles(session: Session, list: FileList | File[] | null, opts: { quiet?: boolean } = {}): Promise<number> {
     const picked = [...(list ?? [])];
-    if (input.current) input.current.value = '';
-    if (picked.length === 0) return;
+    if (picked.length === 0) return 0;
     setUploading((n) => n + picked.length);
     let added = 0;
     for (const file of picked) {
@@ -117,7 +116,24 @@ export function SessionFiles({ session }: { session: Session }) {
         setUploading((n) => n - 1);
       }
     }
-    if (added > 0) toast(added === 1 ? 'File added' : `${added} files added`);
+    if (added > 0 && !opts.quiet) toast(added === 1 ? 'File added' : `${added} files added`);
+    return added;
+  }
+  return { addFiles, uploading };
+}
+
+/** Photos and files on one task: add from the camera roll, the camera or files; tap to open; × to remove. */
+export function SessionFiles({ session }: { session: Session }) {
+  const { data, db, commit } = useStore();
+  const toast = useToast();
+  const input = useRef<HTMLInputElement>(null);
+  const { addFiles, uploading } = useAddFiles();
+  const files = data.attachments.filter((a) => a.session_id === session.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+
+  async function add(list: FileList | null) {
+    const picked = [...(list ?? [])];
+    if (input.current) input.current.value = '';
+    await addFiles(session, picked);
   }
 
   function remove(file: Attachment) {

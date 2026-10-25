@@ -17,6 +17,7 @@ import {
   type ActionSchedule,
   type DateRange,
   type Goal,
+  type GoalLink,
   type ISODate,
   type Measurement,
   type MeasurementType,
@@ -127,6 +128,56 @@ export class View {
     if (!actionId) return [];
     const ids = new Set(this.data.actionGoals.filter((ag) => ag.action_id === actionId).map((ag) => ag.goal_id));
     return this.data.goals.filter((g) => ids.has(g.id));
+  }
+
+  /** Live goals (not archived) other than `exceptGoalId` that a task also supports. */
+  otherGoalsForAction(actionId: string | null, exceptGoalId: string): Goal[] {
+    return this.goalsForAction(actionId).filter((g) => g.id !== exceptGoalId && !g.archived_at);
+  }
+
+  /**
+   * Goals connected to a goal: by hand (a goal link) or by sharing a daily task. Each comes with
+   * the hand-made link (if any) and the live tasks they share. Archived goals are left out.
+   */
+  connectionsFor(goalId: string): Connection[] {
+    const out = new Map<string, Connection>();
+    const add = (id: string): Connection | null => {
+      const goal = this.goal(id);
+      if (!goal || goal.archived_at || id === goalId) return null;
+      let c = out.get(id);
+      if (!c) out.set(id, (c = { goal, link: null, shared: [] }));
+      return c;
+    };
+    for (const link of this.data.goalLinks) {
+      if (link.goal_a === goalId || link.goal_b === goalId) {
+        const c = add(link.goal_a === goalId ? link.goal_b : link.goal_a);
+        if (c) c.link = link;
+      }
+    }
+    for (const action of this.actionsForGoal(goalId)) {
+      for (const g of this.otherGoalsForAction(action.id, goalId)) add(g.id)?.shared.push(action);
+    }
+    // Goals you're working on first, then completed ones.
+    return [...out.values()].sort((a, b) => Number(!!a.goal.completed_at) - Number(!!b.goal.completed_at) || a.goal.title.localeCompare(b.goal.title));
+  }
+
+  /** The same goals, reordered so connected goals sit next to each other (first appearance wins). */
+  groupConnected<T extends Goal>(goals: T[]): T[] {
+    const ids = new Set(goals.map((g) => g.id));
+    const placed = new Set<string>();
+    const out: T[] = [];
+    for (const g of goals) {
+      if (placed.has(g.id)) continue;
+      const queue = [g.id];
+      while (queue.length) {
+        const id = queue.shift()!;
+        if (placed.has(id) || !ids.has(id)) continue;
+        placed.add(id);
+        out.push(goals.find((x) => x.id === id)!);
+        for (const c of this.connectionsFor(id)) if (!placed.has(c.goal.id)) queue.push(c.goal.id);
+      }
+    }
+    return out;
   }
 
   /** First goal colour for a session (one-offs get a neutral grey). */
@@ -314,4 +365,12 @@ export function minutesText(min: number): string {
 function short(date: ISODate): string {
   const [, m, d] = date.split('-').map(Number);
   return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][(m ?? 1) - 1]} ${d}`;
+}
+
+export interface Connection {
+  goal: Goal;
+  /** The hand-made link, if you connected them yourself. */
+  link: GoalLink | null;
+  /** Live daily tasks both goals share. */
+  shared: Action[];
 }

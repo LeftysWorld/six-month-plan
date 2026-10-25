@@ -3,7 +3,8 @@ import type { ISODate } from './dates.ts';
 /** Row shapes shared by the web app and the database. Field names match the SQL columns. */
 
 export type GoalType = 'number' | 'practice' | 'finish';
-export type ActionKind = 'check' | 'count' | 'minutes' | 'workout' | 'study';
+/** measure: logging it records a number (e.g. the day's weight); photo: logging it takes a photo. */
+export type ActionKind = 'check' | 'count' | 'minutes' | 'workout' | 'study' | 'measure' | 'photo';
 export type SessionStatus = 'planned' | 'done' | 'partial' | 'minimum' | 'skipped' | 'moved';
 export type SessionOrigin = 'scheduled' | 'oneoff' | 'unplanned';
 export type ReviewKind = 'weekly' | 'block' | 'quarter' | 'retro';
@@ -121,7 +122,19 @@ export interface Action {
   step_id?: string | null;
   /** An "after ___, at ___" cue that says when the task happens (optional). */
   cue?: string;
+  /** For a measure task: the measurement it records (e.g. Weight). Missing on older databases. */
+  measurement_type_id?: string | null;
   archived_at: string | null;
+}
+
+/** Two goals you connected by hand (e.g. Work out and Lose weight). Order of the pair doesn't matter. */
+export interface GoalLink {
+  id: string;
+  goal_a: string;
+  goal_b: string;
+  /** How they're connected, in your words (optional). */
+  note: string;
+  created_at: string;
 }
 
 export interface ActionGoal {
@@ -309,6 +322,10 @@ export interface IdeaPrep {
   month_of?: ISODate;
   week_of?: ISODate;
   task?: { title: string; days: number[]; minutes: number };
+  /** Goals to connect this one to when it's committed. */
+  connect?: string[];
+  /** Existing daily tasks (action ids) this goal will share when it's committed. */
+  reuse?: string[];
   /** Timing: its own clock starting the day it's committed, or joining a batch (plan_id). */
   clock?: 'own' | 'batch';
   /** Length of its own clock, in months (3 or 6). */

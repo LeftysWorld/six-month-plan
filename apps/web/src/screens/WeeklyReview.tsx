@@ -192,7 +192,8 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
   // The weekly review covers every goal you're working on, each in its own batch or own clock.
   // Month, 3-month and plan reviews cover the goals of the one plan they belong to.
   const isWeekly = kind === 'weekly';
-  const goals = isWeekly ? view.activeGoals : plan ? view.goalsForPlan(plan.id) : [];
+  // Connected goals sit next to each other, so the gym is reviewed beside the weight trend.
+  const goals = view.groupConnected(isWeekly ? view.activeGoals : plan ? view.goalsForPlan(plan.id) : []);
   const planOf = (g: Goal): Plan | null => (isWeekly ? view.planForGoal(g) : plan);
   const goalPlans = goals.map(planOf).filter((p): p is Plan => !!p);
   const trendPlan: Plan | null = isWeekly ? ([...goalPlans].sort((a, b) => (a.start_date < b.start_date ? -1 : 1))[0] ?? null) : plan;
@@ -494,6 +495,15 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
                       <span className="dot" style={{ background: l.goal.color, flex: 'none' }} />
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.goal.title}</span>
                     </span>
+                    {(() => {
+                      const linked = view.connectionsFor(l.goal.id).filter((c) => goals.some((g) => g.id === c.goal.id));
+                      return linked.length > 0 ? (
+                        <span className="xsmall muted">
+                          Connected with {linked.map((c) => c.goal.title).join(', ')}
+                          {linked.some((c) => c.shared.length) ? ` · shares ${[...new Set(linked.flatMap((c) => c.shared.map((a) => a.title)))].join(', ')}` : ''}
+                        </span>
+                      ) : null;
+                    })()}
                     <span className="xsmall" style={{ color: 'var(--ink-2)', lineHeight: 1.4 }}>
                       {l.note ? l.note : `No ${word} goal was written down.`}
                     </span>

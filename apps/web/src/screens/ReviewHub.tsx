@@ -85,7 +85,7 @@ export function ReviewHub() {
   const view = useView();
   // Every goal you're working on, across batches and own clocks. Trends start from the earliest
   // window that has started.
-  const goals = view.activeGoals;
+  const goals = view.groupConnected(view.activeGoals);
   const running = view.livePlans.filter((p) => p.start_date <= today && view.goalsForPlan(p.id).length > 0);
   const plan = running[0] ?? null;
   const started = !!plan;
@@ -172,7 +172,7 @@ export function ReviewHub() {
 function WeeklyCard({ target }: { target: ReturnType<typeof weekToReview> }) {
   const { data, today } = useStore();
   const view = useView();
-  const goals = view.activeGoals;
+  const goals = view.groupConnected(view.activeGoals);
   const running = view.livePlans.filter((p) => p.start_date <= today && view.goalsForPlan(p.id).length > 0);
   const plan = running[0] ?? null;
   const end = addDays(target.monday, 6);

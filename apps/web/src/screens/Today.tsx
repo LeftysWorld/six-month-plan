@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { addDays, isoWeekday, minutesLeft, shortDate, weekDates, weekStart, weekdayName, type ISODate, type Session } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { minutesText, useView } from '../data/derive.ts';
+import { fmt, minutesText, useView } from '../data/derive.ts';
 import { coachLine } from '../data/coach.ts';
 import { checkInStreak, dismissRitual, ritualDue, type Streak } from '../data/habit.ts';
 import { parseQuickAdd } from '../data/parse.ts';
@@ -11,6 +11,9 @@ import { opsAddOneOff, opsLogSession, opsLogUnplanned, opsMoveSession, opsRestor
 import { href, navigate } from '../router.ts';
 import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
+import { MeasureSheet } from '../components/MeasureSheet.tsx';
+import { useAddFiles } from '../components/Attachments.tsx';
+import { readingOn } from '../data/connect.ts';
 import { CommitmentCard } from '../components/Commitment.tsx';
 import { opsAddIdea } from '../data/backlog.ts';
 import { currentCommitment } from '../data/insights.ts';
@@ -76,10 +79,38 @@ export function Today() {
   const showMorning = isToday && ritualDue('morning', today);
   const showEvening = isToday && !showMorning && ritualDue('evening', today);
 
+  // A measure task asks for the number; a photo task takes the photo; anything else checks off.
+  const [measuring, setMeasuring] = useState<Session | null>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const photoFor = useRef<Session | null>(null);
+  const { addFiles } = useAddFiles();
+
+  async function photoPicked(list: FileList | null) {
+    const s = photoFor.current;
+    const files = [...(list ?? [])];
+    if (photoInput.current) photoInput.current.value = '';
+    photoFor.current = null;
+    if (!s || files.length === 0) return;
+    const added = await addFiles(s, files, { quiet: true });
+    if (added === 0) return;
+    commit(opsLogSession(s, { status: 'done', on: today }));
+    toast(`${s.title}: photo saved`, () => commit(opsRestoreSession(s)));
+  }
+
   function toggle(s: Session) {
     const before = s;
     if (isFuture) {
       toast(`You can check this off on ${weekdayName(day)}`);
+      return;
+    }
+    const kind = view.action(s.action_id)?.kind;
+    if (s.status === 'planned' && kind === 'measure') {
+      setMeasuring(s);
+      return;
+    }
+    if (s.status === 'planned' && kind === 'photo') {
+      photoFor.current = s;
+      photoInput.current?.click();
       return;
     }
     if (s.status === 'planned') {
@@ -299,6 +330,8 @@ export function Today() {
       </aside>
 
       {open && <LogSheet session={data.sessions.find((s) => s.id === open.id) ?? open} onClose={() => setOpen(null)} />}
+      {measuring && <MeasureSheet session={data.sessions.find((s) => s.id === measuring.id) ?? measuring} onClose={() => setMeasuring(null)} />}
+      <input ref={photoInput} type="file" accept="image/*" hidden onChange={(e) => void photoPicked(e.target.files)} />
       {adding && <QuickAdd date={placeOn} onClose={() => setAdding(false)} />}
     </div>
   );
@@ -486,7 +519,8 @@ function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session
   const view = useView();
   const { data } = useStore();
   const action = view.action(session.action_id);
-  const goal = view.goalsForAction(session.action_id)[0];
+  const goals = view.goalsForAction(session.action_id).filter((g) => !g.archived_at && !g.completed_at);
+  const goal = goals[0];
   const s = session;
   const [dx, setDx] = useState(0);
   const drag = useRef<{ x: number; y: number; on: boolean; moved: boolean } | null>(null);
@@ -496,7 +530,7 @@ function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session
   const label =
     s.status === 'planned' ? `Mark ${s.title} done` : `${s.title}, ${s.status === 'minimum' ? 'minimum kept' : s.status}. Tap to undo`;
 
-  let meta: string | null = [action?.cue ? action.cue : null, goal?.title].filter(Boolean).join(' · ') || null;
+  let meta: string | null = [action?.cue ? action.cue : null, goals.map((g) => g.title).join(' + ') || null].filter(Boolean).join(' · ') || null;
   if (s.status === 'minimum') meta = `Minimum kept${action?.min_label ? ` · ${action.min_label}` : ''}`;
   if (s.status === 'partial') meta = s.planned_count ? `Partial · ${s.actual_count ?? 0} of ${s.planned_count}` : 'Partial';
   if (s.status === 'skipped') meta = s.obstacles.length ? `Skipped · ${s.obstacles.join(', ')}` : 'Skipped';
@@ -541,6 +575,10 @@ function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session
   };
 
   const logged = s.status === 'done' || s.status === 'partial' || s.status === 'minimum';
+  // A measure task shows the number it saved that day.
+  const reading = action?.kind === 'measure' && logged ? readingOn(data, action.measurement_type_id, s.date) : null;
+  const unit = reading != null ? data.measurementTypes.find((t) => t.id === action?.measurement_type_id)?.unit ?? '' : '';
+  const topLine = reading != null ? `${fmt(reading)}${unit ? ` ${unit}` : ''}` : right;
 
   return (
     <div className="task-card-wrap">
@@ -558,9 +596,9 @@ function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session
         onPointerCancel={onUp}
       >
         <button type="button" className="task-card-body" onClick={() => !dx && onOpen()} aria-label={`${s.title}: details`}>
-          {right && (
+          {topLine && (
             <span className="mono" style={{ color: logged ? 'var(--accent-ink)' : 'var(--ink-2)' }}>
-              {right}
+              {topLine}
             </span>
           )}
           <span className={`task-card-title${s.status === 'done' ? ' done' : ''}`}>
@@ -569,8 +607,10 @@ function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session
           </span>
           {meta && (
             <span className="task-card-meta" style={{ color: s.status === 'minimum' || s.status === 'partial' ? 'var(--amber-ink)' : undefined }}>
-              {goal && <span className="dot" style={{ width: 7, height: 7, background: goal.color, boxShadow: `0 0 10px ${goal.color}` }} />}
-              <span>{meta}</span>
+              {goals.map((g) => (
+                <span key={g.id} className="dot" style={{ width: 7, height: 7, background: g.color, boxShadow: `0 0 10px ${g.color}`, marginRight: goals.length > 1 ? -3 : 0 }} />
+              ))}
+              <span style={{ marginLeft: goals.length > 1 ? 3 : 0 }}>{meta}</span>
             </span>
           )}
         </button>

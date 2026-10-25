@@ -100,7 +100,8 @@ export function prepGaps(
     const note = (p[level] ?? '').trim();
     if (!note || (!own && p[`${level}_of`] !== periods[level].start)) gaps.push(level);
   }
-  if (!p.task || !p.task.title.trim() || p.task.days.length === 0 || !(p.task.minutes > 0)) gaps.push('task');
+  const ownTask = !!p.task && !!p.task.title.trim() && p.task.days.length > 0 && p.task.minutes > 0;
+  if (!ownTask && !(p.reuse?.length)) gaps.push('task');
   if (p.type === 'number' && (p.target == null || !p.target_date)) gaps.push('target');
   if (!p.clock || (p.clock === 'batch' && !p.plan_id)) gaps.push('timing');
   return gaps;

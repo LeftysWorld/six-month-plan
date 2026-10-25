@@ -980,3 +980,8 @@ button.day-cell { border: 0; cursor: pointer; font: inherit; color: var(--ink); 
 .tick-btn.done { background: var(--gradient); border-color: transparent; color: var(--on-accent); box-shadow: 0 10px 30px -12px rgba(124, 104, 255, 0.6); animation: pop 0.35s var(--spring); }
 .tick-btn.part { background: var(--amber-soft); border-color: var(--amber); color: var(--amber-ink); }
 .tick-btn.skip { background: var(--fill-strong); border-color: var(--border-strong); color: var(--muted); }
+
+/* ---------- Connected goals ---------- */
+.connection { display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid var(--line); }
+.connection:first-of-type { border-top: 0; padding-top: 4px; }
+.connection .row-start .link-btn { padding-left: 0; }

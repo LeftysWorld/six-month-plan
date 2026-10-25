@@ -6,10 +6,11 @@ import { opsLogSession, opsMoveSession, opsRestoreSession } from '../data/ops.ts
 import { href, navigate } from '../router.ts';
 import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
 import { SessionFiles } from '../components/Attachments.tsx';
+import { lastReading, opsRecordReading, readingOn } from '../data/connect.ts';
 
 /** Log an item beyond a one-tap check: amount, state, obstacles, note, or move it. */
 export function LogSheet({ session, onClose }: { session: Session; onClose: () => void }) {
-  const { commit, today } = useStore();
+  const { data, commit, today } = useStore();
   const view = useView();
   const toast = useToast();
   const action = view.action(session.action_id);
@@ -22,6 +23,15 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
   const [obstacles, setObstacles] = useState<string[]>(session.obstacles);
   const [note, setNote] = useState(session.note);
   const [moving, setMoving] = useState(false);
+  // A measure task records the day's number (e.g. weight) along with the log.
+  const isMeasure = action?.kind === 'measure';
+  const measureType = isMeasure ? data.measurementTypes.find((t) => t.id === action?.measurement_type_id) : undefined;
+  const [reading, setReading] = useState<string>(() => {
+    if (!measureType) return '';
+    const day = readingOn(data, measureType.id, session.date ?? today);
+    return day != null ? String(day) : String(lastReading(data, measureType.id)?.value ?? '');
+  });
+  const noTime = action?.kind === 'measure' || action?.kind === 'photo';
 
   const minLabel = action?.min_label;
   const states: { value: SessionStatus; title: string; sub: string; amber?: boolean }[] = [
@@ -33,17 +43,20 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
 
   function save() {
     const before = session;
-    commit(
-      opsLogSession(session, {
+    const value = reading.trim() === '' ? null : Number(reading);
+    const record = measureType && status !== 'skipped' && value != null && Number.isFinite(value) ? opsRecordReading(data, measureType.id, value, session.date ?? today) : { ops: [], undo: [] };
+    commit([
+      ...record.ops,
+      ...opsLogSession(session, {
         status,
         actual_count: countBased ? count : null,
-        actual_minutes: minutes,
+        actual_minutes: noTime ? minutes ?? 0 : minutes,
         obstacles,
         note,
         on: today,
       }),
-    );
-    toast(`${session.title}: ${states.find((s) => s.value === status)?.title.toLowerCase()}`, () => commit(opsRestoreSession(before)));
+    ]);
+    toast(`${session.title}: ${states.find((s) => s.value === status)?.title.toLowerCase()}`, () => commit([...record.undo, ...opsRestoreSession(before)]));
     onClose();
   }
 
@@ -125,10 +138,19 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
               </div>
             </div>
           ) : null}
-          <label className="field">
-            Minutes spent {session.planned_minutes ? `(planned ${session.planned_minutes})` : ''}
-            <input type="number" inputMode="numeric" min={0} value={minutes ?? ''} onChange={(e) => setMinutes(e.target.value === '' ? null : Number(e.target.value))} />
-          </label>
+          {measureType && (
+            <label className="field">
+              {measureType.name}
+              {measureType.unit ? ` (${measureType.unit})` : ''}
+              <input type="number" inputMode="decimal" step="any" value={reading} onChange={(e) => setReading(e.target.value)} />
+            </label>
+          )}
+          {!noTime && (
+            <label className="field">
+              Minutes spent {session.planned_minutes ? `(planned ${session.planned_minutes})` : ''}
+              <input type="number" inputMode="numeric" min={0} value={minutes ?? ''} onChange={(e) => setMinutes(e.target.value === '' ? null : Number(e.target.value))} />
+            </label>
+          )}
           <div className="grid-2" role="radiogroup" aria-label="How did it go?">
             {states.map((s) => (
               <button

@@ -1,3 +1,4 @@
+import { opsLinkGoals, opsShareTask } from './connect.ts';
 import { addDays, chainAt, clockDays, suggestPath, type GoalIdea, type IdeaPrep, type ISODate, type PathPoint, type Plan } from '@six/core';
 import type { AppData, Op } from './model.ts';
 import { opsCreateGoal, opsCreatePlan } from './ops.ts';
@@ -59,6 +60,15 @@ export function opsCommitIdea(data: AppData, idea: GoalIdea, plan: Plan, today: 
   if (prep.task && prep.task.title.trim() && prep.task.days.length) {
     const week = chainFor(next, goal, plan, from).week.step!;
     all.push(...opsAddTask(next, goal, week, { ...blankTask(week, today), title: prep.task.title.trim(), when: 'days', days: prep.task.days, minutes: prep.task.minutes, through: null }, today));
+  }
+  // Connect it to the goals chosen while preparing, and share the tasks picked from them.
+  for (const other of prep.connect ?? []) {
+    if (!next.goals.some((g) => g.id === other && !g.archived_at)) continue;
+    all.push(...opsLinkGoals(withOps(data, all), goalId, other, ''));
+  }
+  for (const actionId of prep.reuse ?? []) {
+    if (!next.actions.some((a) => a.id === actionId && !a.archived_at)) continue;
+    all.push(...opsShareTask(withOps(data, all), actionId, goalId));
   }
   all.push(...opsStartIdea(withOps(data, all), idea.id, goalId));
   return { ops: all, goalId };

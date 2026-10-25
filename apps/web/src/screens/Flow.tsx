@@ -39,6 +39,8 @@ import {
 } from '../data/breakdown.ts';
 import { BackLink, Empty, Icon, PacePill, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
+import { opsUnshareTask } from '../data/connect.ts';
+import { ShareTaskSheet } from '../components/Connections.tsx';
 
 /**
  * One page per goal: the goal chain, top to bottom, then this week's daily tasks.
@@ -350,6 +352,7 @@ function DailyTasks({
   const { data, today, commit } = useStore();
   const [editing, setEditing] = useState<{ task: WeekTask | null; initial?: Partial<TaskInput> } | null>(null);
   const [logging, setLogging] = useState<Session | null>(null);
+  const [sharing, setSharing] = useState(false);
   const range = dateRange(week);
   const tasks = tasksInRange(data, goal.id, range, week.id);
   const over = week.end_date < today;
@@ -474,6 +477,9 @@ function DailyTasks({
           <button className="btn primary" onClick={() => setEditing({ task: null })}>
             + Add a daily task
           </button>
+          <button className="btn ghost" onClick={() => setSharing(true)}>
+            + Use a task from another goal
+          </button>
           {prevWeek && prevTasks.some((t) => t.origin === 'here') && (
             <button
               className="btn ghost"
@@ -505,6 +511,7 @@ function DailyTasks({
         />
       )}
       {logging && <LogSheet session={data.sessions.find((x) => x.id === logging.id) ?? logging} onClose={() => setLogging(null)} />}
+      {sharing && <ShareTaskSheet goal={goal} onClose={() => setSharing(false)} onShared={(m) => onToast(m)} />}
     </div>
   );
 }
@@ -616,7 +623,9 @@ function TaskRow({ task, week, goal, readOnly, onEdit }: { task: WeekTask; week:
   const once = isOnce(schedule);
   const when = once ? `${weekdayName(schedule.effective_from)} ${shortDate(schedule.effective_from)} only` : describeSchedule(schedule);
   const through = once ? '' : schedule.effective_to == null ? 'no end date' : schedule.effective_to === week.end_date ? 'this week' : `through ${shortDate(schedule.effective_to)}`;
+  const view = useView();
   const origin = task.origin === 'carried' ? `from ${data.planSteps.find((s) => s.id === action.step_id)?.title ?? 'an earlier week'}` : task.origin === 'ongoing' ? 'from goal setup' : '';
+  const also = view.otherGoalsForAction(action.id, goal.id);
   return (
     <div className="task" style={{ paddingLeft: 12 }}>
       <span className="dot" style={{ background: goal.color, marginRight: 10 }} />
@@ -631,6 +640,14 @@ function TaskRow({ task, week, goal, readOnly, onEdit }: { task: WeekTask; week:
           {origin ? ` · ${origin}` : ''}
           {action.planned_minutes ? ` · ${minutesText(action.planned_minutes)}` : ''}
         </span>
+        {also.length > 0 && (
+          <span className="meta">
+            {also.map((g) => (
+              <span key={g.id} className="dot" style={{ width: 6, height: 6, background: g.color }} />
+            ))}
+            Also supports: {also.map((g) => g.title).join(', ')}
+          </span>
+        )}
       </span>
       {!readOnly && (
         <button className="btn small" onClick={onEdit} aria-label={`Edit ${action.title}`} style={{ marginLeft: 8 }}>
@@ -647,6 +664,8 @@ const KINDS: { value: ActionKind; label: string }[] = [
   { value: 'count', label: 'Count' },
   { value: 'workout', label: 'Workout' },
   { value: 'study', label: 'Study' },
+  { value: 'measure', label: 'Log a number' },
+  { value: 'photo', label: 'Photo' },
 ];
 
 function TaskSheet({
@@ -667,8 +686,31 @@ function TaskSheet({
   onSaved: (m: string) => void;
 }) {
   const { data, today, commit } = useStore();
+  const view = useView();
   const [v, setV] = useState<TaskInput>(() => (task ? inputFromTask(task, week) : { ...blankTask(week, today), ...initial }));
   const set = (patch: Partial<TaskInput>) => setV((x) => ({ ...x, ...patch }));
+  // Every goal this task supports. The goal you're on always stays in the set.
+  const [goalIds, setGoalIds] = useState<string[]>(() => (task ? view.goalsForAction(task.action.id).map((g) => g.id) : [goal.id]));
+  const connected = new Set(view.connectionsFor(goal.id).map((c) => c.goal.id));
+  const goalChoices = [
+    goal,
+    ...view.activeGoals.filter((g) => g.id !== goal.id).sort((a, b) => Number(connected.has(b.id)) - Number(connected.has(a.id)) || a.title.localeCompare(b.title)),
+    ...goalIds.map((id) => view.goal(id)).filter((g): g is Goal => !!g && g.id !== goal.id && !view.activeGoals.includes(g)),
+  ];
+  const sharedWith = task ? view.otherGoalsForAction(task.action.id, goal.id) : [];
+  const types = data.measurementTypes.filter((t) => !t.archived_at);
+  const pickKind = (kind: ActionKind) => {
+    const patch: Partial<TaskInput> = { kind };
+    // A weigh-in or a photo takes no real time: don't count 30 minutes toward the day.
+    if ((kind === 'measure' || kind === 'photo') && v.kind !== 'measure' && v.kind !== 'photo') patch.minutes = 0;
+    if (kind === 'measure' && !v.measurementTypeId && !v.newMeasure) {
+      const fromGoals = goalIds.map((id) => view.goal(id)?.measurement_type_id).find((x) => x && types.some((t) => t.id === x));
+      const first = fromGoals ?? types[0]?.id ?? null;
+      patch.measurementTypeId = first;
+      patch.newMeasure = first ? null : { name: '', unit: data.profile.units };
+    }
+    set(patch);
+  };
   const from = applyFrom(week, today);
   const month = data.planSteps.find((s) => s.id === week.parent_id);
   const quarter = month ? data.planSteps.find((s) => s.id === month.parent_id) : undefined;
@@ -684,18 +726,19 @@ function TaskSheet({
   const dayChoices = weekDates(addDays(week.start_date, 1 - isoWeekday(week.start_date))).filter(
     (d) => d >= week.start_date && d <= week.end_date && (d >= from || d === originalDate),
   );
-  const valid = v.title.trim().length > 0 && (v.when !== 'days' || v.days.length > 0) && (v.when !== 'once' || dayChoices.includes(v.date));
+  const measureOk = v.kind !== 'measure' || (v.newMeasure ? v.newMeasure.name.trim().length > 0 : !!v.measurementTypeId);
+  const valid = v.title.trim().length > 0 && (v.when !== 'days' || v.days.length > 0) && (v.when !== 'once' || dayChoices.includes(v.date)) && measureOk;
 
   function save() {
     if (!valid) return;
     if (task) {
       // A one-day task on a day that has already passed only changes its details, not its date.
       const editFrom = originalDate && originalDate < from && v.when === 'once' && v.date === originalDate ? originalDate : from;
-      commit(opsEditTask(data, task.action, v, editFrom, today));
+      commit(opsEditTask(data, task.action, { ...v, goalIds }, editFrom, today, goal.id));
       onSaved(`${v.title.trim()} updated${editFrom > today ? ` from ${shortDate(editFrom)}` : ''}`);
     } else {
       const ensure = opsEnsureStep(data, week);
-      commit([...ensure, ...opsAddTask(withOps(data, ensure), goal, week, v, today)]);
+      commit([...ensure, ...opsAddTask(withOps(data, ensure), goal, week, { ...v, goalIds }, today)]);
       onSaved(`Added ${v.title.trim()}${week.start_date <= today ? ". It's on Today when it's due." : ''}`);
     }
   }
@@ -706,6 +749,11 @@ function TaskSheet({
         <span className="dot" style={{ background: goal.color }} />
         {goal.title} · {rangeLabel(dateRange(week))}
       </div>
+      {sharedWith.length > 0 && (
+        <div className="banner info">
+          <span>Shared with {sharedWith.map((g) => g.title).join(', ')}: changes here change it there too.</span>
+        </div>
+      )}
       <label className="field">
         Task
         <input autoFocus value={v.title} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. Practice chord changes" />
@@ -773,17 +821,52 @@ function TaskSheet({
         <span className="xsmall muted">How you log it</span>
         <div className="chips">
           {KINDS.map((k) => (
-            <button key={k.value} className="chip" aria-pressed={v.kind === k.value} onClick={() => set({ kind: k.value })}>
+            <button key={k.value} className="chip" aria-pressed={v.kind === k.value} onClick={() => pickKind(k.value)}>
               {k.label}
             </button>
           ))}
         </div>
+        {v.kind === 'measure' && <span className="xsmall muted">Checking it off asks for the number and saves it as that day's reading, so the goal's path updates.</span>}
+        {v.kind === 'photo' && <span className="xsmall muted">Checking it off opens the camera or your photos and saves the photo to that day.</span>}
       </div>
+      {v.kind === 'measure' && (
+        <div className="stack-sm">
+          <label className="field">
+            What it records
+            <select
+              value={v.newMeasure ? '__new' : v.measurementTypeId ?? ''}
+              onChange={(e) => (e.target.value === '__new' ? set({ newMeasure: { name: '', unit: data.profile.units }, measurementTypeId: null }) : set({ measurementTypeId: e.target.value, newMeasure: null }))}
+            >
+              {types.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.unit ? ` (${t.unit})` : ''}
+                </option>
+              ))}
+              <option value="__new">+ New measurement…</option>
+            </select>
+          </label>
+          {v.newMeasure && (
+            <div className="grid-2">
+              <label className="field">
+                Name
+                <input value={v.newMeasure.name} onChange={(e) => set({ newMeasure: { ...v.newMeasure!, name: e.target.value } })} placeholder="e.g. Weight" />
+              </label>
+              <label className="field">
+                Unit
+                <input value={v.newMeasure.unit} onChange={(e) => set({ newMeasure: { ...v.newMeasure!, unit: e.target.value } })} placeholder="e.g. lb" />
+              </label>
+            </div>
+          )}
+        </div>
+      )}
       <div className="grid-2">
-        <label className="field">
-          Minutes
-          <input type="number" min={0} value={v.minutes} onChange={(e) => set({ minutes: Math.max(0, Number(e.target.value)) })} />
-        </label>
+        {v.kind !== 'measure' && v.kind !== 'photo' && (
+          <label className="field">
+            Minutes
+            <input type="number" min={0} value={v.minutes} onChange={(e) => set({ minutes: Math.max(0, Number(e.target.value)) })} />
+          </label>
+        )}
         {v.kind === 'count' && (
           <label className="field">
             How many
@@ -800,6 +883,30 @@ function TaskSheet({
         Minimum version for hard days (optional)
         <input value={v.minLabel} onChange={(e) => set({ minLabel: e.target.value })} placeholder="e.g. 5 minutes" />
       </label>
+      {goalChoices.length > 1 && (
+        <div className="stack-sm">
+          <span className="xsmall muted">Supports (logging it once counts for each)</span>
+          <div className="chips" role="group" aria-label="Goals this task supports">
+            {goalChoices.map((g) => {
+              const on = goalIds.includes(g.id);
+              return (
+                <button
+                  key={g.id}
+                  className="chip"
+                  aria-pressed={on}
+                  disabled={g.id === goal.id}
+                  title={g.id === goal.id ? 'The goal you are on' : undefined}
+                  onClick={() => setGoalIds(on ? goalIds.filter((x) => x !== g.id) : [...goalIds, g.id])}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
+                >
+                  <span className="dot" style={{ width: 7, height: 7, background: g.color }} />
+                  {g.title}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <label className="row-start small">
         <input type="checkbox" checked={v.priority} onChange={(e) => set({ priority: e.target.checked })} style={{ width: 20, height: 20 }} />
         Show under Priorities on Today
@@ -811,6 +918,17 @@ function TaskSheet({
         </p>
       )}
       <div className="btn-row">
+        {task && sharedWith.length > 0 && (
+          <button
+            className="btn"
+            onClick={() => {
+              commit(opsUnshareTask(data, task.action.id, goal.id));
+              onSaved(`${task.action.title} no longer counts for ${goal.title}; it keeps running for ${sharedWith.map((g) => g.title).join(', ')}`);
+            }}
+          >
+            Remove from this goal
+          </button>
+        )}
         {task && (
           <button
             className="btn danger"
@@ -819,7 +937,7 @@ function TaskSheet({
               onSaved(`${task.action.title} removed from ${from === today ? 'today' : shortDate(from)} on`);
             }}
           >
-            Remove
+            {sharedWith.length > 0 ? 'Stop everywhere' : 'Remove'}
           </button>
         )}
         <button className="btn primary" disabled={!valid} onClick={save}>
