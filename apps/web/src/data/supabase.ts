@@ -8,14 +8,14 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const supabaseConfigured = Boolean(url && anonKey);
 
-const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql, 20261025000000_review_overhaul.sql, 20261026000000_goal_backlog.sql, 20261027000000_completed_goals_and_readiness.sql, 20261028000000_idea_prep.sql, 20261029000000_batches_and_own_clocks.sql, 20261030000000_attachments.sql and 20261031000000_connected_goals.sql';
+const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql, 20261025000000_review_overhaul.sql, 20261026000000_goal_backlog.sql, 20261027000000_completed_goals_and_readiness.sql, 20261028000000_idea_prep.sql, 20261029000000_batches_and_own_clocks.sql, 20261030000000_attachments.sql, 20261031000000_connected_goals.sql and 20261101000000_goal_groups.sql';
 const BACKLOG_MIGRATION = 'supabase/migrations/20261026000000_goal_backlog.sql';
 
 /** Set when the database is missing a newer migration; the app shows it as a banner. */
 export let schemaWarning: string | null = null;
 
 function isMissingBreakdown(message: string): boolean {
-  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas|completion_note|done_means|goals\.completed_at|\bprep\b|\bsolo\b|attachments|goal_links|actions\.measurement_type_id|'measurement_type_id' column of 'actions'/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas|completion_note|done_means|goals\.completed_at|\bprep\b|\bsolo\b|attachments|goal_links|goal_groups|group_id|actions\.measurement_type_id|'measurement_type_id' column of 'actions'/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
 }
 
 let client: SupabaseClient | null = null;
@@ -91,6 +91,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
   const urlCache = new Map<string, { url: string; until: number }>();
   return {
     mode: 'supabase',
+    schemaWarning: () => schemaWarning,
 
     files: {
       async upload(id, name, file) {
@@ -128,6 +129,11 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
               return [];
             }
             // A database without the backlog table still loads; the backlog just can't save yet.
+            // A database without groups still loads; goals just can't be grouped yet.
+            if (key === 'groups' && isMissingBreakdown(e.message)) {
+              schemaWarning ??= `Your database needs the goal groups update. In Supabase → SQL Editor, run supabase/migrations/20261101000000_goal_groups.sql, then reload.`;
+              return [];
+            }
             // A database without connected goals still loads; goals just can't be connected yet.
             if (key === 'goalLinks' && isMissingBreakdown(e.message)) {
               schemaWarning ??= `Your database needs the connected-goals update. In Supabase → SQL Editor, run supabase/migrations/20261031000000_connected_goals.sql, then reload.`;
@@ -228,12 +234,12 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       const order = [
         'attachments', 'goal_links', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
         'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
-        'plan_steps', 'plan_goals', 'goals', 'plans', 'measurement_types',
+        'plan_steps', 'plan_goals', 'goals', 'goal_groups', 'plans', 'measurement_types',
       ];
       for (const table of order) {
         const { error } = await sb.from(table).delete().eq('user_id', userId);
         // An older database without the breakdown table has nothing to delete there.
-        if (error && !((table === 'plan_steps' || table === 'goal_ideas' || table === 'attachments' || table === 'goal_links') && isMissingBreakdown(error.message))) throw new Error(`${table}: ${error.message}`);
+        if (error && !((table === 'plan_steps' || table === 'goal_ideas' || table === 'attachments' || table === 'goal_links' || table === 'goal_groups') && isMissingBreakdown(error.message))) throw new Error(`${table}: ${error.message}`);
       }
     },
   };

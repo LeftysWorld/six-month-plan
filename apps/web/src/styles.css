@@ -990,3 +990,33 @@ button.day-cell { border: 0; cursor: pointer; font: inherit; color: var(--ink); 
 .connection-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 13px; text-decoration: none; cursor: pointer; }
 .connection-chip:hover { border-color: var(--border-strong); color: var(--ink); }
 .connection-chip.add { border-style: dashed; color: var(--ink-2); }
+
+/* ---------- Goals page: groups and goal tiles ---------- */
+.group-card { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; background: var(--card); -webkit-backdrop-filter: blur(18px) saturate(140%); backdrop-filter: blur(18px) saturate(140%); border: 1px solid var(--line); border-radius: 26px; box-shadow: var(--shadow-1); transition: border-color 0.15s, box-shadow 0.15s, transform 0.2s var(--spring); }
+.group-card-side { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.group-card-tiles { flex: 2 1 420px; min-width: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 10px; }
+.group-card-name { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0; border: 0; background: none; font: inherit; font-size: 19px; font-weight: 650; letter-spacing: -0.02em; color: var(--ink); cursor: pointer; text-align: left; }
+.group-shared { display: flex; flex-direction: column; }
+.group-shared .mono { padding-bottom: 4px; }
+.group-shared-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.loose-goals { display: flex; flex-direction: column; gap: 10px; padding: 4px; margin: -4px; border-radius: 24px; border: 2px dashed transparent; transition: border-color 0.15s, background 0.15s; }
+.loose-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 10px; }
+.goal-tile { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 12px; background: var(--card); -webkit-backdrop-filter: blur(18px) saturate(140%); backdrop-filter: blur(18px) saturate(140%); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow-1); min-width: 0; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: border-color 0.15s, transform 0.2s var(--spring), opacity 0.15s, background 0.15s; }
+.group-card .goal-tile { background: var(--surface-2); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.goal-tile.lifted { opacity: 0.35; }
+.goal-tile.drop-on, .group-card.drop-on { border: 2px dashed var(--accent-ink); background: var(--accent-soft); transform: scale(1.015); }
+.loose-goals.drop-on { border-color: var(--accent-ink); background: var(--accent-soft); }
+.goal-tile-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.goal-grip { width: 30px; height: 36px; margin-left: -8px; flex: none; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: var(--faint); cursor: grab; border-radius: 10px; touch-action: none; }
+.goal-grip:hover { color: var(--ink-2); background: var(--fill); }
+.goal-tile-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; color: var(--ink); text-decoration: none; font-size: 15.5px; font-weight: 600; letter-spacing: -0.01em; }
+.goal-tile-title > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-tile-body { display: flex; flex-direction: column; gap: 2px; color: var(--ink); text-decoration: none; }
+.goal-tile-big { font-family: var(--display); font-size: 26px; font-weight: 650; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.goal-tile-big span { font-size: 13px; font-weight: 450; letter-spacing: 0; color: var(--muted); }
+.goal-tile-sub { font-size: 12.5px; color: var(--muted); }
+.goal-tile.compact .goal-tile-sub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.goal-tile-week { font-size: 13px; color: var(--ink-2); padding-top: 8px; border-top: 1px solid var(--line); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.goal-tile-week .mono { font-size: 10px; margin-right: 4px; }
+.goal-tile-time { font-size: 11.5px; color: var(--muted); }
+.drag-ghost-hint { display: block; font-size: 11.5px; font-weight: 500; color: var(--accent-ink); margin-top: 2px; }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   addDays,
   chainAt,
@@ -8,13 +8,17 @@ import {
   quarterRange,
   shortDate,
   weekdayName,
+  describeSchedule,
   type Goal,
+  type GoalGroup,
   type ISODate,
   type PaceLabel,
   type Plan,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { ConnectionStrip } from '../components/Connections.tsx';
+import { AddToGroupSheet, GroupNameSheet, GroupSheet, sharedTasksOf } from '../components/Connections.tsx';
+import { opsAddToGroup, opsRemoveFromGroup } from '../data/groups.ts';
+import { runningSchedule } from '../data/connect.ts';
 import { fmt, useView, type View } from '../data/derive.ts';
 import { opsArchivePlan, opsCreatePlan } from '../data/ops.ts';
 import {
@@ -31,7 +35,7 @@ import {
 } from '../data/chain.ts';
 import type { AppData, Op } from '../data/model.ts';
 import { href } from '../router.ts';
-import { Icon, Sheet, useToast } from '../components/ui.tsx';
+import { Icon, PacePill, Sheet, useToast } from '../components/ui.tsx';
 import { ChainSheet } from './Flow.tsx';
 import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
 
@@ -90,7 +94,7 @@ export function PlanForm({ onDone }: { onDone?: () => void }) {
  * listed together, each with its own day count.
  */
 export function Plans() {
-  const { data, today } = useStore();
+  const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
   const [filter, setFilter] = useState<'all' | 'needs'>('all');
@@ -106,11 +110,44 @@ export function Plans() {
   const keep = (c: GoalCardData) => filter === 'all' || c.needs;
   const setup = setupSteps(view, data, today);
 
+  // Groups first (in the order they were made), then goals on their own, needs-you first.
+  const placed: Placed[] = [...sections.flatMap(({ plan, cards }) => cards.map((card) => ({ card, plan, own: false }))), ...own.map(({ card, plan }) => ({ card, plan, own: true }))].sort((a, b) => a.card.rank - b.card.rank);
+  const shown = placed.filter((p) => keep(p.card));
+  const groups = data.groups
+    .map((group) => ({ group, members: shown.filter((p) => p.card.goal.group_id === group.id) }))
+    .filter((g) => g.members.length > 0);
+  const grouped = new Set(groups.flatMap((g) => g.members.map((m) => m.card.goal.id)));
+  const looseShown = shown.filter((p) => !grouped.has(p.card.goal.id));
+  const [naming, setNaming] = useState<Goal[] | null>(null);
+  const [openGroup, setOpenGroup] = useState<GoalGroup | null>(null);
+  const [moving, setMoving] = useState<Goal | null>(null);
+  const dnd = useGoalDrag((goal, target) => {
+    const [kind, id] = target.split(':') as [string, string | undefined];
+    if (kind === 'goal' && id) {
+      const other = data.goals.find((g) => g.id === id);
+      if (!other) return;
+      if (other.group_id) {
+        commit(opsAddToGroup(data, goal.id, other.group_id));
+        toast(`${goal.title} added to ${data.groups.find((x) => x.id === other.group_id)?.name ?? 'the group'}`);
+      } else setNaming([other, goal]);
+    } else if (kind === 'group' && id) {
+      commit(opsAddToGroup(data, goal.id, id));
+      toast(`${goal.title} added to ${data.groups.find((x) => x.id === id)?.name ?? 'the group'}`);
+    } else if (kind === 'loose') {
+      const name = data.groups.find((x) => x.id === goal.group_id)?.name;
+      const ops = opsRemoveFromGroup(data, goal.id);
+      commit(ops);
+      const gone = ops.some((o) => o.kind === 'delete' && o.collection === 'groups');
+      toast(gone ? `${goal.title} taken out. ${name} had one goal left, so the group is gone.` : `${goal.title} taken out of ${name}`);
+    }
+  });
+
   return (
     <div className="stack rise">
       <div className="topbar">
         <span className="mono">
           {all.length} goal{all.length === 1 ? '' : 's'}
+          {data.groups.length ? ` · ${data.groups.length} group${data.groups.length === 1 ? '' : 's'}` : ''}
           {needCount ? ` · ${needCount} need${needCount === 1 ? 's' : ''} you` : ''}
         </span>
         <a className="avatar" href={href('/settings')} aria-label="Settings">
@@ -154,39 +191,34 @@ export function Plans() {
         </div>
       )}
 
-      {sections.map(({ plan, cards }) => (
-        <section key={plan.id} className="batch stack" aria-label={`Batch: ${plan.name}`}>
-          <PlanLine plan={plan} today={today} onMenu={() => setMenuFor(plan)} />
-          {cards.length === 0 ? (
-            <p className="small muted" style={{ margin: 0 }}>
-              No goals in this batch yet. Commit one from the backlog.
-            </p>
-          ) : (
-            <div className="goal-list">
-              {cards.filter(keep).map((c) => (
-                <GoalCard key={c.goal.id} card={c} plan={plan} />
-              ))}
-            </div>
-          )}
-        </section>
+      {sections.map(({ plan }) => (
+        <PlanLine key={plan.id} plan={plan} today={today} onMenu={() => setMenuFor(plan)} />
       ))}
 
-      {own.length > 0 && (
-        <section className="batch stack" aria-label="Goals on their own clock">
-          <div className="row-between">
-            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Own clock</span>
-            <span className="mono" style={{ fontSize: 11 }}>
-              {own.length} GOAL{own.length === 1 ? '' : 'S'}
-            </span>
+      {groups.map(({ group, members }) => (
+        <GroupCard key={group.id} group={group} members={members} dnd={dnd} onOpen={() => setOpenGroup(group)} onMove={setMoving} />
+      ))}
+
+      {(looseShown.length > 0 || dnd.drag?.goal.group_id) && (
+        <section className={`loose-goals${dnd.drag?.target === 'loose' ? ' drop-on' : ''}`} data-drop="loose" aria-label="Not in a group">
+          <div className="row-between" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{groups.length ? 'Not in a group' : 'Your goals'}</span>
+            <span className="xsmall muted">{dnd.drag?.goal.group_id ? `Drop here to take ${dnd.drag.goal.title} out of its group` : 'Drag a goal onto another to group them'}</span>
           </div>
-          <div className="goal-list">
-            {own
-              .filter((x) => keep(x.card))
-              .map(({ card, plan }) => (
-                <GoalCard key={card.goal.id} card={card} plan={plan} ownClock />
-              ))}
+          <div className="loose-tiles">
+            {looseShown.map((m) => (
+              <GoalTile key={m.card.goal.id} placed={m} dnd={dnd} onMove={setMoving} />
+            ))}
           </div>
         </section>
+      )}
+
+      {dnd.drag && (
+        <div className="drag-ghost" style={{ left: dnd.drag.x, top: dnd.drag.y }} aria-hidden="true">
+          <span className="dot" style={{ background: dnd.drag.goal.color, marginRight: 8 }} />
+          {dnd.drag.goal.title}
+          {dnd.drag.target && <span className="drag-ghost-hint">{dropHint(dnd.drag)}</span>}
+        </div>
       )}
 
       <IdeaAdd placeholder="Add a goal idea (it starts in your backlog)" after={(t) => toast(`${t} added to your backlog`)} />
@@ -200,8 +232,18 @@ export function Plans() {
         </Sheet>
       )}
       {menuFor && <BatchMenu plan={menuFor} onClose={() => setMenuFor(null)} />}
+      {naming && <GroupNameSheet goals={naming} onClose={() => setNaming(null)} />}
+      {openGroup && <GroupSheet group={openGroup} onClose={() => setOpenGroup(null)} />}
+      {moving && <AddToGroupSheet goal={moving} onClose={() => setMoving(null)} />}
     </div>
   );
+}
+
+/** What letting go would do, shown on the dragged card. */
+function dropHint(d: GoalDrag): string {
+  if (d.target === 'loose') return 'Take out of its group';
+  if (d.target?.startsWith('group:')) return 'Add to this group';
+  return 'Make a group';
 }
 
 interface GoalCardData {
@@ -291,17 +333,186 @@ const LEVEL_SET: Record<ChainLevel, string> = { quarter: 'Set 3-month goal', mon
 const LEVEL_LONG: Record<ChainLevel, string> = { quarter: '3-month goal', month: "This month's goal", week: "This week's goal" };
 
 /** One goal: outcome, its chain, this week's progress and the one thing to do if it's behind. */
-function GoalCard({ card, plan, ownClock = false }: { card: GoalCardData; plan: Plan; ownClock?: boolean }) {
+interface Placed {
+  card: GoalCardData;
+  plan: Plan;
+  own: boolean;
+}
+
+/** What's being dragged and where it would land: on a goal, a group, or "not in a group". */
+interface GoalDrag {
+  goal: Goal;
+  x: number;
+  y: number;
+  target: string | null;
+}
+
+/**
+ * Drag goals like phone apps: grab the handle (or press and hold a card on a touch screen, or
+ * drag it a few pixels with a mouse). Drop targets carry data-drop: "goal:<id>", "group:<id>"
+ * or "loose". Returns the drag state and the handlers the cards need.
+ */
+function useGoalDrag(onDrop: (goal: Goal, target: string) => void) {
+  const [drag, setDrag] = useState<GoalDrag | null>(null);
+  const dragRef = useRef<GoalDrag | null>(null);
+  const pending = useRef<{ goal: Goal; x: number; y: number; touch: boolean; timer: number | null } | null>(null);
+  const off = useRef<(() => void) | null>(null);
+  const suppress = useRef(false);
+  const dropRef = useRef(onDrop);
+  dropRef.current = onDrop;
+
+  const targetAt = (x: number, y: number, goal: Goal): string | null => {
+    const el = document.elementFromPoint(x, y)?.closest('[data-drop]') as HTMLElement | null;
+    const t = el?.dataset.drop ?? null;
+    if (!t || t === `goal:${goal.id}`) return null;
+    if (t === `group:${goal.group_id}`) return null; // already in it
+    if (t === 'loose' && !goal.group_id) return null; // already on its own
+    return t;
+  };
+  const stop = () => {
+    if (pending.current?.timer) window.clearTimeout(pending.current.timer);
+    pending.current = null;
+    off.current?.();
+    off.current = null;
+  };
+  const begin = (goal: Goal, x: number, y: number) => {
+    const d = { goal, x, y, target: targetAt(x, y, goal) };
+    dragRef.current = d;
+    suppress.current = true;
+    setDrag(d);
+    try {
+      navigator.vibrate?.(8);
+    } catch {
+      /* no vibration */
+    }
+  };
+  /** From the card: hold (touch) or move a few pixels (mouse). From the handle: any small move. */
+  const start = (e: ReactPointerEvent<HTMLElement>, goal: Goal, handle = false) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    stop();
+    const touch = e.pointerType !== 'mouse' && !handle;
+    const p = { goal, x: e.clientX, y: e.clientY, touch, timer: null as number | null };
+    pending.current = p;
+    suppress.current = false;
+    if (touch) p.timer = window.setTimeout(() => pending.current === p && begin(goal, p.x, p.y), 320);
+    const move = (ev: PointerEvent) => {
+      const q = pending.current;
+      if (!dragRef.current && q) {
+        const dist = Math.hypot(ev.clientX - q.x, ev.clientY - q.y);
+        if (q.touch) {
+          if (dist > 10) stop(); // scrolling, not dragging
+          return;
+        }
+        if (dist < (handle ? 4 : 6)) return;
+        begin(q.goal, ev.clientX, ev.clientY);
+      }
+      const d = dragRef.current;
+      if (!d) return;
+      ev.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      if (ev.clientY < 72) window.scrollBy(0, -12);
+      else if (ev.clientY > window.innerHeight - 72) window.scrollBy(0, 12);
+      const next = { ...d, x: ev.clientX, y: ev.clientY, target: targetAt(ev.clientX, ev.clientY, d.goal) };
+      dragRef.current = next;
+      setDrag(next);
+    };
+    const up = () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      stop();
+      setDrag(null);
+      if (d?.target) dropRef.current(d.goal, d.target);
+    };
+    const cancel = () => {
+      dragRef.current = null;
+      stop();
+      setDrag(null);
+    };
+    const touchMove = (ev: TouchEvent) => {
+      if (dragRef.current) ev.preventDefault();
+    };
+    const key = (ev: KeyboardEvent) => ev.key === 'Escape' && cancel();
+    const menu = (ev: Event) => pending.current?.touch && ev.preventDefault();
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('touchmove', touchMove, { passive: false });
+    window.addEventListener('keydown', key);
+    window.addEventListener('contextmenu', menu);
+    off.current = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('touchmove', touchMove);
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('contextmenu', menu);
+    };
+  };
+  useEffect(() => () => off.current?.(), []);
+  /** True once right after a drag, so the click that ends it doesn't also open the goal. */
+  const consumeClick = () => {
+    const was = suppress.current;
+    suppress.current = false;
+    return was;
+  };
+  return { drag, start, consumeClick };
+}
+
+type DragApi = ReturnType<typeof useGoalDrag>;
+
+/** The number that says the most about a goal right now, with its unit and a line under it. */
+function metric(view: View, data: AppData, goal: Goal, plan: Plan, today: ISODate): { big: string; unit: string; sub: string } {
+  const by = shortDate(goal.target_date ?? plan.end_date);
+  if (goal.type === 'number') {
+    const n = plan.start_date <= today ? view.goalPace(goal, plan).number : null;
+    const now = n?.latest ?? goal.baseline_value;
+    const ahead = n?.aheadBy != null ? ` · ${fmt(Math.abs(n.aheadBy))} ${n.aheadBy >= 0 ? 'ahead' : 'behind'}` : '';
+    return { big: now != null ? fmt(now) : '—', unit: goal.unit ?? '', sub: `to ${fmt(goal.target_value)} by ${by}${ahead}` };
+  }
+  const t = weekTally(view, goal, today);
+  if (goal.type === 'finish' && t.total === 0) {
+    const ms = data.milestones.filter((m) => m.goal_id === goal.id);
+    const next = ms.filter((m) => !m.completed_at).sort((a, b) => (a.due_date < b.due_date ? -1 : 1))[0];
+    return { big: String(ms.filter((m) => m.completed_at).length), unit: `of ${ms.length} milestones`, sub: next ? `Next · ${next.title}, ${shortDate(next.due_date)}` : by };
+  }
+  return { big: String(t.done), unit: `of ${t.total} this week`, sub: `${goal.done_means.trim() || goal.title} · ${by}` };
+}
+
+/** Where a goal keeps time: its batch, or its own clock with the day count. */
+function timing(plan: Plan, own: boolean, today: ISODate): string {
+  if (!own) return plan.name;
+  if (plan.start_date > today) return `Own clock · starts ${shortDate(plan.start_date)}`;
+  return `Own clock · day ${Math.min(planDayNumber(plan, today), planTotalDays(plan))} of ${planTotalDays(plan)}`;
+}
+
+const GRIP = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <circle cx="9" cy="6" r="1.6" />
+    <circle cx="15" cy="6" r="1.6" />
+    <circle cx="9" cy="12" r="1.6" />
+    <circle cx="15" cy="12" r="1.6" />
+    <circle cx="9" cy="18" r="1.6" />
+    <circle cx="15" cy="18" r="1.6" />
+  </svg>
+);
+
+/** One goal on the Goals page: its pace, its key number, this week's goal and the one thing to do. */
+function GoalTile({ placed, dnd, compact = false, onMove }: { placed: Placed; dnd: DragApi; compact?: boolean; onMove: (g: Goal) => void }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
   const [editing, setEditing] = useState<ChainLevel | null>(null);
-  const { goal, chain, pace, fix } = card;
+  const { card, plan, own } = placed;
+  const { goal, chain, pace, fix, gaps } = card;
   const started = plan.start_date <= today;
   const word = pace === 'behind' ? 'Behind' : pace === 'ahead' ? 'Ahead' : pace === 'on_track' ? 'On pace' : started ? 'Too early' : 'Not started';
-  const ink = pace === 'behind' ? 'var(--amber-ink)' : pace === 'ahead' ? 'var(--blue-ink)' : pace === 'on_track' ? 'var(--accent-ink)' : 'var(--muted)';
-  const week = footer(view, data, goal, plan, today);
+  const pill = pace === 'behind' ? 'behind' : pace === 'ahead' ? 'ahead' : pace === 'on_track' ? 'on_track' : 'none';
+  const m = metric(view, data, goal, plan, today);
+  const week = chain.week;
+  const weekText = isSet(week) ? [week.step?.target_value != null ? `${fmt(week.step.target_value)} ${goal.unit ?? ''}`.trim() : '', week.step?.target_note.trim() ?? ''].filter(Boolean).join(' · ') : '';
   const age = goal.type === 'number' && started ? readingAge(view, goal, today) : 0;
+  const dragging = dnd.drag?.goal.id === goal.id;
+  const over = dnd.drag?.target === `goal:${goal.id}`;
 
   const addExtra = (n: number) => {
     const { ops, days } = opsAddExtra(view, data, goal, today, n);
@@ -313,94 +524,116 @@ function GoalCard({ card, plan, ownClock = false }: { card: GoalCardData; plan: 
   };
 
   return (
-    <div className="tile" style={{ gap: 12, padding: '18px 18px 16px' }}>
-      <div className="row-between" style={{ alignItems: 'flex-start', gap: 10 }}>
-        <a href={href(`/goals/${goal.id}`)} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, color: 'inherit', textDecoration: 'none' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 17, fontWeight: 600, letterSpacing: '-0.02em' }}>
-            <span className="dot" style={{ width: 9, height: 9, flex: 'none', background: goal.color, boxShadow: `0 0 12px ${goal.color}` }} />
-            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{goal.title}</span>
-          </span>
-          <span className="small" style={{ color: 'var(--ink-2)', paddingLeft: 18 }}>
-            {outcome(view, goal, plan, today)}
-          </span>
+    <div
+      className={`goal-tile${compact ? ' compact' : ''}${dragging ? ' lifted' : ''}${over ? ' drop-on' : ''}`}
+      data-drop={goal.group_id ? undefined : `goal:${goal.id}`}
+      onPointerDown={(e) => {
+        if ((e.target as HTMLElement).closest('button:not(.goal-grip), input, select, textarea')) return;
+        dnd.start(e, goal);
+      }}
+    >
+      <div className="goal-tile-head">
+        <button
+          type="button"
+          className="goal-grip"
+          aria-label={`Drag ${goal.title} onto another goal or a group. Or press to choose a group.`}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            dnd.start(e, goal, true);
+          }}
+          onClick={() => !dnd.consumeClick() && onMove(goal)}
+        >
+          {GRIP}
+        </button>
+        <a
+          href={href(`/goals/${goal.id}`)}
+          draggable={false}
+          className="goal-tile-title"
+          onClick={(e) => dnd.consumeClick() && e.preventDefault()}
+        >
+          <span className="dot" style={{ width: 9, height: 9, flex: 'none', background: goal.color, boxShadow: `0 0 10px ${goal.color}` }} />
+          <span>{goal.title}</span>
         </a>
-        <span style={{ flex: 'none', fontSize: 13, fontWeight: 600, color: ink }}>{word}</span>
+        {pill !== 'none' ? <PacePill label={pill} /> : <span className="xsmall muted" style={{ flex: 'none' }}>{word}</span>}
       </div>
-      <ConnectionStrip goal={goal} />
-      {ownClock && (
-        <div className="own-clock" role="img" aria-label={`Own clock: day ${Math.min(planDayNumber(plan, today), planTotalDays(plan))} of ${planTotalDays(plan)}, ends ${shortDate(plan.end_date)}`}>
-          <span className="mono">
-            DAY {Math.max(1, Math.min(planDayNumber(plan, today), planTotalDays(plan)))} / {planTotalDays(plan)}
-          </span>
-          <span className="own-track" aria-hidden="true">
-            <span style={{ width: `${Math.max(2, Math.min(100, (daysBetween(plan.start_date, today) / Math.max(1, daysBetween(plan.start_date, plan.end_date))) * 100))}%` }} />
-          </span>
-          <span className="mono">ENDS {shortDate(plan.end_date).toUpperCase()}</span>
-        </div>
+      <a href={href(`/goals/${goal.id}`)} draggable={false} className="goal-tile-body" onClick={(e) => dnd.consumeClick() && e.preventDefault()}>
+        <span className="goal-tile-big">
+          {m.big} <span>{m.unit}</span>
+        </span>
+        <span className="goal-tile-sub">{m.sub}</span>
+      </a>
+      {weekText ? (
+        <span className="goal-tile-week">
+          <span className="mono" style={{ color: 'var(--accent-ink)' }}>WEEK</span> {weekText}
+        </span>
+      ) : (
+        <button className="chain-set" type="button" onClick={() => setEditing('week')} style={{ alignSelf: 'flex-start' }}>
+          + {LEVEL_SET.week}
+        </button>
       )}
-
-      <div role="list" aria-label={`${goal.title} chain`} style={{ paddingLeft: 4 }}>
-        {CHAIN_LEVELS.map((level) => {
-          const link = chain[level];
-          const set = isSet(link);
-          const status = set && started ? periodStatus(view, data, goal, plan, link, today) : null;
-          const labelInk = level === 'week' ? 'var(--accent-ink)' : status?.label === 'behind' ? 'var(--amber-ink)' : 'var(--muted)';
-          const value = link.step?.target_value != null ? `${fmt(link.step.target_value)} ${goal.unit ?? ''}`.trim() : '';
-          const text = [value, link.step?.target_note.trim() ?? ''].filter(Boolean).join(' · ');
-          return (
-            <div key={level} role="listitem" style={{ display: 'grid', gridTemplateColumns: '50px minmax(0, 1fr)', gap: 10, alignItems: 'start', padding: '7px 0', borderTop: '1px solid var(--line)' }}>
-              <span className="mono" style={{ fontSize: 10.5, paddingTop: set ? 3 : 9, color: labelInk }}>
-                {LEVEL_SHORT[level]}
-              </span>
-              {set ? (
-                <button
-                  type="button"
-                  onClick={() => setEditing(level)}
-                  aria-label={`${LEVEL_LONG[level]}: ${text}. Edit`}
-                  style={{ border: 0, background: 'none', padding: 0, textAlign: 'left', font: 'inherit', cursor: 'pointer', fontSize: 14, lineHeight: 1.4, color: level === 'week' ? 'var(--ink)' : 'var(--ink-2)', fontWeight: level === 'week' ? 550 : 450 }}
-                >
-                  {text}
-                </button>
-              ) : (
-                <button className="chain-set" type="button" onClick={() => setEditing(level)}>
-                  + {LEVEL_SET[level]}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {fix && fix.extra == null && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>{fix.text}</span>}
-
-      <div className="row-between" style={{ gap: 10, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-          <span className="small" style={{ color: 'var(--ink-2)' }}>{week.text}</span>
-          {week.pips && (
-            <span style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }} aria-hidden="true">
-              {Array.from({ length: week.pips.total }, (_, i) => (
-                <span key={i} style={{ width: 18, height: 5, borderRadius: 3, background: i < week.pips!.done ? goal.color : 'var(--track)' }} />
-              ))}
-            </span>
-          )}
-        </div>
-        {fix?.extra ? (
-          <button className="btn small catch-up" type="button" onClick={() => addExtra(fix.extra!)} title={fix.text} style={{ flex: 'none' }}>
-            Add {fix.extra} this week
-          </button>
-        ) : age == null || (age ?? 0) > 7 ? (
-          <a className="btn small catch-up" href={href(`/goals/${goal.id}`)} style={{ flex: 'none' }}>
-            Log a reading
-          </a>
-        ) : (
-          <a className="avatar" href={href(`/goals/${goal.id}`)} aria-label={`Open ${goal.title}`} style={{ flex: 'none', color: 'var(--ink-2)' }}>
-            <Icon name="chevron" size={16} stroke={2.2} />
-          </a>
-        )}
-      </div>
-
+      {weekText && gaps.length > 0 && (
+        <button className="chain-set" type="button" onClick={() => setEditing(gaps[0]!)} style={{ alignSelf: 'flex-start' }}>
+          + {LEVEL_SET[gaps[0]!]}
+        </button>
+      )}
+      {fix?.extra ? (
+        <button className="btn small catch-up" type="button" onClick={() => addExtra(fix.extra!)} title={fix.text} style={{ alignSelf: 'flex-start' }}>
+          Add {fix.extra} this week
+        </button>
+      ) : fix ? (
+        <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>{fix.text}</span>
+      ) : age == null || (age ?? 0) > 7 ? (
+        <a className="btn small catch-up" href={href(`/goals/${goal.id}`)} style={{ alignSelf: 'flex-start' }}>
+          Log a reading
+        </a>
+      ) : null}
+      <span className="goal-tile-time">{timing(plan, own, today)}</span>
       {editing && <ChainSheet goal={goal} plan={plan} chain={chain} level={editing} onClose={() => setEditing(null)} />}
     </div>
+  );
+}
+
+/** A group of goals, like a phone folder: its name, its goals side by side and the tasks they share. */
+function GroupCard({ group, members, dnd, onOpen, onMove }: { group: GoalGroup; members: Placed[]; dnd: DragApi; onOpen: () => void; onMove: (g: Goal) => void }) {
+  const view = useView();
+  const { today } = useStore();
+  const shared = sharedTasksOf(view, members.map((m) => m.card.goal));
+  const over = dnd.drag?.target === `group:${group.id}`;
+  return (
+    <section className={`group-card${over ? ' drop-on' : ''}`} data-drop={`group:${group.id}`} aria-label={`Group: ${group.name}`}>
+      <div className="group-card-side">
+        <div className="row-between" style={{ gap: 8 }}>
+          <button type="button" className="group-card-name" onClick={onOpen} aria-label={`Open ${group.name}`}>
+            {group.name}
+            <Icon name="chevron" size={16} stroke={2.4} />
+          </button>
+        </div>
+        <span className="xsmall muted">
+          {members.length} goal{members.length === 1 ? '' : 's'}
+          {shared.length ? ` · ${shared.length} shared task${shared.length === 1 ? '' : 's'}` : ''}
+        </span>
+        {shared.length > 0 && (
+          <div className="group-shared">
+            <span className="mono" style={{ fontSize: 10.5 }}>SHARED · COUNT FOR ALL</span>
+            {shared.map((a) => {
+              const sch = runningSchedule(view.data, a.id, today);
+              return (
+                <div key={a.id} className="group-shared-row">
+                  <span>{a.title}</span>
+                  <span className="xsmall muted">{sch ? describeSchedule(sch) : 'ended'}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {over && <span className="small" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>Release to add to {group.name}</span>}
+      </div>
+      <div className="group-card-tiles">
+        {members.map((m) => (
+          <GoalTile key={m.card.goal.id} placed={m} dnd={dnd} compact onMove={onMove} />
+        ))}
+      </div>
+    </section>
   );
 }
 

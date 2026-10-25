@@ -1,4 +1,5 @@
-import { opsLinkGoals, opsShareTask } from './connect.ts';
+import { opsShareTask } from './connect.ts';
+import { opsAddToGroup, opsCreateGroup, suggestGroupNames } from './groups.ts';
 import { addDays, chainAt, clockDays, suggestPath, type GoalIdea, type IdeaPrep, type ISODate, type PathPoint, type Plan } from '@six/core';
 import type { AppData, Op } from './model.ts';
 import { opsCreateGoal, opsCreatePlan } from './ops.ts';
@@ -61,10 +62,13 @@ export function opsCommitIdea(data: AppData, idea: GoalIdea, plan: Plan, today: 
     const week = chainFor(next, goal, plan, from).week.step!;
     all.push(...opsAddTask(next, goal, week, { ...blankTask(week, today), title: prep.task.title.trim(), when: 'days', days: prep.task.days, minutes: prep.task.minutes, through: null }, today));
   }
-  // Connect it to the goals chosen while preparing, and share the tasks picked from them.
-  for (const other of prep.connect ?? []) {
-    if (!next.goals.some((g) => g.id === other && !g.archived_at)) continue;
-    all.push(...opsLinkGoals(withOps(data, all), goalId, other, ''));
+  // Group it with the goal chosen while preparing (joining that goal's group, or starting one),
+  // and share the tasks picked from it. A goal is in one group at most, so only the first counts.
+  const partner = (prep.connect ?? []).map((id) => next.goals.find((g) => g.id === id && !g.archived_at)).find(Boolean);
+  if (partner) {
+    const now = withOps(data, all);
+    const mine = now.goals.find((g) => g.id === goalId)!;
+    all.push(...(partner.group_id ? opsAddToGroup(now, goalId, partner.group_id) : opsCreateGroup(now, suggestGroupNames([partner, mine])[0]!, [partner.id, goalId]).ops));
   }
   for (const actionId of prep.reuse ?? []) {
     if (!next.actions.some((a) => a.id === actionId && !a.archived_at)) continue;

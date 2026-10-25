@@ -9,6 +9,8 @@ export interface Db {
   apply(op: Op): Promise<void>;
   /** Delete every plan, goal, task, log and review. Settings (name, time zone, hours) are kept. */
   wipeAll(): Promise<void>;
+  /** Set when the database is missing an update (shown as a banner; some changes wait for it). */
+  schemaWarning?: () => string | null;
   /** File storage for attachments. Needs a connection (uploads aren't queued offline). */
   files: FileStore;
 }

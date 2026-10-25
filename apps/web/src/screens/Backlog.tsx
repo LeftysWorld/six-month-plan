@@ -733,8 +733,14 @@ function CommitSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void })
         ))}
         {(prep.connect ?? []).length > 0 && (
           <div className="commit-line">
-            <span className="mono">LINKED</span>
-            <span>{(prep.connect ?? []).map((id) => view.goal(id)?.title).filter(Boolean).join(', ')}</span>
+            <span className="mono">GROUP</span>
+            <span>
+              {(prep.connect ?? []).slice(0, 1).map((id) => {
+                const g = view.goal(id);
+                const gr = g?.group_id ? data.groups.find((x) => x.id === g.group_id) : undefined;
+                return gr ? `Joins ${gr.name}` : g ? `New group with ${g.title}` : '';
+              })}
+            </span>
           </div>
         )}
         {task && task.title.trim() && (

@@ -61,6 +61,15 @@ export interface Goal {
   completed_at?: string | null;
   /** How it ended, in your words. */
   completion_note?: string;
+  /** The group it's in (a goal is in one group at most). Missing on older databases. */
+  group_id?: string | null;
+}
+
+/** A named group of goals that work together, made by dragging one goal onto another (like a phone folder). */
+export interface GoalGroup {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
 export interface PlanGoal {

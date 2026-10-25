@@ -34,7 +34,7 @@ test('sharing a task connects goals; unsharing keeps it on the other goal', () =
   const c = view.connectionsFor('gym');
   assert.equal(c.length, 1);
   assert.equal(c[0]!.goal.id, 'weight');
-  assert.equal(c[0]!.link, null, 'connected through the task, not by hand');
+  assert.equal(c[0]!.sameGroup, false, 'connected through the task, not a group');
   assert.deepEqual(c[0]!.shared.map((a) => a.id), ['lift']);
   d = run(d, opsUnshareTask(d, 'lift', 'weight'));
   assert.deepEqual(d.actionGoals.map((ag) => ag.goal_id), ['gym']);
@@ -65,8 +65,9 @@ test('a reading replaces the one already saved that day, and undo puts it back',
   assert.equal(d.measurements.length, 0);
 });
 
-test('connected goals are listed next to each other', () => {
-  const d = run(base(), opsLinkGoals(base(), 'gym', 'weight', ''));
+test('goals in a group are listed next to each other', async () => {
+  const { opsCreateGroup } = await import('../src/data/groups.ts');
+  const d = run(base(), opsCreateGroup(base(), 'Body', ['gym', 'weight']).ops);
   const view = new View(d, '2026-10-25', 0.5);
   const order = view.groupConnected([d.goals[0]!, d.goals[2]!, d.goals[1]!]).map((g) => g.id);
   assert.deepEqual(order, ['gym', 'weight', 'guitar']);
@@ -113,4 +114,52 @@ test('a task that ends with its week can still be shared (the old filter only al
   assert.equal(matchingTasks(groups, 'GYM').length, 1);
   assert.equal(matchingTasks(groups, 'guitar').length, 0);
   assert.equal(matchingTasks(groups, 'gy').length, 0, 'too short to suggest');
+});
+
+test('groups work like phone folders: make, add, take out, and a group of one goes away', async () => {
+  const { opsCreateGroup, opsAddToGroup, opsRemoveFromGroup, opsUngroup, groupMembers } = await import('../src/data/groups.ts');
+  let d = base();
+  const made = opsCreateGroup(d, 'Body', ['gym', 'weight']);
+  d = run(d, made.ops);
+  assert.equal(d.groups.length, 1);
+  assert.deepEqual(groupMembers(d, made.groupId).map((g) => g.id).sort(), ['gym', 'weight']);
+  d = run(d, opsAddToGroup(d, 'guitar', made.groupId));
+  assert.equal(groupMembers(d, made.groupId).length, 3);
+  d = run(d, opsRemoveFromGroup(d, 'guitar'));
+  assert.equal(d.goals.find((g) => g.id === 'guitar')!.group_id, null);
+  assert.equal(d.groups.length, 1, 'two goals left: the group stays');
+  d = run(d, opsRemoveFromGroup(d, 'gym'));
+  assert.equal(d.groups.length, 0, 'one goal left: the group goes away');
+  assert.ok(d.goals.every((g) => !g.group_id), 'and the last goal is on its own again');
+  // Ungroup keeps the goals.
+  const again = opsCreateGroup(d, 'Body', ['gym', 'weight']);
+  d = run(d, again.ops);
+  d = run(d, opsUngroup(d, d.groups[0]!));
+  assert.equal(d.groups.length, 0);
+  assert.equal(d.goals.length, 3);
+});
+
+test('a goal is in one group at most: joining another group leaves the old one', async () => {
+  const { opsCreateGroup, opsAddToGroup } = await import('../src/data/groups.ts');
+  let d = base();
+  d.goals.push(goal('jhu', 'JHU AI certificate'));
+  const body = opsCreateGroup(d, 'Body', ['gym', 'weight']);
+  d = run(d, body.ops);
+  const learn = opsCreateGroup(d, 'Learning', ['guitar', 'jhu']);
+  d = run(d, learn.ops);
+  d = run(d, opsAddToGroup(d, 'gym', learn.groupId));
+  assert.equal(d.goals.find((g) => g.id === 'gym')!.group_id, learn.groupId);
+  assert.ok(!d.groups.some((g) => g.id === body.groupId), 'Body had one goal left, so it is gone');
+  assert.equal(d.goals.find((g) => g.id === 'weight')!.group_id, null);
+});
+
+test('old connections become groups once, then the links are gone', async () => {
+  const { opsFoldLinksIntoGroups, suggestGroupNames } = await import('../src/data/groups.ts');
+  let d = run(base(), opsLinkGoals(base(), 'gym', 'weight', ''));
+  d = run(d, opsFoldLinksIntoGroups(d));
+  assert.equal(d.goalLinks.length, 0);
+  assert.equal(d.groups.length, 1);
+  assert.equal(d.groups[0]!.name, 'Body', 'named from what the goals are about');
+  assert.deepEqual(opsFoldLinksIntoGroups(d), [], 'nothing left to do the second time');
+  assert.equal(suggestGroupNames([goal('a', 'JHU AI certificate'), goal('b', 'Pass IAPP AIGP')])[0], 'Learning');
 });

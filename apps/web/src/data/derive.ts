@@ -17,7 +17,6 @@ import {
   type ActionSchedule,
   type DateRange,
   type Goal,
-  type GoalLink,
   type ISODate,
   type Measurement,
   type MeasurementType,
@@ -136,29 +135,26 @@ export class View {
   }
 
   /**
-   * Goals connected to a goal: by hand (a goal link) or by sharing a daily task. Each comes with
-   * the hand-made link (if any) and the live tasks they share. Archived goals are left out.
+   * Goals connected to a goal: the other goals in its group, and goals that share a daily task
+   * with it. Each comes with whether it's in the same group and the live tasks they share.
+   * Archived goals are left out.
    */
   connectionsFor(goalId: string): Connection[] {
     const out = new Map<string, Connection>();
+    const me = this.goal(goalId);
     const add = (id: string): Connection | null => {
       const goal = this.goal(id);
       if (!goal || goal.archived_at || id === goalId) return null;
       let c = out.get(id);
-      if (!c) out.set(id, (c = { goal, link: null, shared: [] }));
+      if (!c) out.set(id, (c = { goal, sameGroup: !!me?.group_id && goal.group_id === me.group_id, shared: [] }));
       return c;
     };
-    for (const link of this.data.goalLinks) {
-      if (link.goal_a === goalId || link.goal_b === goalId) {
-        const c = add(link.goal_a === goalId ? link.goal_b : link.goal_a);
-        if (c) c.link = link;
-      }
-    }
+    if (me?.group_id) for (const g of this.data.goals) if (g.group_id === me.group_id) add(g.id);
     for (const action of this.actionsForGoal(goalId)) {
       for (const g of this.otherGoalsForAction(action.id, goalId)) add(g.id)?.shared.push(action);
     }
     // Goals you're working on first, then completed ones.
-    return [...out.values()].sort((a, b) => Number(!!a.goal.completed_at) - Number(!!b.goal.completed_at) || a.goal.title.localeCompare(b.goal.title));
+    return [...out.values()].sort((a, b) => Number(b.sameGroup) - Number(a.sameGroup) || Number(!!a.goal.completed_at) - Number(!!b.goal.completed_at) || a.goal.title.localeCompare(b.goal.title));
   }
 
   /** The same goals, reordered so connected goals sit next to each other (first appearance wins). */
@@ -379,8 +375,8 @@ function short(date: ISODate): string {
 
 export interface Connection {
   goal: Goal;
-  /** The hand-made link, if you connected them yourself. */
-  link: GoalLink | null;
+  /** True when both goals are in the same group. */
+  sameGroup: boolean;
   /** Live daily tasks both goals share. */
   shared: Action[];
 }

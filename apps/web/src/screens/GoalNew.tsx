@@ -158,7 +158,7 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
       week_of: periods.week.start,
       task: { title: firstTask.trim(), days: taskDays, minutes: taskMinutes },
       connect,
-      reuse: reuse.filter((id) => connect.some((g) => view.actionsForGoal(g).some((a) => a.id === id))),
+      reuse,
       clock: own ? 'own' : 'batch',
       months: own ? months : undefined,
       plan_id: own ? undefined : plan.id,
@@ -461,37 +461,42 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
           </div>
           {otherGoals.length > 0 && (
             <div className="card stack-sm">
-              <span className="label">Connect to your other goals (optional)</span>
-              <span className="xsmall muted">Connected goals show on each other's page and sit together in reviews. Pick their tasks to share: one task, logged once, counting for both.</span>
-              <div className="chips" role="group" aria-label="Goals to connect">
+              <span className="label">Add it to a group (optional)</span>
+              <span className="xsmall muted">Pick a goal it works with: it joins that goal's group, or starts a new group with it. Then pick tasks to share, logged once and counting for both.</span>
+              <div className="chips" role="radiogroup" aria-label="Group with">
                 {otherGoals.map((g) => {
                   const on = connect.includes(g.id);
+                  const gr = g.group_id ? data.groups.find((x) => x.id === g.group_id) : undefined;
                   return (
                     <button
                       key={g.id}
                       type="button"
                       className="chip"
+                      role="radio"
+                      aria-checked={on}
                       aria-pressed={on}
                       onClick={() => {
-                        setConnect(on ? connect.filter((x) => x !== g.id) : [...connect, g.id]);
-                        if (on) setReuse(reuse.filter((id) => !liveTasks(g.id).some((a) => a.id === id)));
+                        setConnect(on ? [] : [g.id]);
+                        setReuse([]);
                       }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
                     >
                       <span className="dot" style={{ width: 7, height: 7, background: g.color }} />
                       {g.title}
+                      {gr ? <span className="muted"> · {gr.name}</span> : null}
                     </button>
                   );
                 })}
               </div>
               {connect.map((gid) => {
                 const g = view.goal(gid);
-                const tasks = liveTasks(gid);
+                const mates = g?.group_id ? data.goals.filter((x) => x.group_id === g.group_id && !x.archived_at) : g ? [g] : [];
+                const tasks = [...new Map(mates.flatMap((m) => liveTasks(m.id)).map((a) => [a.id, a])).values()];
                 if (!g || tasks.length === 0) return null;
                 return (
                   <div key={gid} className="stack-sm">
-                    <span className="xsmall muted">Share from {g.title}:</span>
-                    <div className="chips" role="group" aria-label={`Tasks to share from ${g.title}`}>
+                    <span className="xsmall muted">Share from {g.group_id ? 'that group' : g.title}:</span>
+                    <div className="chips" role="group" aria-label="Tasks to share">
                       {tasks.map((a) => {
                         const on = reuse.includes(a.id);
                         return (

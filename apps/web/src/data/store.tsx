@@ -4,6 +4,7 @@ import type { Db } from './db.ts';
 import { SaveError } from './db.ts';
 import { applyOp, type AppData, type Op } from './model.ts';
 import { opsEnsureWeek } from './ops.ts';
+import { opsFoldLinksIntoGroups } from './groups.ts';
 
 export interface SyncState {
   /** Changes waiting to be saved. */
@@ -131,6 +132,16 @@ export function StoreProvider({ db, initial, children }: { db: Db; initial: AppD
     window.addEventListener('online', online);
     return () => window.removeEventListener('online', online);
   }, [flush]);
+
+  // Connections made before groups existed become groups, once. Skipped while the database is
+  // missing an update (the groups table might not be there yet, and the links would be lost).
+  useEffect(() => {
+    if (db.schemaWarning?.()) return;
+    const ops = opsFoldLinksIntoGroups(data);
+    if (ops.length > 0) commit(ops);
+    // Only when the app opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Make sure this week's sessions exist (first open of the week, or a skipped review).
   useEffect(() => {
