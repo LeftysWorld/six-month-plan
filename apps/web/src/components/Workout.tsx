@@ -221,7 +221,7 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
     );
   });
   const firstOpen = (r: Row[][]) => r.findIndex((sets) => sets.some((x) => !x.done));
-  const [open, setOpen] = useState<number>(() => (future ? -1 : Math.max(0, firstOpen(rows))));
+  const [open, setOpen] = useState<number>(() => Math.max(0, firstOpen(rows)));
   const [note, setNote] = useState(session.note);
   const [restEnd, setRestEnd] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -328,7 +328,7 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
           </span>
         )}
       </div>
-      {future && <div className="banner info">This is the plan for {weekdayName(day)}. You can log it on the day.</div>}
+      {future && <div className="banner info">This is {weekdayName(day)}’s plan. On {weekdayName(day)}, open it from Today to tick off each set and enter your actual weight and reps.</div>}
       {action?.details?.trim() && (
         <details className="task-details">
           <summary>Warm-up and notes</summary>
@@ -383,8 +383,9 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
                     </span>
                   )}
                   {e.note && <span className="xsmall muted">{e.note}</span>}
-                  {!future && (
-                    <div className="workout-sets" role="table" aria-label={`${e.name} sets`}>
+                  {future && <span className="xsmall muted">The plan for each set. You can enter what you actually did on {weekdayName(day)}.</span>}
+                  {(
+                    <div className={`workout-sets${future ? ' preview' : ''}`} role="table" aria-label={`${e.name} sets`}>
                       <span className="workout-set head xsmall muted" role="row">
                         <span>Set</span>
                         <span>Previous</span>
@@ -397,7 +398,7 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
                         return (
                           <div key={k} className={`workout-set${r.done ? ' done' : ''}`} role="row">
                             <span className="num small">{k + 1}</span>
-                            <button type="button" className="workout-prev num" disabled={!p} onClick={() => copyPrevious(i, k)} aria-label={p ? `Copy last time: ${p.weight ?? 'bodyweight'} by ${p.reps}` : 'No previous set'}>
+                            <button type="button" className="workout-prev num" disabled={!p || future} onClick={() => copyPrevious(i, k)} aria-label={p ? `Copy last time: ${p.weight ?? 'bodyweight'} by ${p.reps}` : 'No previous set'}>
                               {p ? `${p.weight == null ? 'BW' : fmt(p.weight)} × ${p.reps ?? '?'}` : '—'}
                             </button>
                             <input
@@ -406,6 +407,7 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
                               inputMode="decimal"
                               step="any"
                               aria-label={`${e.name} set ${k + 1} weight`}
+                              disabled={future}
                               placeholder={planWeight(i) != null ? fmt(planWeight(i)!) : /body/i.test(e.weight_note) ? 'BW' : '—'}
                               value={r.weight}
                               onChange={(x) => setRow(i, k, { weight: x.target.value })}
@@ -415,17 +417,18 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
                               type="number"
                               inputMode="numeric"
                               aria-label={`${e.name} set ${k + 1} reps (${repsText(e)})`}
+                              disabled={future}
                               placeholder={String(e.reps_max)}
                               value={r.reps}
                               onChange={(x) => setRow(i, k, { reps: x.target.value })}
                             />
-                            <button type="button" className={`set-tick${r.done ? ' on' : ''}`} aria-pressed={r.done} aria-label={`Set ${k + 1} done`} onClick={() => tick(i, k)}>
+                            <button type="button" className={`set-tick${r.done ? ' on' : ''}`} aria-pressed={r.done} aria-label={`Set ${k + 1} done`} disabled={future} onClick={() => tick(i, k)}>
                               <Icon name="check" size={16} stroke={2.6} />
                             </button>
                           </div>
                         );
                       })}
-                      {i === firstOpen(rows) && doneCount === 0 && (
+                      {!future && i === firstOpen(rows) && doneCount === 0 && (
                         <span className="xsmall muted">Grey numbers are the plan ({repsText(e)} reps). Tick to log them as is, or type what you did first.</span>
                       )}
                     </div>

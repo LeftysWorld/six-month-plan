@@ -1201,6 +1201,8 @@ button.week-day:active { transform: scale(0.9); }
 .workout-prev { border: 0; background: none; padding: 0; text-align: left; font: inherit; font-size: 13px; color: var(--muted); min-height: 44px; cursor: pointer; }
 .workout-prev:disabled { cursor: default; }
 .set-tick { width: 44px; height: 44px; border-radius: 12px; border: 1.5px solid var(--line); background: none; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.workout-sets.preview .input:disabled { opacity: 1; background: transparent; }
+.workout-sets.preview .set-tick { opacity: 0.35; cursor: default; }
 .set-tick.on { background: var(--accent); border-color: transparent; color: #fff; }
 .rest-bar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 14px; background: var(--sheet-bg, var(--surface)); border: 1px solid var(--line); box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.08); }
 .rest-time { display: block; font-size: 22px; }
