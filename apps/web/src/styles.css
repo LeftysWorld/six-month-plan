@@ -1026,3 +1026,4 @@ button.day-cell { border: 0; cursor: pointer; font: inherit; color: var(--ink); 
 .own-drop { min-height: 52px; display: flex; align-items: center; justify-content: center; padding: 0 16px; border-radius: 18px; border: 2px dashed var(--border-strong); font-size: 13.5px; color: var(--ink-2); text-align: center; transition: border-color 0.15s, background 0.15s; }
 .own-drop.drop-on { border-color: var(--accent-ink); background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
 .group-card.lifted { opacity: 0.4; }
+.plan-line.drop-already { border-color: var(--border-strong); background: var(--fill); }

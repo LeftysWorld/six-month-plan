@@ -130,6 +130,11 @@ export function Plans() {
   const dnd = useGoalDrag((d, target) => {
     const goal = d.goal;
     const [kind, id] = target.split(':') as [string, string | undefined];
+    if (kind === 'already') {
+      const plan = data.plans.find((x) => x.id === id);
+      toast(`${d.group ? `${d.group.name}'s goals are` : `${goal.title} is`} already in ${plan?.name ?? 'that batch'}`);
+      return;
+    }
     if (kind === 'plan' && id) {
       const plan = data.plans.find((x) => x.id === id);
       if (plan) setMovingGoals({ goals: d.goals, title: d.group?.name, dest: { kind: 'plan', plan } });
@@ -208,7 +213,7 @@ export function Plans() {
       )}
 
       {sections.map(({ plan }) => (
-        <PlanLine key={plan.id} plan={plan} today={today} onMenu={() => setMenuFor(plan)} goalIds={placed.filter((p) => p.plan.id === plan.id).map((p) => p.card.goal.id)} over={dnd.drag?.target === `plan:${plan.id}`} dragging={!!dnd.drag} />
+        <PlanLine key={plan.id} plan={plan} today={today} onMenu={() => setMenuFor(plan)} goalIds={placed.filter((p) => p.plan.id === plan.id).map((p) => p.card.goal.id)} over={dnd.drag?.target === `plan:${plan.id}`} already={dnd.drag?.target === `already:${plan.id}`} dragging={!!dnd.drag} />
       ))}
 
       {groups.map(({ group, members }) => (
@@ -272,6 +277,7 @@ export function Plans() {
 
 /** What letting go would do, shown on the dragged card. */
 function dropHint(d: GoalDrag): string {
+  if (d.target?.startsWith('already:')) return 'Already in this batch';
   if (d.target?.startsWith('plan:')) return 'Move into this batch';
   if (d.target === 'own') return d.group ? 'Each on its own clock' : 'Put on its own clock';
   if (d.target === 'loose') return 'Take out of its group';
@@ -292,7 +298,7 @@ interface GoalCardData {
 }
 
 /** The plan in one line: name (opens the plan menu), day count, a thin timeline, month and checkpoint. */
-function PlanLine({ plan, today, onMenu, goalIds = [], over = false, dragging = false }: { plan: Plan; today: ISODate; onMenu: () => void; goalIds?: string[]; over?: boolean; dragging?: boolean }) {
+function PlanLine({ plan, today, onMenu, goalIds = [], over = false, already = false, dragging = false }: { plan: Plan; today: ISODate; onMenu: () => void; goalIds?: string[]; over?: boolean; already?: boolean; dragging?: boolean }) {
   const started = plan.start_date <= today;
   const total = Math.max(1, daysBetween(plan.start_date, plan.end_date));
   const pos = (d: ISODate) => Math.max(0, Math.min(100, (daysBetween(plan.start_date, d) / total) * 100));
@@ -301,7 +307,7 @@ function PlanLine({ plan, today, onMenu, goalIds = [], over = false, dragging = 
   const monthLeft = daysBetween(today, month.end);
   const used = started ? pos(today) : 0;
   return (
-    <div className={`plan-line${dragging ? ' droppable' : ''}${over ? ' drop-on' : ''}`} data-drop={`plan:${plan.id}`} data-goals={goalIds.join(',')}>
+    <div className={`plan-line${dragging ? ' droppable' : ''}${over ? ' drop-on' : ''}${already ? ' drop-already' : ''}`} data-drop={`plan:${plan.id}`} data-goals={goalIds.join(',')}>
       <div className="row-between" style={{ gap: 10 }}>
         <button
           type="button"
@@ -330,7 +336,11 @@ function PlanLine({ plan, today, onMenu, goalIds = [], over = false, dragging = 
           <span style={{ color: 'var(--gold)' }}>◆</span> Checkpoint {shortDate(checkpoint)}
         </span>
       </div>
-      {dragging && <span className="xsmall" style={{ color: over ? 'var(--accent-ink)' : 'var(--muted)', fontWeight: over ? 600 : 400 }}>{over ? `Release to move into ${plan.name}` : 'Drop here to move into this batch'}</span>}
+      {dragging && (
+        <span className="xsmall" style={{ color: over ? 'var(--accent-ink)' : 'var(--muted)', fontWeight: over || already ? 600 : 400 }}>
+          {over ? `Release to move into ${plan.name}` : already ? `Already in ${plan.name}` : 'Drop here to move into this batch'}
+        </span>
+      )}
     </div>
   );
 }
@@ -409,7 +419,8 @@ function useGoalDrag(onDrop: (d: GoalDrag, target: string) => void) {
     if (!t) return null;
     if (t.startsWith('plan:')) {
       const there = new Set((el?.dataset.goals ?? '').split(',').filter(Boolean));
-      return what.goals.every((g) => there.has(g.id)) ? null : t;
+      // Already there: still a target, so the batch can say so (dropping does nothing).
+      return what.goals.every((g) => there.has(g.id)) ? `already:${t.slice(5)}` : t;
     }
     if (t === 'own') return t;
     if (what.group) return null; // a group only goes into a batch or onto own clocks
@@ -674,6 +685,12 @@ function GroupCard({ group, members, dnd, onOpen, onMove, onMoveGroup }: { group
         <span className="xsmall muted">
           {members.length} goal{members.length === 1 ? '' : 's'}
           {shared.length ? ` · ${shared.length} shared task${shared.length === 1 ? '' : 's'}` : ''}
+        </span>
+        <span className="xsmall" style={{ color: 'var(--ink-2)' }}>
+          {(() => {
+            const names = [...new Set(members.map((m) => (m.own ? 'own clock' : m.plan.name)))];
+            return names.length === 1 ? `All in ${names[0]}` : `In ${names.join(', ')}`;
+          })()}
         </span>
         {shared.length > 0 && (
           <div className="group-shared">
