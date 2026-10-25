@@ -21,7 +21,8 @@ Three places, one job each: **Today** to do, **Goals** to see and shape, **Revie
   - **Suggested changes**: pause a task nothing happened on for 3 weeks, move a weekday that keeps getting missed, lower or raise how often, or add a minimum version.
   - **Month**: the month goals, then set next month's goals. **3-month checkpoint**: keep, adjust (new target and redrawn path) or drop each goal, then set the next 3 months. **Retrospective**: what worked, what didn't, what carries over, then start the next plan with the goals you carry. A missed review stays open until the next one of its kind opens.
   - Goals has three views, left to right: **Backlog**, **Goals** and **Completed** (press B for the backlog). The backlog is Kanban style: write an idea in a line, order it by importance, and pull the top ideas into **Selected for next commitment** (limit 3).
-  - Entry requirements: an idea needs *why it matters* and *what done looks like* before it can be selected; a goal needs its 3-month, month and first-week goals and a daily task before it can start (goal setup won't save without them). Starting a selected idea fills in its title, why and done.
+  - Every move is yours: nothing changes column because you filled something in. An idea with *why it matters* and *what done looks like* is **ready**; press **Select** (or drag it by its number into Selected) to move it. A selected idea gets **Prepare** (its 3-month, month and first-week goals and a daily task, saved on the idea); once prepared, **Commit to the next six months** makes it a goal. A prepared note written for a week or month that has passed needs a fresh look before you can commit.
+  - New goals always start in the backlog: the Goals page has an "add a goal idea" box, and creating a plan takes you to the backlog.
   - Mark a goal complete from its page (with a note on how it ended) or rate it Achieved in the retrospective; it moves to Completed with what it took, and can be reopened.
   - The Review tab shows the weekly review (with an honest time estimate) or, once done, next week at a glance; the change you committed to (also on Today, with an On it / Slipping check); a goals × weeks scorecard with week-goal results; insights with fixes (such as moving tasks off a weekday that keeps getting missed) and where your time went; the changes you've tried and whether they stuck; the next review; and past reviews.
   - A plan that starts Friday to Sunday folds its first few days into week 2 for review counts, averages and trends.
@@ -45,7 +46,7 @@ Open http://localhost:5173. With no Supabase settings, the app runs in demo mode
 ## Connect Supabase (your real data)
 
 1. Create a free project at https://supabase.com.
-2. In the dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in order: first `20261016000000_initial_schema.sql`, then `20261019000000_goal_breakdown.sql`, then `20261021000000_reminders_and_cues.sql`, then `20261025000000_review_overhaul.sql`, then `20261026000000_goal_backlog.sql`, then `20261027000000_completed_goals_and_readiness.sql`. (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
+2. In the dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in order: first `20261016000000_initial_schema.sql`, then `20261019000000_goal_breakdown.sql`, then `20261021000000_reminders_and_cues.sql`, then `20261025000000_review_overhaul.sql`, then `20261026000000_goal_backlog.sql`, then `20261027000000_completed_goals_and_readiness.sql`, then `20261028000000_idea_prep.sql`. (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
 3. **Authentication → URL Configuration**: set **Site URL** to where the app runs (`http://localhost:5173` for now) and add your deployed URL under **Redirect URLs** later.
 4. **Project Settings → API**: copy the project URL and the `anon` public key.
 5. Create `apps/web/.env.local`:
@@ -120,7 +121,7 @@ Pace is judged by month (no 4-week blocks). Number goals compare the 7-day avera
 
 ## Updating an existing database
 
-After pulling a new version, run any migration in `supabase/migrations/` you haven't run yet (each is safe to run more than once). The review overhaul needs `20261025000000_review_overhaul.sql`; until it's run, the app shows a banner and reviews won't keep the new answers. The goal backlog needs `20261026000000_goal_backlog.sql`, and completed goals need `20261027000000_completed_goals_and_readiness.sql`; until they're run, the app shows a banner and those can't be saved.
+After pulling a new version, run any migration in `supabase/migrations/` you haven't run yet (each is safe to run more than once). The review overhaul needs `20261025000000_review_overhaul.sql`; until it's run, the app shows a banner and reviews won't keep the new answers. The goal backlog needs `20261026000000_goal_backlog.sql`, completed goals need `20261027000000_completed_goals_and_readiness.sql`, and prepare-and-commit needs `20261028000000_idea_prep.sql`; until they're run, the app shows a banner and those can't be saved.
 
 ## Not in this version
 

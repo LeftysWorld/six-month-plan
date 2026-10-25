@@ -1,12 +1,9 @@
-import { useMemo, useRef, useState } from 'react';
-import { addDays, chainAt, shortDate, suggestPath, valueOnPath, type GoalType, type PathPoint } from '@six/core';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { addDays, chainAt, isStale, prepGaps, shortDate, suggestPath, valueOnPath, type GoalType, type IdeaPrep, type PathPoint } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView } from '../data/derive.ts';
-import { opsCreateGoal } from '../data/ops.ts';
-import { navigate } from '../router.ts';
-import { blankTask, opsAddTask, withOps } from '../data/breakdown.ts';
-import { opsStartIdea } from '../data/backlog.ts';
-import { chainFor, opsStartChain } from '../data/chain.ts';
+import { href, navigate } from '../router.ts';
+import { opsSavePrep } from '../data/commit.ts';
 import { BackLink, Empty, GOAL_COLORS, Icon, NumberInput, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
 
@@ -16,31 +13,61 @@ const TYPES: { value: GoalType; title: string; sub: string }[] = [
   { value: 'finish', title: 'Finish something', sub: 'Dated steps' },
 ];
 
-/** Set up a goal. Started from a backlog idea (ideaId), its title and why come from the idea. */
-export function GoalNew({ planId, ideaId = null }: { planId: string | null; ideaId?: string | null }) {
+/**
+ * Goals start in the backlog. Without a selected idea, goal setup isn't the way in:
+ * send the person to the backlog (where new goal ideas are written down).
+ */
+export function GoalNew({ ideaId = null }: { planId?: string | null; ideaId?: string | null }) {
+  const { data } = useStore();
+  const idea = ideaId ? data.ideas.find((i) => i.id === ideaId) : undefined;
+  useEffect(() => {
+    if (!idea) navigate('/goals/backlog');
+  }, [idea]);
+  if (!idea) return null;
+  if (idea.status !== 'selected') {
+    return (
+      <Empty title={idea.status === 'started' ? 'This idea is already a goal.' : 'Select this idea first.'}>
+        <a className="btn" href={href('/goals/backlog')}>
+          Back to the backlog
+        </a>
+      </Empty>
+    );
+  }
+  return <GoalPrepare key={idea.id} ideaId={idea.id} />;
+}
+
+/**
+ * Prepare a selected idea for commitment: what kind of goal it is, its target, and its first
+ * 3 months, month, week and daily task. Saving stores the plan on the idea; it does not create
+ * the goal. Committing is a separate step on the backlog ("Commit to the next six months").
+ */
+function GoalPrepare({ ideaId }: { ideaId: string }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
+  const idea = data.ideas.find((i) => i.id === ideaId)!;
+  const prep: IdeaPrep = idea.prep ?? {};
+  const live = data.plans.filter((p) => !p.archived_at && p.end_date >= today).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+  const [planId, setPlanId] = useState<string | null>(prep.plan_id && live.some((p) => p.id === prep.plan_id) ? prep.plan_id : view.mainPlan?.id ?? live[0]?.id ?? null);
   const plan = (planId && view.plan(planId)) || view.mainPlan;
   const existing = plan ? view.goalsForPlan(plan.id) : [];
 
   const [step, setStep] = useState(1);
-  const idea = ideaId ? data.ideas.find((i) => i.id === ideaId && i.status !== 'started') ?? null : null;
-  const [title, setTitle] = useState(idea?.title ?? '');
-  const [type, setType] = useState<GoalType>('practice');
+  const [title, setTitle] = useState(idea.title);
+  const [type, setType] = useState<GoalType>(prep.type ?? 'practice');
   // "Reach a number" fields start empty: placeholders show examples, nothing is pre-filled.
-  const [unit, setUnit] = useState('');
-  const [measureName, setMeasureName] = useState('');
-  const [baseline, setBaseline] = useState<number | null>(null);
-  const [target, setTarget] = useState<number | null>(null);
-  const [targetDate, setTargetDate] = useState('');
+  const [unit, setUnit] = useState(prep.unit ?? '');
+  const [measureName, setMeasureName] = useState(prep.measure_name ?? '');
+  const [baseline, setBaseline] = useState<number | null>(prep.baseline ?? null);
+  const [target, setTarget] = useState<number | null>(prep.target ?? null);
+  const [targetDate, setTargetDate] = useState(prep.target_date ?? '');
   // A date input can't show a placeholder, so it stays a text input until focused or filled.
   const [dateFocused, setDateFocused] = useState(false);
   const dateRef = useRef<HTMLInputElement>(null);
-  const [edits, setEdits] = useState<Record<string, number>>({});
-  const [why, setWhy] = useState(idea?.note ?? '');
-  const [doneMeans, setDoneMeans] = useState(idea?.done_means ?? '');
-  const [milestones, setMilestones] = useState([{ title: '', due_date: addDays(today, 28) }]);
+  const [edits, setEdits] = useState<Record<string, number>>(prep.path_edits ?? {});
+  const [why, setWhy] = useState(idea.note);
+  const [doneMeans, setDoneMeans] = useState(idea.done_means ?? '');
+  const [milestones, setMilestones] = useState(prep.milestones?.length ? prep.milestones : [{ title: '', due_date: addDays(today, 28) }]);
   const color = GOAL_COLORS[existing.length % GOAL_COLORS.length]!;
 
   const startDate = today;
@@ -54,10 +81,12 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
 
   // The current links of the chain this goal starts with.
   const periods = useMemo(() => (plan ? chainAt(plan, today < plan.start_date ? plan.start_date : today) : null), [plan, today]);
-  const [notes, setNotes] = useState<{ quarter: string; month: string; week: string } | null>(null);
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskDays, setTaskDays] = useState<number[]>([1, 3, 5]);
-  const [taskMinutes, setTaskMinutes] = useState(30);
+  const [notes, setNotes] = useState<{ quarter: string; month: string; week: string } | null>(
+    prep.quarter || prep.month || prep.week ? { quarter: prep.quarter ?? '', month: prep.month ?? '', week: prep.week ?? '' } : null,
+  );
+  const [taskTitle, setTaskTitle] = useState(prep.task?.title ?? '');
+  const [taskDays, setTaskDays] = useState<number[]>(prep.task?.days ?? [1, 3, 5]);
+  const [taskMinutes, setTaskMinutes] = useState(prep.task?.minutes ?? 30);
   const startPoint = baseline != null ? { date: startDate, value: baseline } : null;
   const targetAt = (d: string) => (type === 'number' && startPoint && path.length ? fmt(valueOnPath(startPoint, path, d)) : null);
 
@@ -80,7 +109,7 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
   // Only what the person types: no made-up "Work on …" task.
   const firstTask = taskTitle;
 
-  // Entry requirements for a goal to start: its 3-month, month and first-week goals, and a daily task.
+  // Entry requirements for committing: its 3-month, month and first-week goals, and a daily task.
   const ready = [
     { key: 'quarter', label: '3-month goal', ok: !!chainNotes.quarter.trim() },
     { key: 'month', label: 'This month’s goal', ok: !!chainNotes.month.trim() },
@@ -88,54 +117,48 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
     { key: 'task', label: 'A daily task with its days', ok: !!firstTask.trim() && taskDays.length > 0 && taskMinutes > 0 },
   ];
   const isReady = ready.every((r) => r.ok);
+  const stale = (level: 'quarter' | 'month' | 'week') => !!periods && isStale(prep, level, periods[level].start) && chainNotes[level] === (prep[level] ?? '');
 
   const canNext1 = title.trim().length > 0;
   const canNext2 = type !== 'number' || (target != null && !!targetDate && targetDate > today);
 
-  function save() {
-    if (!plan || !isReady) return;
-    const { ops, goalId } = opsCreateGoal(
-      data,
-      {
-        planId: plan.id,
-        title,
-        type,
-        why,
-        done_means: doneMeans,
-        color,
-        unit,
-        measureName,
-        baseline,
-        target,
-        targetDate,
-        path,
-        milestones: type === 'finish' ? milestones : [],
-        action: null,
-      },
-      today,
-    );
-    // The goal starts with its current chain (3 months, this month, this week) and, optionally, a first daily task.
-    let next = withOps(data, ops);
-    const goal = next.goals.find((g) => g.id === goalId)!;
-    const chainOps = opsStartChain(next, goal, plan, today, { quarter: chainNotes.quarter.trim(), month: chainNotes.month.trim(), week: chainNotes.week.trim() });
-    next = withOps(next, chainOps);
-    const all = [...ops, ...chainOps];
-    if (firstTask.trim() && taskDays.length) {
-      const week = chainFor(next, goal, plan, today < plan.start_date ? plan.start_date : today).week.step!;
-      all.push(...opsAddTask(next, goal, week, { ...blankTask(week, today), title: firstTask.trim(), when: 'days', days: taskDays, minutes: taskMinutes, through: null }, today));
-    }
-    if (idea) all.push(...opsStartIdea(withOps(data, all), idea.id, goalId));
-    commit(all);
-    toast(`Added ${title.trim()}. It's set up through this week.`);
-    navigate(`/goals/${goalId}`);
+  /** Save the prepared plan on the idea and go back to the backlog. Nothing is committed. */
+  function savePlan() {
+    if (!plan || !periods) return;
+    const next: IdeaPrep = {
+      type,
+      unit,
+      measure_name: measureName,
+      baseline,
+      target,
+      target_date: targetDate || undefined,
+      path_edits: edits,
+      milestones: type === 'finish' ? milestones.filter((m) => m.title.trim()) : [],
+      quarter: chainNotes.quarter.trim(),
+      month: chainNotes.month.trim(),
+      week: chainNotes.week.trim(),
+      quarter_of: periods.quarter.start,
+      month_of: periods.month.start,
+      week_of: periods.week.start,
+      task: { title: firstTask.trim(), days: taskDays, minutes: taskMinutes },
+      plan_id: plan.id,
+    };
+    const ops = opsSavePrep(idea, next, title);
+    const patch = ops[0]!.kind === 'update' ? (ops[0] as { patch: Record<string, unknown> }).patch : {};
+    if (why.trim() !== idea.note) patch.note = why.trim();
+    if (doneMeans.trim() !== (idea.done_means ?? '')) patch.done_means = doneMeans.trim();
+    commit(ops);
+    const left = prepGaps(next, periods).length;
+    toast(left ? `Plan saved. ${left} more to do before you can commit.` : 'Plan saved. Commit it from the backlog when you’re ready.');
+    navigate('/goals/backlog');
   }
 
   return (
     <div className="stack">
       <div className="row-between">
-        <BackLink label="Cancel" fallback={idea ? '/goals/backlog' : '/goals'} />
+        <BackLink label="Cancel" fallback="/goals/backlog" />
         <span className="small muted">
-          {plan.name} · step {step} of 3
+          Prepare · step {step} of 3
         </span>
       </div>
       <div className="steps" aria-hidden="true">
@@ -147,7 +170,7 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
       {step === 1 && (
         <div className="stack">
           <h1>What do you want to be true in six months?</h1>
-          {idea && <span className="pill none" style={{ alignSelf: 'flex-start' }}>From your backlog · selected for next commitment</span>}
+          <span className="pill none" style={{ alignSelf: 'flex-start' }}>Preparing a selected idea · nothing is committed until you say so</span>
           <label className="field">
             Goal
             <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Comfortable on guitar" />
@@ -160,8 +183,20 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
               </button>
             ))}
           </div>
+          {live.length > 1 && (
+            <label className="field">
+              For which plan?
+              <select value={plan.id} onChange={(e) => setPlanId(e.target.value)}>
+                {live.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {shortDate(p.start_date)} – {shortDate(p.end_date)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {existing.length >= 3 && (
-            <div className="banner warn">This plan already has {existing.length} goals. Most people stick with 3–4 at first.</div>
+            <div className="banner warn">{plan.name} already has {existing.length} goals. Most people stick with 3–4 at first.</div>
           )}
           <button className="btn primary" disabled={!canNext1} onClick={() => setStep(2)}>
             Next
@@ -301,9 +336,9 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
 
       {step === 3 && periods && (
         <div className="stack">
-          <h1>Ready to start</h1>
+          <h1>Prepare to commit</h1>
           <p className="muted small" style={{ margin: 0 }}>
-            A goal starts once you know what should be true in 3 months, this month and this week, and what you'll do each day. You can change any of it later.
+            Write what should be true in 3 months, this month and this week, and what you'll do each day. Saving keeps this plan on the idea; you commit it from the backlog when you're ready.
           </p>
           <div className="card stack">
             <div className="row-between">
@@ -329,6 +364,11 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
                     placeholder={level === 'quarter' ? 'e.g. Record song 1 start to finish' : level === 'month' ? 'e.g. Clean G–C–D–Em changes at 60 bpm' : 'e.g. Practise G–C–D 20 minutes on 5 days'}
                     required
                   />
+                  {stale(level) && (
+                    <span className="xsmall" style={{ color: 'var(--amber-ink)', fontWeight: 400 }}>
+                      Written for {shortDate(prep[`${level}_of`]!)}. Still right for {level === 'week' ? 'this week' : level === 'month' ? 'this month' : 'these 3 months'}? Saving confirms it.
+                    </span>
+                  )}
                 </label>
               );
             })}
@@ -356,10 +396,10 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
               Minutes
               <input type="number" min={0} value={taskMinutes} onChange={(e) => setTaskMinutes(Number(e.target.value))} />
             </label>
-            <span className="xsmall muted">It lands on Today on those days. Add more tasks on the goal page.</span>
+            <span className="xsmall muted">Once committed, it lands on Today on those days. Add more tasks on the goal page.</span>
           </div>
-          <div className="card stack-sm ready-list" aria-label="Ready to start">
-            <span className="label">To start this goal</span>
+          <div className="card stack-sm ready-list" aria-label="Ready to commit">
+            <span className="label">To commit this goal</span>
             {ready.map((r) => (
               <span key={r.key} className={`ready-item${r.ok ? ' ok' : ''}`}>
                 <span className="ready-mark" aria-hidden="true">
@@ -369,13 +409,16 @@ export function GoalNew({ planId, ideaId = null }: { planId: string | null; idea
                 <span className="visually-hidden">{r.ok ? ': done' : ': still needed'}</span>
               </span>
             ))}
+            <span className="xsmall muted" style={{ marginTop: 4 }}>
+              {isReady ? 'Ready to commit. Save the plan, then commit it from the backlog.' : 'You can save now and finish later.'}
+            </span>
           </div>
           <div className="btn-row">
             <button className="btn" onClick={() => setStep(2)}>
               Back
             </button>
-            <button className="btn primary" onClick={save} disabled={!isReady}>
-              {isReady ? 'Start goal' : `${ready.filter((r) => !r.ok).length} to go`}
+            <button className="btn primary" onClick={savePlan}>
+              Save plan
             </button>
           </div>
         </div>

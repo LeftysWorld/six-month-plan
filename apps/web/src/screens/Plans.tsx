@@ -32,7 +32,7 @@ import type { AppData, Op } from '../data/model.ts';
 import { href, navigate } from '../router.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { ChainSheet } from './Flow.tsx';
-import { GoalsSwitch } from './Backlog.tsx';
+import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
 
 /** Create a plan: name, start, end (defaults to six months). */
 export function PlanForm({ onDone }: { onDone?: () => void }) {
@@ -46,10 +46,11 @@ export function PlanForm({ onDone }: { onDone?: () => void }) {
       onSubmit={(e) => {
         e.preventDefault();
         if (!name.trim() || end <= start) return;
-        const { ops, plan } = opsCreatePlan({ name, start, end });
+        const { ops } = opsCreatePlan({ name, start, end });
         commit(ops);
         onDone?.();
-        navigate(`/goals/new?plan=${plan.id}`);
+        // Goals start in the backlog: write ideas, select, prepare, then commit them to this plan.
+        navigate('/goals/backlog');
       }}
     >
       <h2>New six-month plan</h2>
@@ -78,7 +79,7 @@ export function PlanForm({ onDone }: { onDone?: () => void }) {
         Plans can overlap. Starting a new one never resets another.
       </p>
       <button className="btn primary" type="submit">
-        Create plan and add a goal
+        Create plan
       </button>
     </form>
   );
@@ -133,6 +134,7 @@ interface GoalCardData {
 function PlanGoals({ plan, initial, onMenu }: { plan: Plan; initial: string; onMenu: () => void }) {
   const { data, today } = useStore();
   const view = useView();
+  const toast = useToast();
   const [filter, setFilter] = useState<'all' | 'needs'>('all');
   const started = plan.start_date <= today;
   const cards = goalCards(view, data, plan, today);
@@ -180,8 +182,13 @@ function PlanGoals({ plan, initial, onMenu }: { plan: Plan; initial: string; onM
       )}
 
       {cards.length === 0 && (
-        <div className="card tight small" style={{ color: 'var(--ink-2)' }}>
-          No goals yet. Six months from now, what do you want to be true? Most people start with 3–4: a number to reach, a habit to build, something to finish.
+        <div className="card tight small stack-sm" style={{ color: 'var(--ink-2)' }}>
+          <span>
+            No goals in this plan yet. Goals start in the backlog: write ideas down, select the ones that matter most, prepare them, then commit. Most people commit to 3–4.
+          </span>
+          <a className="btn small primary" href={href('/goals/backlog')} style={{ alignSelf: 'flex-start' }}>
+            Open the backlog
+          </a>
         </div>
       )}
       <div className="goal-list">
@@ -189,9 +196,7 @@ function PlanGoals({ plan, initial, onMenu }: { plan: Plan; initial: string; onM
           <GoalCard key={c.goal.id} card={c} plan={plan} />
         ))}
       </div>
-      <a className="btn ghost" href={href(`/goals/new?plan=${plan.id}`)}>
-        + Add a goal
-      </a>
+      <IdeaAdd placeholder="Add a goal idea (it starts in your backlog)" after={(t) => toast(`${t} added to your backlog`)} />
     </>
   );
 }

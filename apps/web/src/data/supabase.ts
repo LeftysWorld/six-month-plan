@@ -8,14 +8,14 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const supabaseConfigured = Boolean(url && anonKey);
 
-const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql, 20261025000000_review_overhaul.sql, 20261026000000_goal_backlog.sql and 20261027000000_completed_goals_and_readiness.sql';
+const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql, 20261025000000_review_overhaul.sql, 20261026000000_goal_backlog.sql, 20261027000000_completed_goals_and_readiness.sql and 20261028000000_idea_prep.sql';
 const BACKLOG_MIGRATION = 'supabase/migrations/20261026000000_goal_backlog.sql';
 
 /** Set when the database is missing a newer migration; the app shows it as a banner. */
 export let schemaWarning: string | null = null;
 
 function isMissingBreakdown(message: string): boolean {
-  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas|completion_note|done_means|goals\.completed_at/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas|completion_note|done_means|goals\.completed_at|\bprep\b/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
 }
 
 let client: SupabaseClient | null = null;
@@ -116,6 +116,12 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
         const probe = await sb.from('goals').select('completed_at').limit(1);
         if (probe.error && isMissingBreakdown(probe.error.message)) {
           schemaWarning = `Your database needs the completed-goals update. In Supabase → SQL Editor, run supabase/migrations/20261027000000_completed_goals_and_readiness.sql, then reload.`;
+        }
+      }
+      if (!schemaWarning) {
+        const probe = await sb.from('goal_ideas').select('prep').limit(1);
+        if (probe.error && isMissingBreakdown(probe.error.message)) {
+          schemaWarning = `Your database needs the prepare-and-commit update. In Supabase → SQL Editor, run supabase/migrations/20261028000000_idea_prep.sql, then reload.`;
         }
       }
       const { data: profile, error } = await sb.from('profiles').select('*').eq('user_id', userId).maybeSingle();

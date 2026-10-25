@@ -9,6 +9,7 @@ import {
   type Goal,
   type Session,
   type SessionStatus,
+  chainAt,
 } from '@six/core';
 import { defaultProfile, emptyData, type AppData } from './model.ts';
 import { blankTask, opsAddTask, withOps } from './breakdown.ts';
@@ -338,5 +339,19 @@ export function buildDemoData(): AppData {
     selected_at: status === 'selected' ? `${addDays(today, -3)}T12:00:00.000Z` : null,
     started_at: null,
   }));
+  // The half marathon is prepared (ready to commit); the PMP exam is selected but not prepared yet.
+  const periods = chainAt(plan, today);
+  data.ideas[0]!.prep = {
+    type: 'practice',
+    quarter: 'Run 10 miles without stopping',
+    quarter_of: periods.quarter.start,
+    month: 'Three runs a week, long run up to 5 miles',
+    month_of: periods.month.start,
+    week: 'Three easy runs, 20–30 minutes each',
+    week_of: periods.week.start,
+    task: { title: 'Easy run', days: [2, 4, 6], minutes: 30 },
+    plan_id: plan.id,
+    prepared_at: `${addDays(today, -1)}T12:00:00.000Z`,
+  };
   return data;
 }

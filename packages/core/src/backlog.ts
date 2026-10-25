@@ -1,4 +1,5 @@
-import type { GoalIdea, IdeaStatus } from './types.ts';
+import type { GoalIdea, IdeaPrep, IdeaStatus } from './types.ts';
+import type { ISODate } from './dates.ts';
 
 /**
  * The goal backlog, Kanban style: ideas wait in the backlog in order of importance, the best few
@@ -67,4 +68,44 @@ export function readinessGaps(idea: Pick<GoalIdea, 'note' | 'done_means'>): ('wh
 /** Whole days an idea has been waiting (since it was written down). */
 export function ageInDays(idea: Pick<GoalIdea, 'created_at'>, now: Date = new Date()): number {
   return Math.max(0, Math.floor((now.getTime() - Date.parse(idea.created_at)) / 864e5));
+}
+
+export type PrepGap = 'quarter' | 'month' | 'week' | 'task' | 'target';
+
+/**
+ * What a selected idea still needs before it can be committed (the entry policy for goals):
+ * its 3-month, month and week goals, written for the periods it would start in, a daily task
+ * with its days, and for "reach a number" a target and date. A note written for a week (or
+ * month, or 3 months) that has passed counts as missing: it needs a fresh look.
+ */
+export function prepGaps(prep: IdeaPrep | undefined, periods: { quarter: { start: ISODate }; month: { start: ISODate }; week: { start: ISODate } }): PrepGap[] {
+  const p = prep ?? {};
+  const gaps: PrepGap[] = [];
+  for (const level of ['quarter', 'month', 'week'] as const) {
+    const note = (p[level] ?? '').trim();
+    if (!note || p[`${level}_of`] !== periods[level].start) gaps.push(level);
+  }
+  if (!p.task || !p.task.title.trim() || p.task.days.length === 0 || !(p.task.minutes > 0)) gaps.push('task');
+  if (p.type === 'number' && (p.target == null || !p.target_date)) gaps.push('target');
+  return gaps;
+}
+
+/** Was this note written for an earlier period (rather than never written)? */
+export function isStale(prep: IdeaPrep | undefined, level: 'quarter' | 'month' | 'week', periodStart: ISODate): boolean {
+  return !!prep?.[level]?.trim() && prep[`${level}_of`] !== periodStart;
+}
+
+/**
+ * A rank that puts an idea at position `index` of a column (0 = top), ignoring where it is now.
+ * Used for drag and drop, including moving it into another column.
+ */
+export function rankAt(ideas: GoalIdea[], id: string, status: IdeaStatus, index: number): number {
+  const list = column(ideas, status).filter((i) => i.id !== id);
+  const at = Math.max(0, Math.min(index, list.length));
+  if (list.length === 0) return 1;
+  if (at === 0) return list[0]!.rank - 1;
+  if (at === list.length) return list[list.length - 1]!.rank + 1;
+  const before = list[at - 1]!.rank;
+  const after = list[at]!.rank;
+  return before === after ? before + 0.0001 : (before + after) / 2;
 }

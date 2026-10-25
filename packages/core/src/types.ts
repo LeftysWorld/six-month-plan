@@ -255,6 +255,8 @@ export interface GoalIdea {
   note: string;
   /** What done looks like in six months, in a line (needed to select it). Missing on older databases. */
   done_means?: string;
+  /** The plan prepared while it's selected (its chain and first daily task); committing turns it into a goal. */
+  prep?: IdeaPrep;
   status: IdeaStatus;
   /** Order within its column: lower comes first (more important). */
   rank: number;
@@ -263,4 +265,29 @@ export interface GoalIdea {
   created_at: string;
   selected_at: string | null;
   started_at: string | null;
+}
+
+/**
+ * What gets prepared for a selected idea before it's committed as a goal. Saved on the idea,
+ * so preparing never creates the goal: committing does, as a separate step.
+ */
+export interface IdeaPrep {
+  type?: GoalType;
+  unit?: string;
+  measure_name?: string;
+  baseline?: number | null;
+  target?: number | null;
+  target_date?: ISODate;
+  path_edits?: Record<string, number>;
+  milestones?: { title: string; due_date: ISODate }[];
+  quarter?: string;
+  month?: string;
+  week?: string;
+  /** Start of the 3-month stage, month and week each note was written for (a note goes stale when its period ends). */
+  quarter_of?: ISODate;
+  month_of?: ISODate;
+  week_of?: ISODate;
+  task?: { title: string; days: number[]; minutes: number };
+  plan_id?: string;
+  prepared_at?: string;
 }

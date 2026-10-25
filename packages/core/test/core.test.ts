@@ -490,3 +490,30 @@ test('backlog: an idea needs a why and what done looks like before it can be sel
   assert.deepEqual(readinessGaps({ note: '  ', done_means: 'Finish a half in under 2h' }), ['why']);
   assert.deepEqual(readinessGaps({ note: 'Health', done_means: 'Finish a half in under 2h' }), []);
 });
+
+test('prepare and commit: what a selected idea needs, stale notes, drop positions', async () => {
+  const { prepGaps, isStale, rankAt, column } = await import('../src/index.ts');
+  const periods = { quarter: { start: '2026-10-11' }, month: { start: '2026-10-11' }, week: { start: '2026-10-19' } };
+  assert.deepEqual(prepGaps(undefined, periods), ['quarter', 'month', 'week', 'task']);
+  const ready = { quarter: 'Q', quarter_of: '2026-10-11', month: 'M', month_of: '2026-10-11', week: 'W', week_of: '2026-10-19', task: { title: 'Run', days: [1, 3], minutes: 30 } };
+  assert.deepEqual(prepGaps(ready, periods), []);
+  // A week note written last week has to be looked at again.
+  const nextWeek = { ...periods, week: { start: '2026-10-26' } };
+  assert.deepEqual(prepGaps(ready, nextWeek), ['week']);
+  assert.equal(isStale(ready, 'week', '2026-10-26'), true);
+  assert.equal(isStale({}, 'week', '2026-10-26'), false);
+  assert.deepEqual(prepGaps({ ...ready, task: { title: 'Run', days: [], minutes: 30 } }, periods), ['task']);
+  assert.deepEqual(prepGaps({ ...ready, type: 'number' as const, target: 180 }, periods), ['target']);
+  // Drop positions.
+  const idea = (id: string, rank: number, status: 'backlog' | 'selected' = 'backlog') => ({ id, title: id, note: '', status, rank, goal_id: null, created_at: '2026-10-01T00:00:00.000Z', selected_at: null, started_at: null });
+  const ideas = [idea('a', 1), idea('b', 2), idea('c', 3), idea('s', 1, 'selected')];
+  const place = (id: string, status: 'backlog' | 'selected', index: number) => {
+    const rank = rankAt(ideas, id, status, index);
+    return column(ideas.map((i) => (i.id === id ? { ...i, status, rank } : i)), status).map((i) => i.id);
+  };
+  assert.deepEqual(place('c', 'backlog', 0), ['c', 'a', 'b']);
+  assert.deepEqual(place('a', 'backlog', 1), ['b', 'a', 'c']);
+  assert.deepEqual(place('a', 'backlog', 9), ['b', 'c', 'a']);
+  assert.deepEqual(place('b', 'selected', 0), ['b', 's']);
+  assert.deepEqual(place('b', 'selected', 1), ['s', 'b']);
+});
