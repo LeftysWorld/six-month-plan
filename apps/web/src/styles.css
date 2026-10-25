@@ -1027,3 +1027,83 @@ button.day-cell { border: 0; cursor: pointer; font: inherit; color: var(--ink); 
 .own-drop.drop-on { border-color: var(--accent-ink); background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
 .group-card.lifted { opacity: 0.4; }
 .plan-line.drop-already { border-color: var(--border-strong); background: var(--fill); }
+
+/* ---------- Goals page: seasons, group cards with goal rows ---------- */
+.season-layout { display: flex; flex-direction: column; gap: 14px; }
+.season-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.season-aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.season-side { display: flex; flex-direction: column; gap: 12px; }
+.season-list { display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 1100px) {
+  .season-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+  .season-aside { position: sticky; top: 24px; }
+}
+
+.season-card { display: flex; flex-direction: column; background: var(--card); -webkit-backdrop-filter: blur(18px) saturate(140%); backdrop-filter: blur(18px) saturate(140%); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow-1); overflow: hidden; transition: border-color 0.15s, background 0.15s, transform 0.2s var(--spring), opacity 0.15s; }
+.season-card.drop-on { border: 2px dashed var(--accent-ink); background: var(--accent-soft); transform: scale(1.01); }
+.season-card.lifted { opacity: 0.4; }
+.season-card-head { display: flex; align-items: center; gap: 4px; padding: 6px 12px 6px 8px; border-bottom: 1px solid var(--line); min-height: 52px; }
+.season-card-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 4px; color: var(--ink); text-decoration: none; }
+.season-card-title b { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.season-open { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 600; color: var(--accent-ink); }
+.season-drop-hint { padding: 8px 16px; font-size: 13px; font-weight: 600; color: var(--accent-ink); }
+.season-grip { width: 28px; height: 36px; flex: none; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: var(--faint); cursor: grab; border-radius: 10px; touch-action: none; }
+.season-grip:hover { color: var(--ink-2); background: var(--fill); }
+
+.season-row { position: relative; display: flex; align-items: flex-start; gap: 2px; padding: 4px 12px 4px 8px; border-top: 1px solid var(--line); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; transition: background 0.15s, opacity 0.15s; }
+.season-card-head + .season-row, .season-drop-hint + .season-row { border-top: 0; }
+.season-row:hover { background: var(--fill); }
+.season-row.lifted { opacity: 0.35; }
+.season-row.drop-on { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent-ink); }
+.season-row .season-grip { margin-top: 6px; }
+.season-row-link { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 4px; color: var(--ink); text-decoration: none; }
+.season-row-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--faint); }
+.season-row-title { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.season-row-status { font-size: 13px; white-space: nowrap; }
+.season-track { position: relative; display: block; height: 6px; margin-left: 16px; border-radius: 3px; background: var(--track); }
+.season-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+.season-tick { position: absolute; top: -4px; width: 2px; height: 14px; margin-left: -1px; border-radius: 1px; background: var(--ink); }
+.season-row-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-left: 16px; font-size: 12.5px; color: var(--ink); }
+.season-row-foot .muted { color: var(--muted); }
+
+.horizon { display: flex; flex-direction: column; gap: 6px; }
+.horizon-line { position: relative; height: 46px; }
+.horizon-bar { position: absolute; top: 16px; height: 10px; border: 0; padding: 0; cursor: pointer; background: var(--border-strong); transition: background 0.15s, outline-color 0.15s; }
+.horizon-bar.current { border-radius: 5px 0 0 5px; }
+.horizon-bar.next { border-radius: 0 5px 5px 0; }
+.horizon-bar.on { background: var(--ink); }
+.horizon-bar.empty { background: transparent; border: 1.5px dashed var(--border-strong); height: 10px; }
+.horizon-bar.empty.on { border-color: var(--ink); }
+.horizon-bar.drop-on { outline: 3px solid var(--accent-ink); outline-offset: 3px; }
+.horizon-today { position: absolute; top: 8px; width: 2px; height: 26px; margin-left: -1px; border-radius: 1px; background: var(--accent-ink); pointer-events: none; }
+.horizon-today-label { position: absolute; top: -6px; transform: translateX(-50%); font-size: 10px; color: var(--accent-ink); pointer-events: none; }
+.horizon-cp { position: absolute; top: 17px; width: 8px; height: 8px; margin-left: -4px; transform: rotate(45deg); background: var(--surface); border: 1.5px solid var(--ink); pointer-events: none; }
+.horizon-end { position: absolute; top: 33px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; pointer-events: none; }
+.horizon-labels { display: flex; justify-content: space-between; gap: 12px; }
+.horizon-label { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.horizon-label.right { align-items: flex-end; text-align: right; }
+.horizon-name { border: 0; background: none; padding: 0; font: inherit; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--muted); cursor: pointer; text-align: inherit; }
+.horizon-name.on { color: var(--ink); }
+
+.season-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+.season-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 12px 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); }
+.season-stat .mono { font-size: 10.5px; }
+.season-stat b { font-family: var(--display); font-size: 21px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.season-stat b small { font-size: 12.5px; font-weight: 450; letter-spacing: 0; color: var(--muted); }
+.season-stat > small { font-size: 11.5px; color: var(--muted); }
+
+.outcomes { padding-bottom: 6px; }
+.outcomes-head { display: flex; flex-direction: column; gap: 2px; padding: 16px 16px 8px; }
+.outcomes-head b { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+.outcome-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 9px 16px; border-top: 1px solid var(--line); }
+.outcome-mark { width: 14px; height: 14px; margin-top: 3px; border-radius: 50%; border: 1.5px solid; display: inline-flex; align-items: center; justify-content: center; }
+.outcome-mark > span { width: 6px; height: 6px; border-radius: 50%; }
+
+.shared-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--line); }
+.week-strip { display: inline-flex; gap: 3px; }
+.week-day { width: 20px; height: 20px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; background: var(--track); color: var(--faint); }
+.week-day.done { background: var(--ink); color: var(--surface); }
+.week-day.today { box-shadow: inset 0 0 0 1.5px var(--accent-ink); }
+.group-actions { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px 16px 10px; border-top: 1px solid var(--line); }
+.goal-hero { gap: 4px; }
+.goal-hero-now { font-family: var(--display); font-size: 36px; font-weight: 650; letter-spacing: -0.04em; line-height: 1.05; }

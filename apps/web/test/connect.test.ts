@@ -213,3 +213,25 @@ test('moving goals into a batch keeps tasks and the week goal; an emptied own cl
   const w2 = currentWindow(d, 'weight', today)!;
   assert.ok(w1.solo && w2.solo && w1.id !== w2.id);
 });
+
+test('seasons: this season is the batch running today, next is the one after; tracks measure the whole window', async () => {
+  const { seasonsOf, goalTrack, nextSeasonDates } = await import('../src/data/season.ts');
+  const d = base();
+  const now = { id: 'now', name: 'My next six months', start_date: '2026-10-01', end_date: '2027-04-24', block_days: 28, archived_at: null } as AppData['plans'][number];
+  const later = { id: 'later', name: 'Next season', start_date: '2027-04-25', end_date: '2027-10-24', block_days: 28, archived_at: null } as AppData['plans'][number];
+  d.plans = [later, now];
+  d.planGoals = [{ id: 'pg', plan_id: 'now', goal_id: 'weight' }];
+  d.goals[1] = { ...d.goals[1]!, type: 'number', unit: 'lb', baseline_value: 214, baseline_date: '2026-10-01', target_value: 195, target_date: '2027-04-24', measurement_type_id: 'mt' };
+  d.measurementTypes = [{ id: 'mt', name: 'Weight', unit: 'lb', cadence_days: 1, goal_id: 'weight', archived_at: null } as AppData['measurementTypes'][number]];
+  d.measurements = [{ id: 'm1', type_id: 'mt', value: 209.6, measured_on: '2026-10-24', source: 'manual', note: '' }];
+  const view = new View(d, '2026-10-25', 0.5);
+  const s = seasonsOf(view);
+  assert.equal(s.current?.id, 'now');
+  assert.equal(s.next?.id, 'later');
+  assert.deepEqual(nextSeasonDates(now), { start: '2027-04-25', end: '2027-10-24' });
+  const t = goalTrack(view, d.goals[1]!, now);
+  assert.equal(t.target, '195 lb');
+  assert.equal(t.by, '2027-04-24');
+  assert.equal(t.prog, 23, '214 → 209.6 of the way to 195');
+  assert.ok(t.exp > 0 && t.exp < t.prog, 'ahead of even pace');
+});

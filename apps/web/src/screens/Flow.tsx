@@ -39,6 +39,7 @@ import {
 } from '../data/breakdown.ts';
 import { BackLink, Empty, Icon, PacePill, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
+import { goalTrack } from '../data/season.ts';
 import { matchingTasks, opsShareTask, opsUnshareTask, shareCandidates } from '../data/connect.ts';
 import { ConnectionStrip, ShareTaskSheet } from '../components/Connections.tsx';
 
@@ -119,6 +120,8 @@ export function Flow({ goalId }: { goalId: string }) {
           </p>
         )}
       </div>
+
+      <GoalHero goal={goal} plan={plan} />
 
       <div className="goal-grid">
         <div className="stack goal-chain">
@@ -982,5 +985,39 @@ function TaskSheet({
         </button>
       </div>
     </Sheet>
+  );
+}
+
+
+/** The goal's progress across its whole window: where it is, a track against even pace, and what done is. */
+function GoalHero({ goal, plan }: { goal: Goal; plan: Plan }) {
+  const view = useView();
+  const t = goalTrack(view, goal, plan);
+  if (!t.started) {
+    return (
+      <div className="card tight stack-sm">
+        <span className="mono">STARTS {shortDate(plan.start_date).toUpperCase()}</span>
+        <span>
+          {t.target} by {shortDate(t.by)}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="card stack-sm goal-hero">
+      <span className="goal-hero-now num">{t.now}</span>
+      <span className="small muted">
+        toward {t.target} by {shortDate(t.by)}
+      </span>
+      <span className="season-track" style={{ marginLeft: 0, height: 8, marginTop: 8 }} aria-label={`${t.prog}% done, even pace ${t.exp}%`}>
+        <span className="season-fill" style={{ width: `${t.prog}%`, background: goal.color }} />
+        <span className="season-tick" style={{ left: `${t.exp}%` }} />
+      </span>
+      <span className="row-between xsmall muted">
+        <span>Start {shortDate(plan.start_date)}</span>
+        <span>Tick: even pace</span>
+        <span>{shortDate(t.by)}</span>
+      </span>
+    </div>
   );
 }

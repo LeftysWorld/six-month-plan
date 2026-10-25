@@ -24,6 +24,7 @@ import { WelcomeBack } from './screens/WelcomeBack.tsx';
 import { Flow } from './screens/Flow.tsx';
 import { Backlog } from './screens/Backlog.tsx';
 import { Completed } from './screens/Completed.tsx';
+import { GroupPage } from './screens/GroupPage.tsx';
 
 const MODE_KEY = 'six.mode';
 
@@ -170,6 +171,7 @@ function Shell(props: ShellProps) {
       if (s0 === 'goals' && s1 === 'new') screen = <GoalNew planId={route.query.get('plan')} ideaId={route.query.get('idea')} />;
       else if (s0 === 'goals' && s1 === 'backlog') screen = <Backlog />;
       else if (s0 === 'goals' && s1 === 'completed') screen = <Completed />;
+      else if (s0 === 'goals' && s1 === 'group' && s2) screen = <GroupPage id={s2} />;
       else if (s0 === 'goals' && s1) screen = <Flow goalId={s1} />;
       else screen = <Plans />;
       break;
