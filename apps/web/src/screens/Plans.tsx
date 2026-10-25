@@ -15,7 +15,7 @@ import {
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView, type View } from '../data/derive.ts';
-import { opsArchivePlan, opsCreatePlan, opsLinkGoalToPlan } from '../data/ops.ts';
+import { opsArchivePlan, opsCreatePlan } from '../data/ops.ts';
 import {
   CHAIN_LEVELS,
   catchUpPlan,
@@ -29,31 +29,29 @@ import {
   type CatchUp,
 } from '../data/chain.ts';
 import type { AppData, Op } from '../data/model.ts';
-import { href, navigate } from '../router.ts';
+import { href } from '../router.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { ChainSheet } from './Flow.tsx';
 import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
 
-/** Create a plan: name, start, end (defaults to six months). */
+/** Create a batch: a shared window several goals can be committed to (defaults to six months from today). */
 export function PlanForm({ onDone }: { onDone?: () => void }) {
   const { today, commit } = useStore();
+  const toast = useToast();
   const [name, setName] = useState('My next six months');
   const [start, setStart] = useState(today);
   const [end, setEnd] = useState(addDays(today, 182));
   return (
     <form
-      className="card stack"
+      className="stack"
       onSubmit={(e) => {
         e.preventDefault();
         if (!name.trim() || end <= start) return;
-        const { ops } = opsCreatePlan({ name, start, end });
-        commit(ops);
+        commit(opsCreatePlan({ name, start, end }).ops);
+        toast(`${name.trim()} created. Commit goals to it from the backlog.`);
         onDone?.();
-        // Goals start in the backlog: write ideas, select, prepare, then commit them to this plan.
-        navigate('/goals/backlog');
       }}
     >
-      <h2>New six-month plan</h2>
       <label className="field">
         Name
         <input value={name} onChange={(e) => setName(e.target.value)} required />
@@ -76,45 +74,131 @@ export function PlanForm({ onDone }: { onDone?: () => void }) {
         </label>
       </div>
       <p className="xsmall muted" style={{ margin: 0 }}>
-        Plans can overlap. Starting a new one never resets another.
+        A batch is a window several goals share, with the same checkpoints. Goals can join part-way through, and a goal can also have its own clock instead.
       </p>
       <button className="btn primary" type="submit">
-        Create plan
+        Create batch
       </button>
     </form>
   );
 }
 
 /**
- * Goals: every goal with its chain (3 months → this month → this week) and how this week is going.
- * The plan is one slim line at the top; its settings live behind the plan name.
+ * Goals: every goal you're working on, grouped the way they keep time. Batches (shared windows)
+ * each have a slim line with their day count and checkpoint; goals on their own clock are
+ * listed together, each with its own day count.
  */
-export function Plans({ planId = null }: { planId?: string | null }) {
+export function Plans() {
   const { data, today } = useStore();
-  const live = data.plans.filter((p) => !p.archived_at && p.end_date >= today).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
-  const [pickedId, setPickedId] = useState<string | null>(planId);
-  const [menu, setMenu] = useState(false);
-  const plan = live.find((p) => p.id === pickedId) ?? data.plans.find((p) => p.id === pickedId) ?? live.find((p) => p.start_date <= today) ?? live[0] ?? null;
+  const view = useView();
+  const toast = useToast();
+  const [filter, setFilter] = useState<'all' | 'needs'>('all');
+  const [menuFor, setMenuFor] = useState<Plan | null>(null);
+  const [creating, setCreating] = useState(false);
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
+  const batches = view.batches;
+  const clocks = view.livePlans.filter((p) => p.solo);
+  const sections = batches.map((plan) => ({ plan, cards: goalCards(view, data, plan, today) }));
+  const own = clocks.flatMap((plan) => goalCards(view, data, plan, today).map((card) => ({ card, plan }))).sort((a, b) => a.card.rank - b.card.rank);
+  const all = [...sections.flatMap((x) => x.cards), ...own.map((x) => x.card)];
+  const needCount = all.filter((c) => c.needs).length;
+  const keep = (c: GoalCardData) => filter === 'all' || c.needs;
+  const setup = setupSteps(view, data, today);
 
   return (
     <div className="stack rise">
-      {plan ? (
-        <PlanGoals key={plan.id} plan={plan} initial={initial} onMenu={() => setMenu(true)} />
-      ) : (
-        <>
-          <div className="topbar">
-            <span className="mono">No plan yet</span>
-            <a className="avatar" href={href('/settings')} aria-label="Settings">
-              {initial}
-            </a>
-          </div>
-          <h1 style={{ marginTop: -4 }}>Goals</h1>
-          <GoalsSwitch current="goals" />
-          <PlanForm />
-        </>
+      <div className="topbar">
+        <span className="mono">
+          {all.length} goal{all.length === 1 ? '' : 's'}
+          {needCount ? ` · ${needCount} need${needCount === 1 ? 's' : ''} you` : ''}
+        </span>
+        <a className="avatar" href={href('/settings')} aria-label="Settings">
+          {initial}
+        </a>
+      </div>
+      <h1 style={{ marginTop: -4 }}>Goals</h1>
+      <GoalsSwitch current="goals" />
+
+      {setup && (
+        <div className="tile" style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
+          <span className="grow" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{setup.title}</span>
+            <span className="xsmall muted">{setup.detail}</span>
+          </span>
+          <a className="btn small primary" href={href(setup.to)} style={{ flex: 'none' }}>
+            {setup.action}
+          </a>
+        </div>
       )}
-      {menu && <PlanMenu plan={plan} onPick={setPickedId} onClose={() => setMenu(false)} />}
+
+      {needCount > 0 && all.length > 1 && (
+        <div className="chips" role="group" aria-label="Show">
+          <button className="chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
+            All {all.length}
+          </button>
+          <button className="chip" aria-pressed={filter === 'needs'} onClick={() => setFilter('needs')}>
+            Needs you · {needCount}
+          </button>
+        </div>
+      )}
+
+      {all.length === 0 && (
+        <div className="card tight small stack-sm" style={{ color: 'var(--ink-2)' }}>
+          <span>
+            Nothing committed yet. Goals start in the backlog: write ideas down, select the ones that matter most, prepare them, then commit, to a batch or on their own clock. Most people carry 3–4 at a time.
+          </span>
+          <a className="btn small primary" href={href('/goals/backlog')} style={{ alignSelf: 'flex-start' }}>
+            Open the backlog
+          </a>
+        </div>
+      )}
+
+      {sections.map(({ plan, cards }) => (
+        <section key={plan.id} className="batch stack" aria-label={`Batch: ${plan.name}`}>
+          <PlanLine plan={plan} today={today} onMenu={() => setMenuFor(plan)} />
+          {cards.length === 0 ? (
+            <p className="small muted" style={{ margin: 0 }}>
+              No goals in this batch yet. Commit one from the backlog.
+            </p>
+          ) : (
+            <div className="goal-list">
+              {cards.filter(keep).map((c) => (
+                <GoalCard key={c.goal.id} card={c} plan={plan} />
+              ))}
+            </div>
+          )}
+        </section>
+      ))}
+
+      {own.length > 0 && (
+        <section className="batch stack" aria-label="Goals on their own clock">
+          <div className="row-between">
+            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Own clock</span>
+            <span className="mono" style={{ fontSize: 11 }}>
+              {own.length} GOAL{own.length === 1 ? '' : 'S'}
+            </span>
+          </div>
+          <div className="goal-list">
+            {own
+              .filter((x) => keep(x.card))
+              .map(({ card, plan }) => (
+                <GoalCard key={card.goal.id} card={card} plan={plan} ownClock />
+              ))}
+          </div>
+        </section>
+      )}
+
+      <IdeaAdd placeholder="Add a goal idea (it starts in your backlog)" after={(t) => toast(`${t} added to your backlog`)} />
+      <button type="button" className="btn ghost small" onClick={() => setCreating(true)} style={{ alignSelf: 'flex-start' }}>
+        <Icon name="plus" size={14} stroke={2.4} /> New batch
+      </button>
+
+      {creating && (
+        <Sheet title="New batch" onClose={() => setCreating(false)}>
+          <PlanForm onDone={() => setCreating(false)} />
+        </Sheet>
+      )}
+      {menuFor && <BatchMenu plan={menuFor} onClose={() => setMenuFor(null)} />}
     </div>
   );
 }
@@ -129,76 +213,6 @@ interface GoalCardData {
   needs: boolean;
   /** Lower sorts first. */
   rank: number;
-}
-
-function PlanGoals({ plan, initial, onMenu }: { plan: Plan; initial: string; onMenu: () => void }) {
-  const { data, today } = useStore();
-  const view = useView();
-  const toast = useToast();
-  const [filter, setFilter] = useState<'all' | 'needs'>('all');
-  const started = plan.start_date <= today;
-  const cards = goalCards(view, data, plan, today);
-  const needCount = cards.filter((c) => c.needs).length;
-  const shown = filter === 'needs' ? cards.filter((c) => c.needs) : cards;
-  const setup = setupSteps(view, data, plan, today);
-
-  return (
-    <>
-      <div className="topbar">
-        <span className="mono">
-          {cards.length} goal{cards.length === 1 ? '' : 's'}
-          {started && needCount ? ` · ${needCount} need${needCount === 1 ? 's' : ''} you` : ''}
-        </span>
-        <a className="avatar" href={href('/settings')} aria-label="Settings">
-          {initial}
-        </a>
-      </div>
-      <h1 style={{ marginTop: -4 }}>Goals</h1>
-      <GoalsSwitch current="goals" />
-
-      <PlanLine plan={plan} today={today} onMenu={onMenu} />
-
-      {setup && (
-        <div className="tile" style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
-          <span className="grow" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{setup.title}</span>
-            <span className="xsmall muted">{setup.detail}</span>
-          </span>
-          <a className="btn small primary" href={href(setup.to)} style={{ flex: 'none' }}>
-            {setup.action}
-          </a>
-        </div>
-      )}
-
-      {started && needCount > 0 && cards.length > 1 && (
-        <div className="chips" role="group" aria-label="Show">
-          <button className="chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
-            All {cards.length}
-          </button>
-          <button className="chip" aria-pressed={filter === 'needs'} onClick={() => setFilter('needs')}>
-            Needs you · {needCount}
-          </button>
-        </div>
-      )}
-
-      {cards.length === 0 && (
-        <div className="card tight small stack-sm" style={{ color: 'var(--ink-2)' }}>
-          <span>
-            No goals in this plan yet. Goals start in the backlog: write ideas down, select the ones that matter most, prepare them, then commit. Most people commit to 3–4.
-          </span>
-          <a className="btn small primary" href={href('/goals/backlog')} style={{ alignSelf: 'flex-start' }}>
-            Open the backlog
-          </a>
-        </div>
-      )}
-      <div className="goal-list">
-        {shown.map((c) => (
-          <GoalCard key={c.goal.id} card={c} plan={plan} />
-        ))}
-      </div>
-      <IdeaAdd placeholder="Add a goal idea (it starts in your backlog)" after={(t) => toast(`${t} added to your backlog`)} />
-    </>
-  );
 }
 
 /** The plan in one line: name (opens the plan menu), day count, a thin timeline, month and checkpoint. */
@@ -216,7 +230,7 @@ function PlanLine({ plan, today, onMenu }: { plan: Plan; today: ISODate; onMenu:
         <button
           type="button"
           onClick={onMenu}
-          aria-label={`${plan.name}: switch plan or change plan settings`}
+          aria-label={`${plan.name}: batch settings`}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, border: 0, background: 'none', padding: 0, color: 'var(--ink)', font: 'inherit', fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em', cursor: 'pointer', minWidth: 0 }}
         >
           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{plan.name}</span>
@@ -276,7 +290,7 @@ const LEVEL_SET: Record<ChainLevel, string> = { quarter: 'Set 3-month goal', mon
 const LEVEL_LONG: Record<ChainLevel, string> = { quarter: '3-month goal', month: "This month's goal", week: "This week's goal" };
 
 /** One goal: outcome, its chain, this week's progress and the one thing to do if it's behind. */
-function GoalCard({ card, plan }: { card: GoalCardData; plan: Plan }) {
+function GoalCard({ card, plan, ownClock = false }: { card: GoalCardData; plan: Plan; ownClock?: boolean }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
@@ -311,6 +325,17 @@ function GoalCard({ card, plan }: { card: GoalCardData; plan: Plan }) {
         </a>
         <span style={{ flex: 'none', fontSize: 13, fontWeight: 600, color: ink }}>{word}</span>
       </div>
+      {ownClock && (
+        <div className="own-clock" role="img" aria-label={`Own clock: day ${Math.min(planDayNumber(plan, today), planTotalDays(plan))} of ${planTotalDays(plan)}, ends ${shortDate(plan.end_date)}`}>
+          <span className="mono">
+            DAY {Math.max(1, Math.min(planDayNumber(plan, today), planTotalDays(plan)))} / {planTotalDays(plan)}
+          </span>
+          <span className="own-track" aria-hidden="true">
+            <span style={{ width: `${Math.max(2, Math.min(100, (daysBetween(plan.start_date, today) / Math.max(1, daysBetween(plan.start_date, plan.end_date))) * 100))}%` }} />
+          </span>
+          <span className="mono">ENDS {shortDate(plan.end_date).toUpperCase()}</span>
+        </div>
+      )}
 
       <div role="list" aria-label={`${goal.title} chain`} style={{ paddingLeft: 4 }}>
         {CHAIN_LEVELS.map((level) => {
@@ -408,118 +433,58 @@ function footer(view: View, data: AppData, goal: Goal, plan: Plan, today: ISODat
 }
 
 /** The one setup step left for a new plan (goals, then daily tasks, then a first check-in), or null. */
-function setupSteps(view: View, data: AppData, plan: Plan, today: ISODate): { title: string; detail: string; action: string; to: string } | null {
-  const goals = view.goalsForPlan(plan.id);
+function setupSteps(view: View, data: AppData, today: ISODate): { title: string; detail: string; action: string; to: string } | null {
+  const goals = view.activeGoals;
   if (goals.length === 0) return null; // The empty state already says this.
   const noTasks = goals.find((g) => g.type !== 'number' && view.actionsForGoal(g.id).length === 0);
   if (noTasks) return { title: `Add daily tasks for ${noTasks.title}`, detail: 'Daily tasks on the goal page land on your Today list.', action: 'Add tasks', to: `/goals/${noTasks.id}` };
   const actionIds = new Set(goals.flatMap((g) => view.actionsForGoal(g.id, true).map((a) => a.id)));
   const checkedIn = data.sessions.some((x) => x.action_id && actionIds.has(x.action_id) && x.status !== 'planned' && x.status !== 'moved');
-  if (!checkedIn && plan.start_date <= today) return { title: 'Do your first check-in', detail: 'Tick one thing off on Today. That starts your streak.', action: 'Open Today', to: '/today' };
+  const started = goals.some((g) => (view.planForGoal(g)?.start_date ?? today) <= today);
+  if (!checkedIn && started) return { title: 'Do your first check-in', detail: 'Tick one thing off on Today. That starts your streak.', action: 'Open Today', to: '/today' };
   return null;
 }
 
-/** Switch plans, start a new one, add a goal from another plan, archive. */
-function PlanMenu({ plan, onPick, onClose }: { plan: Plan | null; onPick: (id: string) => void; onClose: () => void }) {
+/** A batch's settings: its dates, finished batches, and archiving. */
+function BatchMenu({ plan, onClose }: { plan: Plan; onClose: () => void }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
-  const [creating, setCreating] = useState(false);
-  const live = data.plans.filter((p) => !p.archived_at && p.end_date >= today).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
-  const past = data.plans.filter((p) => p.archived_at || p.end_date < today);
-  const inPlan = new Set(plan ? view.goalsForPlan(plan.id).map((g) => g.id) : []);
-  const others = data.goals.filter((g) => !g.archived_at && !inPlan.has(g.id));
-  const row = { background: 'none', border: 0, borderTop: '1px solid var(--line)', width: '100%', cursor: 'pointer', font: 'inherit', color: 'inherit', textAlign: 'left' as const };
-
-  if (creating) {
-    return (
-      <Sheet title="New plan" onClose={onClose}>
-        <PlanForm onDone={onClose} />
-      </Sheet>
-    );
-  }
+  const goals = view.goalsForPlan(plan.id);
+  const past = data.plans.filter((p) => !p.solo && (p.archived_at || p.end_date < today));
   return (
-    <Sheet title="Plans" onClose={onClose}>
-      <div className="stack-sm">
-        {live.map((p) => (
-          <button
-            key={p.id}
-            className="list-row"
-            aria-current={p.id === plan?.id ? 'true' : undefined}
-            onClick={() => {
-              onPick(p.id);
-              onClose();
-            }}
-            style={row}
-          >
-            <span className="grow strong">{p.name}</span>
-            <span className="mono">
-              {shortDate(p.start_date)} – {shortDate(p.end_date)}
-            </span>
-            {p.id === plan?.id && <Icon name="check" size={16} stroke={2.6} />}
-          </button>
-        ))}
-        <button className="btn small" type="button" onClick={() => setCreating(true)}>
-          <Icon name="plus" size={16} stroke={2.4} /> New plan
-        </button>
-      </div>
-
-      {plan && others.length > 0 && (
-        <div className="stack-sm">
-          <span className="label">Add a goal from another plan</span>
-          <div className="chips">
-            {others.map((g) => (
-              <button
-                key={g.id}
-                className="chip"
-                onClick={() => {
-                  commit(opsLinkGoalToPlan(data, g.id, plan.id));
-                  toast(`${g.title} added to ${plan.name}`);
-                }}
-              >
-                + {g.title}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
+    <Sheet title={plan.name} onClose={onClose}>
+      <span className="small muted" style={{ marginTop: -8 }}>
+        Batch · {shortDate(plan.start_date)} – {shortDate(plan.end_date)} · {goals.length} goal{goals.length === 1 ? '' : 's'}
+      </span>
+      <p className="small" style={{ margin: 0, color: 'var(--ink-2)' }}>
+        Goals join a batch when you commit them from the backlog. They share its 3-month checkpoint and its reviews; one that joins part-way through simply has less time.
+      </p>
       {past.length > 0 && (
         <details>
           <summary className="label" style={{ cursor: 'pointer', minHeight: 32, display: 'flex', alignItems: 'center' }}>
-            Archived and finished · {past.length}
+            Finished and archived batches · {past.length}
           </summary>
           {past.map((p) => (
-            <button
-              key={p.id}
-              className="list-row"
-              onClick={() => {
-                onPick(p.id);
-                onClose();
-              }}
-              style={row}
-            >
+            <div key={p.id} className="list-row small">
               <span className="grow">{p.name}</span>
               <span className="mono">
                 {shortDate(p.start_date)} – {shortDate(p.end_date)}
               </span>
-            </button>
+            </div>
           ))}
         </details>
       )}
-
-      {plan && (
-        <button
-          className="btn small danger"
-          onClick={() => {
-            commit(opsArchivePlan(plan, !plan.archived_at));
-            toast(plan.archived_at ? 'Plan restored' : 'Plan archived. Its history is kept.');
-            onClose();
-          }}
-        >
-          {plan.archived_at ? `Restore ${plan.name}` : `Archive ${plan.name}`}
-        </button>
-      )}
+      <button
+        className="btn small danger"
+        onClick={() => {
+          commit(opsArchivePlan(plan, true));
+          toast(`${plan.name} archived. Its history is kept.`);
+          onClose();
+        }}
+      >
+        Archive {plan.name}
+      </button>
     </Sheet>
   );
 }

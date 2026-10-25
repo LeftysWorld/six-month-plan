@@ -99,9 +99,8 @@ export function buildDemoData(): AppData {
   data.goals = [weight, strength, guitar, splits, career, jhu, aigp, course];
   data.planGoals = [
     ...[weight, strength, guitar, splits, career, jhu, course].map((g) => ({ id: id(), plan_id: plan.id, goal_id: g.id })),
-    { id: id(), plan_id: plan2.id, goal_id: jhu.id },
+    // A second batch starting later; a goal lives in one batch at a time.
     { id: id(), plan_id: plan2.id, goal_id: aigp.id },
-    { id: id(), plan_id: plan2.id, goal_id: career.id },
   ];
   data.goalTargets = suggestPath(212.2, 182, start, end, 28).map((p) => ({
     id: id(),
@@ -350,7 +349,9 @@ export function buildDemoData(): AppData {
     week: 'Three easy runs, 20–30 minutes each',
     week_of: periods.week.start,
     task: { title: 'Easy run', days: [2, 4, 6], minutes: 30 },
-    plan_id: plan.id,
+    // Its own clock: its six months start the day it's committed.
+    clock: 'own',
+    months: 6,
     prepared_at: `${addDays(today, -1)}T12:00:00.000Z`,
   };
   return data;

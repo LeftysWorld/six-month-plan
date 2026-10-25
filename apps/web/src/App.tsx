@@ -173,7 +173,7 @@ function Shell(props: ShellProps) {
       else if (s0 === 'goals' && s1 === 'backlog') screen = <Backlog />;
       else if (s0 === 'goals' && s1 === 'completed') screen = <Completed />;
       else if (s0 === 'goals' && s1) screen = <Flow goalId={s1} />;
-      else screen = <Plans planId={s0 === 'plans' ? s1 ?? null : route.query.get('plan')} />;
+      else screen = <Plans />;
       break;
     case 'backlog':
     case 'ideas':

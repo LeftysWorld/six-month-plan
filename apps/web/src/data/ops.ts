@@ -134,7 +134,8 @@ export function opsSaveWorkout(data: AppData, sessionId: string, sets: Omit<Work
 
 // ---------- Plans ----------
 
-export function opsCreatePlan(input: { name: string; start: ISODate; end: ISODate }): { ops: Op[]; plan: Plan } {
+/** Create a batch, or (solo) a goal's own clock. `solo` is only sent when true, so older databases still work. */
+export function opsCreatePlan(input: { name: string; start: ISODate; end: ISODate; solo?: boolean }): { ops: Op[]; plan: Plan } {
   const plan: Plan = {
     id: newId(),
     name: input.name.trim(),
@@ -142,6 +143,7 @@ export function opsCreatePlan(input: { name: string; start: ISODate; end: ISODat
     end_date: input.end,
     block_days: 28,
     archived_at: null,
+    ...(input.solo ? { solo: true } : {}),
   };
   return { ops: [{ kind: 'insert', collection: 'plans', rows: rows([plan]) }], plan };
 }

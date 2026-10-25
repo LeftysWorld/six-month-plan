@@ -2,12 +2,16 @@ import { chainAt, type ISODate, type Plan, type Session } from '@six/core';
 import { fmt, type View } from './derive.ts';
 
 /** One plain sentence about what matters today: the goal furthest behind this month and what helps. */
-export function coachLine(view: View, plan: Plan | null, today: ISODate, todaySessions: Session[]): string | null {
-  if (!plan || plan.start_date > today) return null;
-  if (view.tooEarly(plan)) return 'Pace shows up after your first week. Today counts if you do one thing on the list.';
+export function coachLine(view: View, _plan: Plan | null, today: ISODate, todaySessions: Session[]): string | null {
+  // Every goal you're working on, each judged against its own batch or own clock.
+  const judged = view.activeGoals
+    .map((g) => ({ g, plan: view.planForGoal(g) }))
+    .filter((x): x is { g: typeof x.g; plan: Plan } => !!x.plan && x.plan.start_date <= today);
+  if (judged.length === 0) return null;
+  const ready = judged.filter((x) => !view.tooEarly(x.plan));
+  if (ready.length === 0) return 'Pace shows up after your first week. Today counts if you do one thing on the list.';
 
-  const month = chainAt(plan, today).month;
-  const paces = view.goalsForPlan(plan.id).map((g) => view.goalPace(g, plan, { start: month.start, end: today }));
+  const paces = ready.map(({ g, plan }) => view.goalPace(g, plan, { start: chainAt(plan, today).month.start, end: today }));
   const behind = paces
     .filter((p) => p.label === 'behind' && p.progress)
     .map((p) => ({ p, gap: p.progress!.expected - p.progress!.actual }))

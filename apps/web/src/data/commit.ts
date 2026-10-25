@@ -1,6 +1,6 @@
-import { chainAt, suggestPath, type GoalIdea, type IdeaPrep, type ISODate, type PathPoint, type Plan } from '@six/core';
+import { addDays, chainAt, clockDays, suggestPath, type GoalIdea, type IdeaPrep, type ISODate, type PathPoint, type Plan } from '@six/core';
 import type { AppData, Op } from './model.ts';
-import { opsCreateGoal } from './ops.ts';
+import { opsCreateGoal, opsCreatePlan } from './ops.ts';
 import { blankTask, opsAddTask, withOps } from './breakdown.ts';
 import { opsStartIdea } from './backlog.ts';
 import { chainFor, opsStartChain } from './chain.ts';
@@ -67,4 +67,29 @@ export function opsCommitIdea(data: AppData, idea: GoalIdea, plan: Plan, today: 
 /** The periods a goal committed to this plan today would start in (for checking the prepared notes). */
 export function startPeriods(plan: Plan, today: ISODate) {
   return chainAt(plan, today < plan.start_date ? plan.start_date : today);
+}
+
+/** The window an own clock would have if committed on `today` (not saved; used to show dates and check notes). */
+export function ownClock(title: string, months: number, today: ISODate): Plan {
+  return { id: 'own-clock', name: title, start_date: today, end_date: addDays(today, clockDays(months) - 1), block_days: 28, archived_at: null, solo: true };
+}
+
+/**
+ * Where a prepared idea would live if committed today: its own clock (a new window starting
+ * today), or the batch it was prepared for (if that batch is still running). Null when the batch
+ * it was prepared for has ended (prepare it again).
+ */
+export function commitTarget(idea: GoalIdea, plans: Plan[], today: ISODate): { plan: Plan; own: boolean } | null {
+  const prep = idea.prep ?? {};
+  if (prep.clock === 'own') return { plan: ownClock(idea.title, prep.months ?? 6, today), own: true };
+  const batch = prep.plan_id ? plans.find((p) => p.id === prep.plan_id && !p.archived_at && p.end_date >= today) : undefined;
+  return batch ? { plan: batch, own: false } : null;
+}
+
+/** Commit to an own clock: create the goal's own window starting today, then the goal in it. */
+export function opsCommitOwnClock(data: AppData, idea: GoalIdea, months: number, today: ISODate, color: string): { ops: Op[]; goalId: string; plan: Plan } {
+  const { ops: planOps, plan } = opsCreatePlan({ name: idea.title, start: today, end: addDays(today, clockDays(months) - 1), solo: true });
+  const next = withOps(data, planOps);
+  const { ops, goalId } = opsCommitIdea(next, idea, plan, today, color);
+  return { ops: [...planOps, ...ops], goalId, plan };
 }

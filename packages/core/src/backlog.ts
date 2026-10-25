@@ -70,29 +70,45 @@ export function ageInDays(idea: Pick<GoalIdea, 'created_at'>, now: Date = new Da
   return Math.max(0, Math.floor((now.getTime() - Date.parse(idea.created_at)) / 864e5));
 }
 
-export type PrepGap = 'quarter' | 'month' | 'week' | 'task' | 'target';
+export type PrepGap = 'goal' | 'quarter' | 'month' | 'week' | 'task' | 'target' | 'timing';
+
+/** Days in an own clock of `months` months (3 → 13 weeks, 6 → 26 weeks). */
+export function clockDays(months: number): number {
+  return months <= 3 ? 91 : months * 30 + Math.floor(months / 2);
+}
 
 /**
  * What a selected idea still needs before it can be committed (the entry policy for goals):
- * its 3-month, month and week goals, written for the periods it would start in, a daily task
- * with its days, and for "reach a number" a target and date. A note written for a week (or
- * month, or 3 months) that has passed counts as missing: it needs a fresh look.
+ * the goal itself (what done looks like), its 3-month goal (unless the whole goal is 3 months
+ * or less), month and week goals, a daily task with its days, a target and date for "reach a
+ * number", and its timing (own clock or a batch).
+ * Joining a batch, a note written for a period of the batch that has since passed counts as
+ * missing. On its own clock the notes are for its first 3 months, month and week, so they
+ * don't go stale.
  */
-export function prepGaps(prep: IdeaPrep | undefined, periods: { quarter: { start: ISODate }; month: { start: ISODate }; week: { start: ISODate } }): PrepGap[] {
+export function prepGaps(
+  prep: IdeaPrep | undefined,
+  periods: { quarter: { start: ISODate }; month: { start: ISODate }; week: { start: ISODate } },
+  opts: { doneMeans?: string; horizonDays?: number } = {},
+): PrepGap[] {
   const p = prep ?? {};
   const gaps: PrepGap[] = [];
-  for (const level of ['quarter', 'month', 'week'] as const) {
+  if (opts.doneMeans !== undefined && !opts.doneMeans.trim()) gaps.push('goal');
+  const own = p.clock === 'own';
+  const levels = (opts.horizonDays ?? 999) <= 98 ? (['month', 'week'] as const) : (['quarter', 'month', 'week'] as const);
+  for (const level of levels) {
     const note = (p[level] ?? '').trim();
-    if (!note || p[`${level}_of`] !== periods[level].start) gaps.push(level);
+    if (!note || (!own && p[`${level}_of`] !== periods[level].start)) gaps.push(level);
   }
   if (!p.task || !p.task.title.trim() || p.task.days.length === 0 || !(p.task.minutes > 0)) gaps.push('task');
   if (p.type === 'number' && (p.target == null || !p.target_date)) gaps.push('target');
+  if (!p.clock || (p.clock === 'batch' && !p.plan_id)) gaps.push('timing');
   return gaps;
 }
 
 /** Was this note written for an earlier period (rather than never written)? */
 export function isStale(prep: IdeaPrep | undefined, level: 'quarter' | 'month' | 'week', periodStart: ISODate): boolean {
-  return !!prep?.[level]?.trim() && prep[`${level}_of`] !== periodStart;
+  return prep?.clock !== 'own' && !!prep?.[level]?.trim() && prep[`${level}_of`] !== periodStart;
 }
 
 /**

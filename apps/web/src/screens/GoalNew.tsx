@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { addDays, chainAt, isStale, prepGaps, shortDate, suggestPath, valueOnPath, type GoalType, type IdeaPrep, type PathPoint } from '@six/core';
+import { addDays, chainAt, clockDays, daysBetween, isStale, prepGaps, shortDate, suggestPath, valueOnPath, type GoalType, type IdeaPrep, type PathPoint } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView } from '../data/derive.ts';
 import { href, navigate } from '../router.ts';
-import { opsSavePrep } from '../data/commit.ts';
+import { opsSavePrep, ownClock } from '../data/commit.ts';
 import { BackLink, Empty, GOAL_COLORS, Icon, NumberInput, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
 
@@ -47,10 +47,18 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
   const toast = useToast();
   const idea = data.ideas.find((i) => i.id === ideaId)!;
   const prep: IdeaPrep = idea.prep ?? {};
-  const live = data.plans.filter((p) => !p.archived_at && p.end_date >= today).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
-  const [planId, setPlanId] = useState<string | null>(prep.plan_id && live.some((p) => p.id === prep.plan_id) ? prep.plan_id : view.mainPlan?.id ?? live[0]?.id ?? null);
-  const plan = (planId && view.plan(planId)) || view.mainPlan;
-  const existing = plan ? view.goalsForPlan(plan.id) : [];
+  // Timing: its own clock (starts the day it's committed, 3 or 6 months) or a batch it joins.
+  const batches = view.batches;
+  const [clock, setClock] = useState<'own' | 'batch'>(prep.clock ?? (batches.length ? 'batch' : 'own'));
+  const [months, setMonths] = useState<number>(prep.months ?? 6);
+  const [planId, setPlanId] = useState<string | null>(prep.plan_id && batches.some((p) => p.id === prep.plan_id) ? prep.plan_id : batches[0]?.id ?? null);
+  const batch = (clock === 'batch' && planId && batches.find((p) => p.id === planId)) || null;
+  const own = clock === 'own' || !batch;
+  // The window this goal would have if committed today (an own clock isn't saved until then).
+  const plan = useMemo(() => (own ? ownClock(idea.title, months, today) : batch!), [own, idea.title, months, today, batch]);
+  const horizon = daysBetween(today < plan.start_date ? plan.start_date : today, plan.end_date) + 1;
+  const short = horizon <= 98;
+  const existing = own ? [] : view.goalsForPlan(plan.id);
 
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState(idea.title);
@@ -90,7 +98,6 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
   const startPoint = baseline != null ? { date: startDate, value: baseline } : null;
   const targetAt = (d: string) => (type === 'number' && startPoint && path.length ? fmt(valueOnPath(startPoint, path, d)) : null);
 
-  if (!plan) return <Empty title="Create a plan first." />;
 
   const firstMilestone = (from: string, to: string) => milestones.find((m) => m.title.trim() && m.due_date >= from && m.due_date <= to)?.title.trim();
   const defaults = () => {
@@ -109,11 +116,14 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
   // Only what the person types: no made-up "Work on …" task.
   const firstTask = taskTitle;
 
-  // Entry requirements for committing: its 3-month, month and first-week goals, and a daily task.
+  // Entry requirements for committing: the goal itself, its 3-month (unless it's 3 months or less),
+  // month and first-week goals, and a daily task.
+  const goalWord = short ? `${Math.max(1, Math.round(horizon / 30))}-month goal` : horizon >= 175 ? '6-month goal' : `${Math.round(horizon / 30)}-month goal`;
   const ready = [
-    { key: 'quarter', label: '3-month goal', ok: !!chainNotes.quarter.trim() },
-    { key: 'month', label: 'This month’s goal', ok: !!chainNotes.month.trim() },
-    { key: 'week', label: 'This week’s goal', ok: !!chainNotes.week.trim() },
+    { key: 'goal', label: `The ${goalWord} (what done looks like)`, ok: !!doneMeans.trim() },
+    ...(short ? [] : [{ key: 'quarter', label: own ? 'First 3 months' : '3-month goal', ok: !!chainNotes.quarter.trim() }]),
+    { key: 'month', label: own ? 'First month' : 'This month’s goal', ok: !!chainNotes.month.trim() },
+    { key: 'week', label: own ? 'First week' : 'This week’s goal', ok: !!chainNotes.week.trim() },
     { key: 'task', label: 'A daily task with its days', ok: !!firstTask.trim() && taskDays.length > 0 && taskMinutes > 0 },
   ];
   const isReady = ready.every((r) => r.ok);
@@ -124,7 +134,7 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
 
   /** Save the prepared plan on the idea and go back to the backlog. Nothing is committed. */
   function savePlan() {
-    if (!plan || !periods) return;
+    if (!periods) return;
     const next: IdeaPrep = {
       type,
       unit,
@@ -141,14 +151,16 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
       month_of: periods.month.start,
       week_of: periods.week.start,
       task: { title: firstTask.trim(), days: taskDays, minutes: taskMinutes },
-      plan_id: plan.id,
+      clock: own ? 'own' : 'batch',
+      months: own ? months : undefined,
+      plan_id: own ? undefined : plan.id,
     };
     const ops = opsSavePrep(idea, next, title);
     const patch = ops[0]!.kind === 'update' ? (ops[0] as { patch: Record<string, unknown> }).patch : {};
     if (why.trim() !== idea.note) patch.note = why.trim();
     if (doneMeans.trim() !== (idea.done_means ?? '')) patch.done_means = doneMeans.trim();
     commit(ops);
-    const left = prepGaps(next, periods).length;
+    const left = prepGaps(next, periods, { doneMeans, horizonDays: horizon }).length;
     toast(left ? `Plan saved. ${left} more to do before you can commit.` : 'Plan saved. Commit it from the backlog when you’re ready.');
     navigate('/goals/backlog');
   }
@@ -169,7 +181,7 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
 
       {step === 1 && (
         <div className="stack">
-          <h1>What do you want to be true in six months?</h1>
+          <h1>What do you want to be true?</h1>
           <span className="pill none" style={{ alignSelf: 'flex-start' }}>Preparing a selected idea · nothing is committed until you say so</span>
           <label className="field">
             Goal
@@ -183,18 +195,47 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
               </button>
             ))}
           </div>
-          {live.length > 1 && (
-            <label className="field">
-              For which plan?
-              <select value={plan.id} onChange={(e) => setPlanId(e.target.value)}>
-                {live.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} · {shortDate(p.start_date)} – {shortDate(p.end_date)}
-                  </option>
+          <div className="stack-sm" role="group" aria-label="Timing">
+            <span className="label">Timing</span>
+            <div className="grid-2">
+              <button type="button" className="choice" aria-pressed={own} onClick={() => setClock('own')}>
+                <b>Its own clock</b>
+                <span>Starts the day you commit. Not tied to a batch.</span>
+              </button>
+              <button type="button" className="choice" aria-pressed={!own} disabled={batches.length === 0} onClick={() => setClock('batch')}>
+                <b>Join a batch</b>
+                <span>{batches.length ? 'Shares checkpoints with other goals. Can be less than 6 months.' : 'No batch yet. Create one on the Goals page.'}</span>
+              </button>
+            </div>
+            {own ? (
+              <div className="seg" role="group" aria-label="How long">
+                {[3, 6].map((m) => (
+                  <button key={m} type="button" aria-pressed={months === m} onClick={() => setMonths(m)}>
+                    {m} months
+                  </button>
                 ))}
-              </select>
-            </label>
-          )}
+              </div>
+            ) : (
+              <label className="field">
+                Which batch?
+                <select value={plan.id} onChange={(e) => setPlanId(e.target.value)}>
+                  {batches.map((p) => {
+                    const left = daysBetween(today < p.start_date ? p.start_date : today, p.end_date) + 1;
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.name} · {p.start_date > today ? `starts ${shortDate(p.start_date)}` : `${Math.round(left / 7)} weeks left`} · ends {shortDate(p.end_date)}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            )}
+            <span className="xsmall muted">
+              {own
+                ? `If you commit today it runs ${shortDate(plan.start_date)} – ${shortDate(plan.end_date)} (${months} months). Nothing starts until you commit.`
+                : `It would run until ${shortDate(plan.end_date)}: about ${Math.max(1, Math.round(horizon / 7))} weeks${horizon < clockDays(6) - 7 ? ', less than six months, and that’s fine' : ''}.`}
+            </span>
+          </div>
           {existing.length >= 3 && (
             <div className="banner warn">{plan.name} already has {existing.length} goals. Most people stick with 3–4 at first.</div>
           )}
@@ -319,10 +360,6 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
             Why this matters (one line)
             <input value={why} onChange={(e) => setWhy(e.target.value)} placeholder="e.g. Play for myself at the end of the day" />
           </label>
-          <label className="field">
-            How will you know you made it?
-            <input value={doneMeans} onChange={(e) => setDoneMeans(e.target.value)} placeholder="e.g. 3 songs recorded start to finish" />
-          </label>
           <div className="btn-row">
             <button className="btn" onClick={() => setStep(1)}>
               Back
@@ -338,25 +375,41 @@ function GoalPrepare({ ideaId }: { ideaId: string }) {
         <div className="stack">
           <h1>Prepare to commit</h1>
           <p className="muted small" style={{ margin: 0 }}>
-            Write what should be true in 3 months, this month and this week, and what you'll do each day. Saving keeps this plan on the idea; you commit it from the backlog when you're ready.
+            Write what done looks like, what should be true along the way, and what you'll do each day. Saving keeps this on the idea; you commit it from the backlog when you're ready.
           </p>
           <div className="card stack">
             <div className="row-between">
-              <span className="label">6 months</span>
+              <span className="label">{own ? `Own clock · ${months} months` : plan.name}</span>
               <span className="mono" style={{ fontSize: 10 }}>
-                {shortDate(plan.start_date)} – {shortDate(plan.end_date)}
+                {own ? `IF COMMITTED TODAY · ${shortDate(plan.start_date)} – ${shortDate(plan.end_date)}` : `${shortDate(today < plan.start_date ? plan.start_date : today)} – ${shortDate(plan.end_date)}`}
               </span>
             </div>
             <b style={{ fontSize: 16 }}>
               {title.trim()}
               {type === 'number' && target != null ? ` · ${baseline != null ? `${fmt(baseline)} → ` : ''}${fmt(target)} ${unit}` : ''}
             </b>
-            {(['quarter', 'month', 'week'] as const).map((level) => {
+            <label className="field">
+              The {goalWord}: what done looks like · by {shortDate(plan.end_date)}
+              <input value={doneMeans} onChange={(e) => setDoneMeans(e.target.value)} placeholder="e.g. 3 songs recorded start to finish" />
+            </label>
+            {(short ? (['month', 'week'] as const) : (['quarter', 'month', 'week'] as const)).map((level) => {
               const node = periods[level];
               const t = targetAt(node.end);
               return (
                 <label key={level} className="field">
-                  {level === 'quarter' ? `${node.title}` : level === 'month' ? `This month (${node.title})` : `This week (${node.title})`} · by {shortDate(node.end)}
+                  {own
+                    ? level === 'quarter'
+                      ? 'First 3 months'
+                      : level === 'month'
+                        ? 'First month'
+                        : 'First week'
+                    : level === 'quarter'
+                      ? `${node.title}`
+                      : level === 'month'
+                        ? `This month (${node.title})`
+                        : `This week (${node.title})`}{' '}
+                  · by {shortDate(node.end)}
+                  {own ? ' if committed today' : ''}
                   {t ? ` · target ${t} ${unit}` : ''}
                   <input
                     value={chainNotes[level]}

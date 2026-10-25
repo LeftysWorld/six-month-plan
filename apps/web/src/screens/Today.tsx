@@ -7,7 +7,6 @@ import { checkInStreak, dismissRitual, ritualDue, type Streak } from '../data/ha
 import { parseQuickAdd } from '../data/parse.ts';
 import { blankTask, opsAddTask, withOps } from '../data/breakdown.ts';
 import { chainFor, opsEnsureStep, stepFor } from '../data/chain.ts';
-import { PlanForm } from './Plans.tsx';
 import { opsAddOneOff, opsLogSession, opsLogUnplanned, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
 import { href, navigate } from '../router.ts';
 import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
@@ -154,7 +153,8 @@ export function Today() {
     </div>
   );
 
-  if (!plan) {
+  // Nothing committed and nothing on the list yet: point to the backlog (goals start there).
+  if (view.activeGoals.length === 0 && sessions.length === 0) {
     return (
       <div className="stack rise">
         <div className="topbar">
@@ -165,12 +165,14 @@ export function Today() {
         </div>
         <h1 style={{ fontSize: 44 }}>Today</h1>
         <div className="card dark stack-sm">
-          <h2>Start with one plan and one goal.</h2>
+          <h2>Start in your backlog.</h2>
           <p className="muted small" style={{ margin: 0 }}>
-            Six months from today, what do you want to be true? Add one goal now; add the rest over your first week.
+            Write down goals you might want, select the ones that matter most, prepare one, and commit to it. Its daily tasks show up here.
           </p>
+          <a className="btn primary" href={href('/goals/backlog')}>
+            Open the backlog
+          </a>
         </div>
-        <PlanForm />
       </div>
     );
   }
@@ -646,8 +648,7 @@ export function QuickAdd({ date, onClose }: { date: ISODate; onClose: () => void
   const [actionId, setActionId] = useState(actions[0]?.id ?? '');
   const [logMinutes, setLogMinutes] = useState(20);
 
-  const plan = view.mainPlan;
-  const goals = plan ? view.goalsForPlan(plan.id) : [];
+  const goals = view.activeGoals;
   const parsed = parseQuickAdd(text, today);
   const target = parsed.date ?? date;
   const dayWord = target === today ? 'today' : weekdayName(target);
@@ -666,6 +667,7 @@ export function QuickAdd({ date, onClose }: { date: ISODate; onClose: () => void
 
   function add() {
     if (!canAdd) return;
+    const plan = goal ? view.planForGoal(goal) : null;
     if (goal && plan) {
       const chain = chainFor(data, goal, plan, target < plan.start_date ? plan.start_date : target);
       const week = stepFor(goal, plan, chain, 'week');

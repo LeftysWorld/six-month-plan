@@ -57,10 +57,14 @@ export function dueLabel(target: { overdue: boolean; done: boolean }, today: ISO
   return dow === 7 ? 'Due today' : dow === 6 ? 'Due tomorrow' : 'Due Sunday';
 }
 
+/** A batch's month or 3-month review is named after the batch when more than one window is running. */
+let manyWindows = false;
+const batchName = (s: PeriodReviewSlot) => (manyWindows ? `${s.plan.name}: ` : '');
+
 const KIND_TITLE: Record<Review['kind'], string> = { weekly: 'Week', block: 'Month', quarter: '3-month', retro: 'Retrospective' };
 const SLOT_COPY: Record<PeriodReviewSlot['kind'], { tag: string; name: (s: PeriodReviewSlot) => string; detail: string; minutes: number; color: string; ink: string }> = {
-  block: { tag: 'M', name: (s) => `${s.title} review`, detail: "How the month went, then set next month's goals", minutes: 15, color: 'var(--accent-soft)', ink: 'var(--accent-ink)' },
-  quarter: { tag: '3M', name: () => '3-month checkpoint', detail: 'Keep, adjust or drop each goal, then set the next 3 months', minutes: 25, color: 'var(--blue-soft)', ink: 'var(--blue-ink)' },
+  block: { tag: 'M', name: (s) => `${s.plan.solo ? `${s.plan.name}: ` : batchName(s)}${s.title} review`, detail: "How the month went, then set next month's goals", minutes: 15, color: 'var(--accent-soft)', ink: 'var(--accent-ink)' },
+  quarter: { tag: '3M', name: (s) => `${s.plan.solo ? `${s.plan.name}: ` : batchName(s)}3-month checkpoint`, detail: 'Keep, adjust or drop each goal, then set the next 3 months', minutes: 25, color: 'var(--blue-soft)', ink: 'var(--blue-ink)' },
   retro: { tag: '6M', name: (s) => `${s.plan.name}: retrospective`, detail: 'What worked, what carries over, and your next plan', minutes: 30, color: 'var(--gold-soft)', ink: 'var(--gold-ink)' },
 };
 
@@ -79,21 +83,25 @@ export function reviewTitle(r: Review): string {
 export function ReviewHub() {
   const { data, today } = useStore();
   const view = useView();
-  const plan = view.mainPlan;
-  const started = !!plan && plan.start_date <= today;
+  // Every goal you're working on, across batches and own clocks. Trends start from the earliest
+  // window that has started.
+  const goals = view.activeGoals;
+  const running = view.livePlans.filter((p) => p.start_date <= today && view.goalsForPlan(p.id).length > 0);
+  const plan = running[0] ?? null;
+  const started = !!plan;
   const target = weekToReview(data, today);
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
-  const goals = plan ? view.goalsForPlan(plan.id) : [];
   const commitment = currentCommitment(data.reviews, today);
   const past = [...data.reviews].filter((r) => r.status === 'done').sort((a, b) => (a.period_end < b.period_end ? 1 : a.period_end > b.period_end ? -1 : a.kind === 'weekly' ? 1 : -1));
 
   // Month, 3-month and plan reviews: open (or missed) ones are cards; only the next upcoming one is shown.
   const slots: PeriodReviewSlot[] = [];
-  if (plan && started) slots.push(...periodReviewSlots(plan, data.reviews, today));
-  for (const p of data.plans.filter((x) => !x.archived_at && x.start_date <= today && x.end_date >= addDays(today, -60))) {
+  for (const p of running) slots.push(...periodReviewSlots(p, data.reviews, today));
+  for (const p of data.plans.filter((x) => !x.archived_at && x.start_date <= today && x.end_date >= addDays(today, -60) && view.goalsForPlan(x.id, true).length > 0)) {
     const r = retroSlot(p, data.reviews, today);
-    if (r && (r.state !== 'upcoming' || p.id === plan?.id)) slots.push(r);
+    if (r) slots.push(r);
   }
+  manyWindows = running.length > 1;
   const open = slots.filter((s) => s.state !== 'upcoming');
   const nextUp = slots.filter((s) => s.state === 'upcoming').sort((a, b) => (a.opensOn < b.opensOn ? -1 : 1))[0];
   const insights = plan && started ? hubInsights(data, plan, today, !target.done) : null;
@@ -164,12 +172,14 @@ export function ReviewHub() {
 function WeeklyCard({ target }: { target: ReturnType<typeof weekToReview> }) {
   const { data, today } = useStore();
   const view = useView();
-  const plan = view.mainPlan;
+  const goals = view.activeGoals;
+  const running = view.livePlans.filter((p) => p.start_date <= today && view.goalsForPlan(p.id).length > 0);
+  const plan = running[0] ?? null;
   const end = addDays(target.monday, 6);
-  const label = plan && plan.start_date <= target.monday ? `Week ${planWeekNumber(plan, end)} review` : `Review of ${shortDate(target.monday)}`;
+  // "Week 3 review" when everything runs in one window; otherwise just the week's dates.
+  const label = running.length === 1 && plan!.start_date <= target.monday ? `Week ${planWeekNumber(plan!, end)} review` : 'Weekly review';
   const due = view.measurementsDue(end);
-  const goals = plan ? view.goalsForPlan(plan.id) : [];
-  const count = plan && plan.start_date <= today ? weeklyReviewCount(plan, data.reviews, today) : null;
+  const count = plan ? weeklyReviewCount(plan, data.reviews, today) : null;
 
   if (target.done) {
     const nextMonday = addDays(target.monday, 7);

@@ -75,6 +75,30 @@ export class View {
     return this.data.plans.find((p) => p.id === id);
   }
 
+  /** Plans that haven't ended or been archived (batches and own clocks), earliest first. */
+  get livePlans(): Plan[] {
+    return this.data.plans.filter((p) => !p.archived_at && p.end_date >= this.today).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+  }
+
+  /** Batches a goal can join: live, shared plans (not a goal's own clock). */
+  get batches(): Plan[] {
+    return this.livePlans.filter((p) => !p.solo);
+  }
+
+  /** The plan a goal runs in now: its live plan (earliest start), else the last one it was in. */
+  planForGoal(goal: Goal): Plan | null {
+    const plans = this.plansForGoal(goal.id).filter((p) => !p.archived_at);
+    const live = plans.filter((p) => p.end_date >= this.today).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+    return live[0] ?? plans.sort((a, b) => (a.end_date < b.end_date ? 1 : -1))[0] ?? null;
+  }
+
+  /** Goals you're working on across every live batch and own clock (not archived or completed). */
+  get activeGoals(): Goal[] {
+    const live = new Set(this.livePlans.map((p) => p.id));
+    const ids = new Set(this.data.planGoals.filter((pg) => live.has(pg.plan_id)).map((pg) => pg.goal_id));
+    return this.data.goals.filter((g) => ids.has(g.id) && !g.archived_at && !g.completed_at);
+  }
+
   goal(id: string): Goal | undefined {
     return this.data.goals.find((g) => g.id === id);
   }

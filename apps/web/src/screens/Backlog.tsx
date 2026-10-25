@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type PointerEvent as React
 import {
   ageInDays,
   column,
+  daysBetween,
   hasRoom,
   prepGaps,
   quarterRange,
@@ -17,7 +18,8 @@ import {
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/derive.ts';
 import { opsAddIdea, opsDeleteIdea, opsEditIdea, opsMoveIdea, opsRestoreIdea, opsSetStatus } from '../data/backlog.ts';
-import { opsCommitIdea, startPeriods } from '../data/commit.ts';
+import { commitTarget, opsCommitIdea, opsCommitOwnClock, startPeriods } from '../data/commit.ts';
+import { withOps } from '../data/breakdown.ts';
 import type { Op } from '../data/model.ts';
 import { href, navigate } from '../router.ts';
 import { GOAL_COLORS, Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
@@ -26,8 +28,7 @@ import { GOAL_COLORS, Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components
 export function GoalsSwitch({ current }: { current: 'backlog' | 'goals' | 'completed' }) {
   const { data } = useStore();
   const view = useView();
-  const plan = view.mainPlan;
-  const goals = plan ? view.goalsForPlan(plan.id).length : data.goals.filter((g) => !g.archived_at && !g.completed_at).length;
+  const goals = view.activeGoals.length;
   const waiting = data.ideas.filter((i) => i.status === 'backlog' || i.status === 'selected').length;
   const done = data.goals.filter((g) => g.completed_at && !g.archived_at).length;
   const tab = (key: typeof current, to: string, label: string, count: number) => (
@@ -105,11 +106,15 @@ export function Backlog() {
   const [askFor, setAskFor] = useState<string | null>(null);
   const [committing, setCommitting] = useState<string | null>(null);
 
-  // ---- Drag and drop (pointer events, so it works with a mouse, a finger or a pen) ----
-  // While dragging, the window listens (not the handle): the list re-renders under the pointer,
-  // and a handle-level capture would be lost when React moves rows around.
+  // ---- Drag and drop: drag a card with a mouse (after a few pixels), or press and hold it on
+  // a touch screen (so ordinary scrolling still works), or grab the number to drag at once.
+  // While dragging, the window listens: the list re-renders under the pointer.
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [selecting, setSelecting] = useState<{ id: string; rank?: number } | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const pendingRef = useRef<{ idea: GoalIdea; x: number; y: number; touch: boolean; timer: number | null } | null>(null);
+  const listenersRef = useRef<(() => void) | null>(null);
+  const suppressClick = useRef(false);
   const dataRef = useRef(data);
   dataRef.current = data;
   const targetFor = (x: number, y: number, id: string): DragState['target'] => {
@@ -138,63 +143,101 @@ export function Backlog() {
         toast(`Selected is full (${SELECTED_LIMIT}). Send one back first.`);
         return;
       }
-      if (readinessGaps(idea).length) {
-        setAskFor(idea.id);
-        toast('Add why it matters and what done looks like, then select it.');
-        return;
-      }
-      commit([{ kind: 'update', collection: 'ideas', id: idea.id, patch: { status: 'selected', rank, selected_at: new Date().toISOString() } }]);
-      toast(`${idea.title} selected for next commitment`, () => commit(opsRestoreIdea(idea)));
+      // Moving into Selected always shows why (and asks for it if it's missing).
+      setSelecting({ id: idea.id, rank });
       return;
     }
     commit([{ kind: 'update', collection: 'ideas', id: idea.id, patch: { status: 'backlog', rank, selected_at: null } }]);
     toast(`${idea.title} back in the backlog`, () => commit(opsRestoreIdea(idea)));
   };
-  const dragging = drag != null;
-  useEffect(() => {
-    if (!dragging) return;
-    const move = (e: PointerEvent) => {
+  const finish = () => {
+    if (pendingRef.current?.timer) window.clearTimeout(pendingRef.current.timer);
+    pendingRef.current = null;
+    listenersRef.current?.();
+    listenersRef.current = null;
+  };
+  const begin = (idea: GoalIdea, x: number, y: number) => {
+    const d: DragState = { id: idea.id, title: idea.title, from: idea.status as Col, x, y, target: targetFor(x, y, idea.id) };
+    dragRef.current = d;
+    suppressClick.current = true;
+    setDrag(d);
+    try {
+      navigator.vibrate?.(8);
+    } catch {
+      /* no vibration */
+    }
+  };
+  const dragStart = (e: ReactPointerEvent<HTMLElement>, idea: GoalIdea, immediate = false) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    finish();
+    const touch = e.pointerType !== 'mouse';
+    const pending = { idea, x: e.clientX, y: e.clientY, touch, timer: null as number | null };
+    pendingRef.current = pending;
+    suppressClick.current = false;
+    if (immediate) begin(idea, e.clientX, e.clientY);
+    else if (touch) pending.timer = window.setTimeout(() => pendingRef.current === pending && begin(idea, pending.x, pending.y), 320);
+    const move = (ev: PointerEvent) => {
+      const p = pendingRef.current;
+      if (!dragRef.current && p) {
+        const dist = Math.hypot(ev.clientX - p.x, ev.clientY - p.y);
+        if (p.touch) {
+          if (dist > 10) finish(); // the finger is scrolling, not dragging
+          return;
+        }
+        if (dist < 6) return;
+        begin(p.idea, ev.clientX, ev.clientY);
+      }
       const d = dragRef.current;
       if (!d) return;
-      e.preventDefault();
+      ev.preventDefault();
       window.getSelection()?.removeAllRanges();
       const edge = 72;
-      if (e.clientY < edge) window.scrollBy(0, -12);
-      else if (e.clientY > window.innerHeight - edge) window.scrollBy(0, 12);
-      const next = { ...d, x: e.clientX, y: e.clientY, target: targetFor(e.clientX, e.clientY, d.id) };
+      if (ev.clientY < edge) window.scrollBy(0, -12);
+      else if (ev.clientY > window.innerHeight - edge) window.scrollBy(0, 12);
+      const next = { ...d, x: ev.clientX, y: ev.clientY, target: targetFor(ev.clientX, ev.clientY, d.id) };
       dragRef.current = next;
       setDrag(next);
     };
     const up = () => {
       const d = dragRef.current;
       dragRef.current = null;
+      finish();
       setDrag(null);
       if (d) drop(d);
     };
     const cancel = () => {
       dragRef.current = null;
+      finish();
       setDrag(null);
     };
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && cancel();
+    const touchMove = (ev: TouchEvent) => {
+      if (dragRef.current) ev.preventDefault();
+    };
+    const key = (ev: KeyboardEvent) => ev.key === 'Escape' && cancel();
+    const menu = (ev: Event) => pendingRef.current?.touch && ev.preventDefault();
     window.addEventListener('pointermove', move, { passive: false });
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', cancel);
+    window.addEventListener('touchmove', touchMove, { passive: false });
     window.addEventListener('keydown', key);
-    return () => {
+    window.addEventListener('contextmenu', menu);
+    listenersRef.current = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('touchmove', touchMove);
       window.removeEventListener('keydown', key);
+      window.removeEventListener('contextmenu', menu);
     };
-  }, [dragging]); // eslint-disable-line react-hooks/exhaustive-deps
-  const dragStart = (e: ReactPointerEvent<HTMLElement>, idea: GoalIdea) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const d: DragState = { id: idea.id, title: idea.title, from: idea.status as Col, x: e.clientX, y: e.clientY, target: null };
-    dragRef.current = d;
-    setDrag(d);
   };
-  const dnd = { drag, dragStart };
+  useEffect(() => () => listenersRef.current?.(), []);
+  /** True (once) right after a drag, so the click that ends it doesn't also open the card. */
+  const consumeClick = () => {
+    const was = suppressClick.current;
+    suppressClick.current = false;
+    return was;
+  };
+  const dnd = { drag, dragStart, consumeClick, onSelect: (idea: GoalIdea) => setSelecting({ id: idea.id }) };
 
   const list = (col: Col, ideas: GoalIdea[]) => {
     const t = drag?.target?.col === col ? drag.target.index : null;
@@ -222,6 +265,7 @@ export function Backlog() {
   };
 
   const committingIdea = committing ? data.ideas.find((i) => i.id === committing && i.status === 'selected') : undefined;
+  const selectingIdea = selecting ? data.ideas.find((i) => i.id === selecting.id && i.status === 'backlog') : undefined;
 
   return (
     <div className={`stack rise${drag ? ' is-dragging' : ''}`}>
@@ -269,7 +313,7 @@ export function Backlog() {
               <b>To enter</b> Why it matters and what done looks like. Up to {SELECTED_LIMIT}.
             </span>
             <span>
-              <b>To commit</b> Prepare its 3-month, month and first-week goals and a daily task.
+              <b>To commit</b> Prepare its timing, what done looks like, the goals along the way and a daily task.
             </span>
           </div>
         </section>
@@ -288,7 +332,7 @@ export function Backlog() {
           ) : (
             <ol className="idea-list">{list('backlog', backlog)}</ol>
           )}
-          {backlog.length > 0 && <p className="xsmall muted" style={{ margin: 0 }}>New ideas go to the bottom. Drag by the number, or use the arrows, to reorder.</p>}
+          {backlog.length > 0 && <p className="xsmall muted" style={{ margin: 0 }}>New ideas go to the bottom. Drag a card (press and hold on a phone), or use the arrows.</p>}
           {backlog.length > 12 && (
             <p className="xsmall" style={{ margin: 0, color: 'var(--amber-ink)' }}>
               A long backlog goes stale. Discard what you wouldn't start in the next six months.
@@ -357,25 +401,32 @@ export function Backlog() {
         </div>
       )}
       {committingIdea && <CommitSheet idea={committingIdea} onClose={() => setCommitting(null)} />}
+      {selectingIdea && <SelectSheet idea={selectingIdea} rank={selecting?.rank} onClose={() => setSelecting(null)} />}
     </div>
   );
 }
 
 const GAP_WORD = { why: 'why it matters', done: 'what done looks like' } as const;
-const PREP_WORD: Record<PrepGap, string> = { quarter: '3-month goal', month: 'month goal', week: 'week goal', task: 'daily task', target: 'target' };
+const PREP_WORD: Record<PrepGap, string> = { goal: 'what done looks like', quarter: '3-month goal', month: 'month goal', week: 'week goal', task: 'daily task', target: 'target', timing: 'timing' };
 
-/** The plan a selected idea is prepared for (or would be): the one it was prepared for, else the main plan. */
-function prepPlan(idea: GoalIdea, plans: Plan[], fallback: Plan | null, today: string): Plan | null {
-  const p = idea.prep?.plan_id ? plans.find((x) => x.id === idea.prep!.plan_id && !x.archived_at && x.end_date >= today) : undefined;
-  return p ?? fallback;
+/** Where a selected idea stands: where it would go if committed today, and what it still needs. */
+function prepStatus(idea: GoalIdea, plans: Plan[], today: string) {
+  const prepared = !!idea.prep?.prepared_at;
+  const target = commitTarget(idea, plans, today);
+  if (!target) return { prepared, target: null, missing: ['timing'] as PrepGap[] };
+  const horizon = daysBetween(today < target.plan.start_date ? target.plan.start_date : today, target.plan.end_date) + 1;
+  const missing = prepGaps(idea.prep, startPeriods(target.plan, today), { doneMeans: idea.done_means ?? '', horizonDays: horizon });
+  return { prepared, target, missing, horizon };
 }
 
 interface Dnd {
   drag: DragState | null;
-  dragStart: (e: ReactPointerEvent<HTMLElement>, idea: GoalIdea) => void;
+  dragStart: (e: ReactPointerEvent<HTMLElement>, idea: GoalIdea, immediate?: boolean) => void;
+  consumeClick: () => boolean;
+  onSelect: (idea: GoalIdea) => void;
 }
 
-/** One idea: its place (drag handle), title, why, readiness, move up/down, and the next step you choose. */
+/** One idea: its place, title, why and readiness, move up/down, and the next step you choose. */
 function IdeaRow({
   idea,
   index,
@@ -396,26 +447,20 @@ function IdeaRow({
   dnd: Dnd;
 }) {
   const { data, today, commit } = useStore();
-  const view = useView();
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [asked, setAsked] = useState(false);
   const [title, setTitle] = useState(idea.title);
   const [note, setNote] = useState(idea.note);
   const [done, setDone] = useState(idea.done_means ?? '');
   const isSelected = idea.status === 'selected';
   const age = ageInDays(idea);
   const gaps = readinessGaps(idea);
-  const draftGaps = readinessGaps({ note, done_means: done });
-  const plan = isSelected ? prepPlan(idea, data.plans, view.mainPlan, today) : null;
-  const prepared = !!idea.prep?.prepared_at;
-  const prepMissing = plan ? prepGaps(idea.prep, startPeriods(plan, today)) : [];
-  const staleOnly = prepared && prepMissing.length > 0 && prepMissing.every((g) => g !== 'task' && g !== 'target' && !!idea.prep?.[g]?.trim());
+  const status = isSelected ? prepStatus(idea, data.plans, today) : null;
+  const canCommit = !!status && status.prepared && status.missing.length === 0 && !!status.target;
 
   useEffect(() => {
     if (askFor === idea.id) {
       setOpen(true);
-      setAsked(true);
       clearAsk();
     }
   }, [askFor, idea.id, clearAsk]);
@@ -425,17 +470,13 @@ function IdeaRow({
     commit(opsSetStatus(data, idea, 'discarded'));
     toast(`Discarded ${idea.title}`, () => commit(opsRestoreIdea(idea)));
   };
-  const select = () => {
-    if (gaps.length) {
-      setOpen(true);
-      setAsked(true);
-      return;
-    }
-    commit(opsSetStatus(data, idea, 'selected'));
-    toast(`${idea.title} selected for next commitment`, () => commit(opsRestoreIdea(idea)));
+  const backToBacklog = () => {
+    commit(opsSetStatus(data, idea, 'backlog'));
+    toast(`${idea.title} back in the backlog`, () => commit(opsRestoreIdea(idea)));
   };
   const prepare = () => navigate(`/goals/new?idea=${idea.id}`);
   const dragging = dnd.drag?.id === idea.id;
+  const timing = status?.target ? (status.target.own ? `Own clock · ${idea.prep?.months ?? 6} months` : status.target.plan.name) : '';
 
   return (
     <li className={`idea${open ? ' open' : ''}${dragging ? ' dragging' : ''}`} data-idea-id={idea.id}>
@@ -445,7 +486,7 @@ function IdeaRow({
           className="idea-rank mono drag-handle"
           aria-label={`Drag ${idea.title} to reorder or move it`}
           title="Drag to reorder or move"
-          onPointerDown={(e) => dnd.dragStart(e, idea)}
+          onPointerDown={(e) => dnd.dragStart(e, idea, true)}
           onMouseDown={(e) => e.preventDefault()}
         >
           <span className="rank-num">{index + 1}</span>
@@ -453,18 +494,23 @@ function IdeaRow({
             ⋮⋮
           </span>
         </button>
-        <button type="button" className="idea-text" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <button
+          type="button"
+          className="idea-text"
+          aria-expanded={open}
+          onPointerDown={(e) => dnd.dragStart(e, idea)}
+          onClick={() => {
+            if (dnd.consumeClick()) return;
+            setOpen(!open);
+          }}
+        >
           <span className="idea-title">{idea.title}</span>
-          {idea.note && <span className="idea-note">{idea.note}</span>}
+          {idea.note && <span className="idea-note">Why: {idea.note}</span>}
           {!isSelected && gaps.length > 0 && <span className="idea-gap">Needs {gaps.map((g) => GAP_WORD[g]).join(' and ')}</span>}
           {!isSelected && gaps.length === 0 && <span className="idea-ready">Ready to select</span>}
-          {isSelected && !prepared && <span className="idea-gap">Not prepared yet</span>}
-          {isSelected && prepared && prepMissing.length > 0 && (
-            <span className="idea-gap">{staleOnly ? `Check the ${prepMissing.map((g) => PREP_WORD[g]).join(' and ')} (written earlier)` : `Plan: needs ${prepMissing.map((g) => PREP_WORD[g]).join(', ')}`}</span>
-          )}
-          {isSelected && prepared && prepMissing.length === 0 && (
-            <span className="idea-ready">Ready to commit{plan && data.plans.filter((p) => !p.archived_at && p.end_date >= today).length > 1 ? ` · ${plan.name}` : ''}</span>
-          )}
+          {status && !status.prepared && <span className="idea-gap">Not prepared yet</span>}
+          {status && status.prepared && status.missing.length > 0 && <span className="idea-gap">Plan needs {status.missing.map((g) => PREP_WORD[g]).join(', ')}</span>}
+          {canCommit && <span className="idea-ready">Ready to commit · {timing}</span>}
           {!isSelected && age >= 60 && <span className="idea-note" style={{ color: 'var(--amber-ink)' }}>Waiting {Math.round(age / 7)} weeks</span>}
         </button>
         <span className="idea-moves">
@@ -476,8 +522,8 @@ function IdeaRow({
           </button>
         </span>
         {isSelected ? (
-          prepared && prepMissing.length === 0 && plan ? (
-            <button type="button" className="btn small primary idea-next" onClick={onCommit} aria-label={`Commit ${idea.title} to the next six months`}>
+          canCommit ? (
+            <button type="button" className="btn small primary idea-next" onClick={onCommit} aria-label={`Commit ${idea.title}`}>
               Commit
             </button>
           ) : (
@@ -492,12 +538,24 @@ function IdeaRow({
             disabled={!room}
             title={room ? undefined : `Selected is full (${SELECTED_LIMIT})`}
             aria-label={room ? `Select ${idea.title} for next commitment` : `Select ${idea.title}: selected is full`}
-            onClick={select}
+            onClick={() => dnd.onSelect(idea)}
           >
             Select
           </button>
         )}
       </div>
+      {isSelected && !open && (
+        <div className="idea-sub">
+          <button type="button" className="link-btn xsmall" onClick={backToBacklog} aria-label={`Move ${idea.title} back to the backlog`}>
+            ← Back to backlog
+          </button>
+          {status?.prepared && (
+            <button type="button" className="link-btn xsmall" onClick={prepare}>
+              Edit plan
+            </button>
+          )}
+        </div>
+      )}
       {open && (
         <form
           className="idea-edit stack-sm"
@@ -505,25 +563,19 @@ function IdeaRow({
             e.preventDefault();
             commit(opsEditIdea(idea, { title, note, done_means: done }));
             setOpen(false);
-            setAsked(false);
           }}
         >
-          {asked && gaps.length > 0 && (
-            <span className="small" style={{ color: 'var(--amber-ink)' }}>
-              {draftGaps.length ? `To select it, add ${draftGaps.map((g) => GAP_WORD[g]).join(' and ')}, save, then press Select.` : 'Save, then press Select to move it.'}
-            </span>
-          )}
           <label className="field">
             Goal idea
             <input value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           <label className="field">
             Why it matters
-            <textarea autoFocus={asked && !note.trim()} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Builds on the cardio from the weight goal" rows={2} />
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Builds on the cardio from the weight goal" rows={2} />
           </label>
           <label className="field">
-            What done looks like in six months
-            <input autoFocus={asked && !!note.trim() && !done.trim()} value={done} onChange={(e) => setDone(e.target.value)} placeholder="e.g. Finish a half marathon in under 2 hours" />
+            What done looks like
+            <input value={done} onChange={(e) => setDone(e.target.value)} placeholder="e.g. Finish a half marathon in under 2 hours" />
           </label>
           <span className="xsmall muted">Both are needed to select it. Written down {age === 0 ? 'today' : `${age} day${age === 1 ? '' : 's'} ago`}.</span>
           <div className="btn-row" style={{ flexWrap: 'wrap' }}>
@@ -532,7 +584,7 @@ function IdeaRow({
             </button>
             {isSelected && (
               <button className="btn small" type="button" onClick={prepare}>
-                {prepared ? 'Edit plan' : 'Prepare'}
+                {status?.prepared ? 'Edit plan' : 'Prepare'}
               </button>
             )}
             {!isSelected && index > 0 && (
@@ -541,7 +593,7 @@ function IdeaRow({
               </button>
             )}
             {isSelected && (
-              <button className="btn small" type="button" onClick={() => commit(opsSetStatus(data, idea, 'backlog'))}>
+              <button className="btn small" type="button" onClick={backToBacklog}>
                 Back to backlog
               </button>
             )}
@@ -555,32 +607,89 @@ function IdeaRow({
   );
 }
 
-/** The commitment itself: what you're committing to, and one deliberate button. */
+/**
+ * Moving an idea into Selected: shows why it matters and what done looks like (asking for
+ * whichever is missing), then one deliberate button.
+ */
+function SelectSheet({ idea, rank, onClose }: { idea: GoalIdea; rank?: number; onClose: () => void }) {
+  const { data, commit } = useStore();
+  const toast = useToast();
+  const [note, setNote] = useState(idea.note);
+  const [done, setDone] = useState(idea.done_means ?? '');
+  const gaps = readinessGaps({ note, done_means: done });
+  const room = hasRoom(data.ideas);
+  const go = () => {
+    const edits = opsEditIdea(idea, { note, done_means: done });
+    const next = edits.length ? withOps(data, edits) : data;
+    const fresh = next.ideas.find((i) => i.id === idea.id) ?? idea;
+    const move =
+      rank != null
+        ? ([{ kind: 'update', collection: 'ideas', id: idea.id, patch: { status: 'selected', rank, selected_at: new Date().toISOString() } }] as Op[])
+        : opsSetStatus(next, fresh, 'selected');
+    commit([...edits, ...move]);
+    toast(`${idea.title} selected for next commitment`, () => commit(opsRestoreIdea(idea)));
+    onClose();
+  };
+  return (
+    <Sheet title="Select for next commitment" onClose={onClose}>
+      <b style={{ fontSize: 18, letterSpacing: '-0.02em', marginTop: -6 }}>{idea.title}</b>
+      <span className="small muted" style={{ marginTop: -6 }}>
+        Selecting means it's one of the next few things you'll commit to. Here's why.
+      </span>
+      <label className="field">
+        Why it matters
+        <textarea autoFocus={!note.trim()} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Builds on the cardio from the weight goal" rows={2} />
+      </label>
+      <label className="field">
+        What done looks like
+        <input autoFocus={!!note.trim() && !done.trim()} value={done} onChange={(e) => setDone(e.target.value)} placeholder="e.g. Finish a half marathon in under 2 hours" />
+      </label>
+      {gaps.length > 0 && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>Add {gaps.map((g) => GAP_WORD[g]).join(' and ')} to select it.</span>}
+      {!room && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>Selected is full ({SELECTED_LIMIT}). Send one back first.</span>}
+      <div className="btn-row">
+        <button type="button" className="btn" onClick={onClose}>
+          Not now
+        </button>
+        <button type="button" className="btn primary" disabled={gaps.length > 0 || !room} onClick={go}>
+          Move to Selected
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** The commitment itself: what you're committing to, when it runs, and one deliberate button. */
 function CommitSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
-  const plan = prepPlan(idea, data.plans, view.mainPlan, today);
-  if (!plan) {
+  const status = prepStatus(idea, data.plans, today);
+  const target = status.target;
+  if (!target) {
     return (
-      <Sheet title="Commit to the next six months" onClose={onClose}>
+      <Sheet title="Commit" onClose={onClose}>
         <p className="small" style={{ margin: 0 }}>
-          Goals live in a plan. Create your six-month plan first, then commit this idea to it.
+          The batch this was prepared for has ended. Prepare it again to pick its own clock or another batch.
         </p>
-        <a className="btn primary" href={href('/goals')}>
-          Create a plan
-        </a>
+        <button type="button" className="btn primary" onClick={() => navigate(`/goals/new?idea=${idea.id}`)}>
+          Prepare again
+        </button>
       </Sheet>
     );
   }
+  const { plan, own } = target;
   const prep = idea.prep ?? {};
+  const months = prep.months ?? 6;
   const periods = startPeriods(plan, today);
-  const goals = view.goalsForPlan(plan.id);
-  const used = new Set(goals.map((g) => g.color));
-  const color = GOAL_COLORS.find((c) => !used.has(c)) ?? GOAL_COLORS[goals.length % GOAL_COLORS.length]!;
-  const line = (label: string, text: string | undefined, by: string) => (
+  const short = (status.horizon ?? 999) <= 98;
+  const active = view.activeGoals;
+  const inBatch = own ? [] : view.goalsForPlan(plan.id);
+  const used = new Set(active.map((g) => g.color));
+  const color = GOAL_COLORS.find((c) => !used.has(c)) ?? GOAL_COLORS[active.length % GOAL_COLORS.length]!;
+  const label = own ? `Commit to the next ${months} months` : `Commit to ${plan.name}`;
+  const line = (tag: string, text: string | undefined, by: string) => (
     <div className="commit-line">
-      <span className="mono">{label}</span>
+      <span className="mono">{tag}</span>
       <span>
         {text}
         <span className="xsmall muted"> · by {shortDate(by)}</span>
@@ -590,27 +699,27 @@ function CommitSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void })
   const task = prep.task;
   const days = task ? (task.days.length === 7 ? 'every day' : task.days.map((d) => WEEKDAY_NAMES[d - 1]).join(' · ')) : '';
   const doCommit = () => {
-    const { ops, goalId } = opsCommitIdea(data, idea, plan, today, color);
-    commit(ops as Op[]);
+    const result = own ? opsCommitOwnClock(data, idea, months, today, color) : opsCommitIdea(data, idea, plan, today, color);
+    commit(result.ops);
     toast(`Committed: ${idea.title}`);
     onClose();
-    navigate(`/goals/${goalId}`);
+    navigate(`/goals/${result.goalId}`);
   };
   return (
-    <Sheet title="Commit to the next six months" onClose={onClose}>
+    <Sheet title={label} onClose={onClose}>
       <div className="stack-sm" style={{ marginTop: -6 }}>
         <span className="small muted">
-          {plan.name} · {shortDate(plan.start_date)} – {shortDate(plan.end_date)}
+          {own ? `Its own clock: ${shortDate(plan.start_date)} – ${shortDate(plan.end_date)}, starting today` : `${plan.name} · today – ${shortDate(plan.end_date)} (${Math.max(1, Math.round((status.horizon ?? 0) / 7))} weeks)`}
         </span>
         <div className="row-start" style={{ gap: 10, flexWrap: 'nowrap' }}>
           <span className="dot" style={{ width: 10, height: 10, flex: 'none', background: color }} />
           <b style={{ fontSize: 18, letterSpacing: '-0.02em' }}>{idea.title}</b>
         </div>
-        {idea.done_means && <span className="small">Done means: {idea.done_means}</span>}
         {idea.note && <span className="small muted">Why: {idea.note}</span>}
       </div>
       <div className="card tight stack-sm">
-        {line('3 MO', prep.quarter, periods.quarter.end)}
+        {line(own ? `${months} MO` : 'GOAL', idea.done_means, plan.end_date)}
+        {!short && line('3 MO', prep.quarter, periods.quarter.end)}
         {line('MONTH', prep.month, periods.month.end)}
         {line('WEEK', prep.week, periods.week.end)}
         {task && (
@@ -626,15 +735,16 @@ function CommitSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void })
           </div>
         )}
       </div>
-      <span className={`xsmall${goals.length >= 5 ? '' : ' muted'}`} style={goals.length >= 5 ? { color: 'var(--amber-ink)' } : undefined}>
-        This makes it goal {goals.length + 1} in {plan.name}.{goals.length >= 5 ? ' That’s a lot to carry at once: most people keep 3 to 5.' : ''} Its daily task starts on Today right away.
+      <span className={`xsmall${active.length >= 5 ? '' : ' muted'}`} style={active.length >= 5 ? { color: 'var(--amber-ink)' } : undefined}>
+        {own ? '' : `It joins ${inBatch.length} other goal${inBatch.length === 1 ? '' : 's'} in ${plan.name}. `}
+        You'd be working on {active.length + 1} goals.{active.length >= 5 ? ' That’s a lot to carry at once: most people keep 3 to 5.' : ''} Its daily task starts on Today right away.
       </span>
       <div className="btn-row">
         <button type="button" className="btn" onClick={onClose}>
           Not yet
         </button>
         <button type="button" className="btn primary" onClick={doCommit}>
-          Commit to the next six months
+          {label}
         </button>
       </div>
     </Sheet>

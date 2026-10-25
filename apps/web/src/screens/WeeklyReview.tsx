@@ -189,19 +189,25 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
   // ---- What happened ----
   const actionById = actionLookup(data);
   const tally = periodTally(data.sessions, period, today, actionById);
-  const goals = plan ? view.goalsForPlan(plan.id) : [];
+  // The weekly review covers every goal you're working on, each in its own batch or own clock.
+  // Month, 3-month and plan reviews cover the goals of the one plan they belong to.
+  const isWeekly = kind === 'weekly';
+  const goals = isWeekly ? view.activeGoals : plan ? view.goalsForPlan(plan.id) : [];
+  const planOf = (g: Goal): Plan | null => (isWeekly ? view.planForGoal(g) : plan);
+  const goalPlans = goals.map(planOf).filter((p): p is Plan => !!p);
+  const trendPlan: Plan | null = isWeekly ? ([...goalPlans].sort((a, b) => (a.start_date < b.start_date ? -1 : 1))[0] ?? null) : plan;
   const lookEnd = period.end < today ? period.end : today;
-  const paces = goals.map((g) => view.goalPace(g, plan, { start: period.start, end: lookEnd }));
+  const paces = goals.map((g) => view.goalPace(g, planOf(g), { start: period.start, end: lookEnd }));
   const prev = previousReview(data.reviews, kind, period.start);
   const due = kind === 'weekly' || kind === 'block' ? view.measurementsDue(period.end) : [];
   const lastMonday = weekStart(period.end < today ? period.end : today);
   const trendWeeks = kind === 'weekly' || kind === 'block' ? 8 : Math.min(26, Math.max(1, Math.ceil((Date.parse(lookEnd) - Date.parse(period.start)) / (7 * 864e5))));
-  const trend = plan && (kind === 'weekly' || kind === 'block') ? planTrend(data, plan, lastMonday, today) : trendFor(data, lastMonday, trendWeeks, today, plan ? firstPlanWeek(plan) : undefined);
-  const resultLines = plan ? goalResultLines(data, goals, plan, kind, period) : [];
+  const trend = trendPlan && (kind === 'weekly' || kind === 'block') ? planTrend(data, trendPlan, lastMonday, today) : trendFor(data, lastMonday, trendWeeks, today, trendPlan ? firstPlanWeek(trendPlan) : undefined);
+  const resultLines = goalResultLines(data, goals, planOf, kind, period);
 
   // ---- Suggestions (weekly only) ----
   const existingNext = useMemo(() => data.sessions.filter((s) => s.week_start === nextMonday && s.status !== 'moved'), [data.sessions, nextMonday]);
-  const recent = timeAverages(trendFor(data, weekStart(period.start), 3, today, plan ? firstPlanWeek(plan) : undefined));
+  const recent = timeAverages(trendFor(data, weekStart(period.start), 3, today, trendPlan ? firstPlanWeek(trendPlan) : undefined));
   const available = data.profile.available_minutes;
   const availableTotal = available.reduce((a, b) => a + b, 0);
   const realistic = recent && recent.done > 0 ? Math.round(recent.done / 5) * 5 : null;
@@ -217,7 +223,8 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
   // Extra tasks that would catch a goal up this month (only for goals that are behind).
   const catchUpFor = (goalId: string | undefined): number | null => {
     const g = goals.find((x) => x.id === goalId);
-    return plan && g && kind === 'weekly' ? catchUpPlan(view, data, g, plan, today)?.extra ?? null : null;
+    const gp = g ? planOf(g) : null;
+    return gp && g && kind === 'weekly' ? catchUpPlan(view, data, g, gp, today)?.extra ?? null : null;
   };
   const goalOf = (actionId: string) => view.goalsForAction(actionId)[0];
   // A behind goal whose task also has a "lower" or "minimum" suggestion gets one choice in Reflect.
@@ -299,7 +306,7 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
   }
 
   // ---- Next goals ----
-  const nextFields = plan ? nextGoalFields(data, goals, plan, kind, period, nextMonday) : [];
+  const nextFields = nextGoalFields(data, goals, planOf, kind, period, nextMonday);
 
   function finish() {
     const now = new Date().toISOString();
@@ -364,9 +371,9 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
       const done = r.result === 'hit';
       if (!!step.completed_at !== done) add([{ kind: 'update', collection: 'planSteps', id: step.id, patch: { completed_at: done ? now : null } }]);
     }
-    if (plan) {
+    {
       // Keep / adjust / drop first, so next goals are suggested from the redrawn path.
-      if (kind === 'quarter') {
+      if (kind === 'quarter' && plan) {
         for (const g of goals) {
           const decision = draft.decisions[g.id] ?? 'keep';
           if (decision === 'drop') add(opsDropGoal(next, view, g, nextMonday));
@@ -381,7 +388,9 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
         if (text && text !== f.current) patch.target_note = text;
         if (f.goal.type === 'number' && value != null && value !== f.currentValue) patch.target_value = value;
         if (!Object.keys(patch).length) continue;
-        add(opsSetLevel(next, f.goal, plan, chainFor(next, f.goal, plan, f.date), f.level, patch));
+        const gp = planOf(f.goal);
+        if (!gp) continue;
+        add(opsSetLevel(next, f.goal, gp, chainFor(next, f.goal, gp, f.date), f.level, patch));
       }
     }
     // Retrospective: a goal you achieved (and aren't carrying over) moves to Completed.
@@ -465,10 +474,11 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
 
           <div className="card stack-sm">
             <span className="label">{kind === 'retro' ? 'Your six-month goals' : `Your ${word} goals`}</span>
-            {resultLines.length === 0 && <span className="small muted">No goals in this plan.</span>}
+            {resultLines.length === 0 && <span className="small muted">{isWeekly ? 'No goals committed yet.' : 'No goals in this plan.'}</span>}
             {resultLines.map((l) => {
               const pace = paces.find((p) => p.goal.id === l.goal.id);
-              const fix = plan && (kind === 'weekly' || kind === 'block') && pace?.label === 'behind' ? catchUp(view, data, l.goal, plan, today) : null;
+              const gp = planOf(l.goal);
+              const fix = gp && (kind === 'weekly' || kind === 'block') && pace?.label === 'behind' ? catchUp(view, data, l.goal, gp, today) : null;
               const pick = (r: GoalResult) => {
                 const results = { ...draft.results };
                 if (results[l.goal.id] === r) delete results[l.goal.id];
@@ -766,8 +776,8 @@ function Reflect({
     .filter((r) => r.status === 'done' && r.got_in_way.trim() && r.period_start < period.start)
     .sort((a, b) => (a.period_start < b.period_start ? 1 : -1))
     .slice(0, 3);
-  const plan = view.mainPlan;
-  const earliest = plan ? firstPlanWeek(plan) : addDays(period.start, -21);
+  const first = view.livePlans.filter((p) => p.start_date <= today)[0];
+  const earliest = first ? firstPlanWeek(first) : addDays(period.start, -21);
   const window: DateRange = kind === 'weekly' ? { start: addDays(period.start, -21) < earliest ? earliest : addDays(period.start, -21), end: period.end } : period;
   const patterns = [obstacleSentence(data, window), weekdaySentence(data, window, today)].filter(Boolean) as string[];
 
@@ -1196,14 +1206,16 @@ function carryDefault(draft: Draft, g: Goal): boolean {
 }
 
 /** Each goal's written goal for the period under review (or the 6-month goal for a retrospective). */
-function goalResultLines(data: AppData, goals: Goal[], plan: Plan, kind: ReviewKind, period: DateRange): { goal: Goal; note: string; stepId: string | null }[] {
-  return goals.map((goal) => {
+function goalResultLines(data: AppData, goals: Goal[], planOf: (g: Goal) => Plan | null, kind: ReviewKind, period: DateRange): { goal: Goal; note: string; stepId: string | null }[] {
+  return goals.flatMap((goal) => {
+    const plan = planOf(goal);
+    if (!plan) return [];
     if (kind === 'retro') {
       const target = goal.type === 'number' && goal.target_value != null ? `${fmt(goal.target_value)} ${goal.unit ?? ''}`.trim() : '';
       return { goal, note: [target, goal.done_means.trim()].filter(Boolean).join(' · ') || goal.title, stepId: null };
     }
     const level = RESULT_LEVEL[kind] as ChainLevel;
-    const link = chainFor(data, goal, plan, period.start)[level];
+    const link = chainFor(data, goal, plan, period.start < plan.start_date ? plan.start_date : period.start)[level];
     const value = link.step?.target_value != null && goal.type === 'number' ? `${fmt(link.step.target_value)} ${goal.unit ?? ''}`.trim() : '';
     const note = isSet(link) ? [value, link.step!.target_note.trim()].filter(Boolean).join(' · ') : '';
     return { goal, note, stepId: link.step?.id ?? null };
@@ -1211,12 +1223,15 @@ function goalResultLines(data: AppData, goals: Goal[], plan: Plan, kind: ReviewK
 }
 
 /** Goals to write down in the last step: next week's (weekly), next month's (month), next 3 months + its first month (3-month). */
-function nextGoalFields(data: AppData, goals: Goal[], plan: Plan, kind: ReviewKind, period: DateRange, nextMonday: ISODate): NextField[] {
+function nextGoalFields(data: AppData, goals: Goal[], planOf: (g: Goal) => Plan | null, kind: ReviewKind, period: DateRange, nextMonday: ISODate): NextField[] {
   const out: NextField[] = [];
   const startOfNext = kind === 'weekly' ? nextMonday : addDays(period.end, 1);
-  if (kind === 'retro' || startOfNext > plan.end_date) return out;
+  if (kind === 'retro') return out;
   const levels: ChainLevel[] = kind === 'weekly' ? ['quarter', 'month', 'week'] : kind === 'block' ? ['month'] : ['quarter', 'month'];
   for (const g of goals) {
+    const plan = planOf(g);
+    // A goal whose batch or own clock ends before next week has nothing to set.
+    if (!plan || startOfNext > plan.end_date) continue;
     const chain = chainFor(data, g, plan, startOfNext);
     const now = chainFor(data, g, plan, period.start < plan.start_date ? plan.start_date : period.start);
     for (const level of levels) {

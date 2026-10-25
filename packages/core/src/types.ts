@@ -26,6 +26,11 @@ export interface Profile {
   calendar_token?: string | null;
 }
 
+/**
+ * A plan is a window of time goals live in. A batch (solo false) is shared: several goals,
+ * one set of checkpoints, and a goal can join part-way through. An own clock (solo true)
+ * belongs to one goal and starts the day it was committed.
+ */
 export interface Plan {
   id: string;
   name: string;
@@ -33,6 +38,8 @@ export interface Plan {
   end_date: ISODate;
   block_days: number;
   archived_at: string | null;
+  /** True for a goal's own clock. Missing on older databases (treated as a batch). */
+  solo?: boolean;
 }
 
 export interface Goal {
@@ -288,6 +295,10 @@ export interface IdeaPrep {
   month_of?: ISODate;
   week_of?: ISODate;
   task?: { title: string; days: number[]; minutes: number };
+  /** Timing: its own clock starting the day it's committed, or joining a batch (plan_id). */
+  clock?: 'own' | 'batch';
+  /** Length of its own clock, in months (3 or 6). */
+  months?: number;
   plan_id?: string;
   prepared_at?: string;
 }
