@@ -135,6 +135,8 @@ export interface Action {
   measurement_type_id?: string | null;
   /** What the task involves, in your words: a workout's exercises, a study plan. Shown when you log it. */
   details?: string;
+  /** A workout task's plan: each exercise with sets, reps and a target weight. Missing on older databases. */
+  workout_plan?: import('./workout.ts').PlannedExercise[] | null;
   archived_at: string | null;
 }
 

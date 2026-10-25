@@ -1172,3 +1172,22 @@ button.week-day:active { transform: scale(0.9); }
 .task-details { border-radius: 14px; background: var(--fill); padding: 0 14px; margin-top: -4px; }
 .task-details summary { min-height: 44px; display: flex; align-items: center; font-size: 14px; font-weight: 600; cursor: pointer; }
 .task-details-body { white-space: pre-line; font-size: 13.5px; line-height: 1.55; color: var(--ink-2); padding-bottom: 12px; max-height: 50vh; overflow-y: auto; }
+
+/* ---------- Workouts ---------- */
+.workout-card-plan { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; width: 100%; }
+.workout-card-ex { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--ink-2); }
+.workout-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.workout-card-ex .num { flex: none; color: var(--muted); font-size: 12.5px; }
+.workout-card-sum { margin-top: 4px; font-size: 13px; color: var(--accent-ink); }
+.workout-ex { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line-2); padding-top: 12px; }
+.workout-ex-head { display: flex; flex-direction: column; gap: 2px; }
+.workout-sets { display: flex; flex-direction: column; gap: 6px; }
+.workout-sets-head, .workout-set { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 44px; gap: 8px; align-items: center; }
+.workout-set .input { text-align: center; padding-left: 6px; padding-right: 6px; }
+.workout-set.done .input { background: var(--fill); color: var(--muted); }
+.set-tick { width: 44px; height: 44px; border-radius: 12px; border: 1.5px solid var(--line); background: none; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.set-tick.on { background: var(--accent, #22B07D); border-color: transparent; color: #fff; }
+.plan-ex-no { flex: none; width: 22px; text-align: center; font-weight: 600; color: var(--muted); font-size: 13px; }
+.plan-ex-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.plan-ex-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.plan-ex-grid .field input { padding-left: 8px; padding-right: 8px; }

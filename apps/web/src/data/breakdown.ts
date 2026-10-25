@@ -17,6 +17,8 @@ import {
   type Plan,
   type PlanStep,
   type Session,
+  parseWorkoutPlan,
+  type PlannedExercise,
 } from '@six/core';
 import { applyOp, type AppData, type Op } from './model.ts';
 import { findMeasure } from './connect.ts';
@@ -253,6 +255,8 @@ export interface TaskInput {
   newMeasure?: { name: string; unit: string } | null;
   /** What the task involves (exercises, sets and reps…), shown when you log it. */
   details?: string;
+  /** A workout's plan, exercise by exercise. */
+  workoutPlan?: PlannedExercise[] | null;
 }
 
 /** The measurement a measure task records: an existing one, or a new one created with the task. */
@@ -315,6 +319,7 @@ export function opsAddTask(data: AppData, goal: Goal, step: PlanStep, input: Tas
     ...(measure.id ? { measurement_type_id: measure.id } : {}),
     // Only sent when used, so a database without the details column still works.
     ...(input.details?.trim() ? { details: input.details.trim() } : {}),
+    ...(input.kind === 'workout' && input.workoutPlan?.length ? { workout_plan: cleanPlan(input.workoutPlan) } : {}),
   };
   const schedule = scheduleFor(action.id, input, applyFrom(step, today));
   const ops: Op[] = [
@@ -352,6 +357,7 @@ export function opsEditTask(data: AppData, action: Action, input: TaskInput, fro
         ...(input.cue.trim() || action.cue ? { cue: input.cue.trim() } : {}),
         ...(measure.id || action.measurement_type_id ? { measurement_type_id: measure.id } : {}),
         ...(input.details?.trim() || action.details ? { details: input.details?.trim() ?? '' } : {}),
+        ...(input.workoutPlan?.length || action.workout_plan?.length ? { workout_plan: input.kind === 'workout' && input.workoutPlan?.length ? cleanPlan(input.workoutPlan) : null } : {}),
       },
     },
   ];
@@ -434,7 +440,42 @@ export function inputFromTask(t: WeekTask, week: PlanStep): TaskInput {
     measurementTypeId: t.action.measurement_type_id ?? null,
     newMeasure: null,
     details: t.action.details ?? '',
+    workoutPlan: t.action.workout_plan ?? null,
   };
+}
+
+/** A plan as saved: named exercises only, with whole, positive numbers. */
+export function cleanPlan(plan: PlannedExercise[]): PlannedExercise[] {
+  return plan
+    .filter((e) => e.name.trim())
+    .map((e) => {
+      const lo = Math.max(1, Math.round(e.reps_min || 1));
+      return {
+        ...e,
+        name: e.name.trim(),
+        sets: Math.max(1, Math.round(e.sets || 1)),
+        reps_min: lo,
+        reps_max: Math.max(lo, Math.round(e.reps_max || lo)),
+        weight: e.weight != null && Number.isFinite(e.weight) ? e.weight : null,
+        weight_note: e.weight_note.trim(),
+        rest: e.rest.trim(),
+        note: e.note.trim(),
+      };
+    });
+}
+
+/**
+ * Workout tasks whose exercises are written in their details get a plan read from them, once,
+ * so the workout log can be filled in for you. Runs when the app opens.
+ */
+export function opsFillWorkoutPlans(data: AppData): Op[] {
+  const ops: Op[] = [];
+  for (const a of data.actions) {
+    if (a.kind !== 'workout' || a.workout_plan?.length || !a.details?.trim()) continue;
+    const plan = parseWorkoutPlan(a.details);
+    if (plan.length) ops.push({ kind: 'update', collection: 'actions', id: a.id, patch: { workout_plan: plan } });
+  }
+  return ops;
 }
 
 export function blankTask(week: PlanStep, today: ISODate): TaskInput {

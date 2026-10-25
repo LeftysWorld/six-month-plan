@@ -17,6 +17,7 @@ import {
   type Plan,
   type PlanStep,
   type Session,
+  parseWorkoutPlan,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, useView } from '../data/derive.ts';
@@ -45,6 +46,7 @@ import {
 } from '../data/breakdown.ts';
 import { BackLink, Empty, Icon, PacePill, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
+import { WorkoutPlanEditor, blankExercise } from '../components/Workout.tsx';
 import { goalTrack } from '../data/season.ts';
 import { matchingTasks, opsRecordReading, opsShareTask, opsUnshareTask, shareCandidates } from '../data/connect.ts';
 import { ConnectionStrip, ShareTaskSheet } from '../components/Connections.tsx';
@@ -239,11 +241,11 @@ function daysOfWeek(week: PlanStep): ISODate[] {
   return weekDates(addDays(week.start_date, 1 - isoWeekday(week.start_date))).filter((d) => d >= week.start_date && d <= week.end_date);
 }
 
+/** How a general task is checked off. Workouts are their own task type. */
 const KINDS: { value: ActionKind; label: string }[] = [
   { value: 'check', label: 'Just do it' },
   { value: 'minutes', label: 'Minutes' },
   { value: 'count', label: 'Count' },
-  { value: 'workout', label: 'Workout' },
   { value: 'study', label: 'Study' },
   { value: 'measure', label: 'Log a number' },
   { value: 'photo', label: 'Photo' },
@@ -292,6 +294,11 @@ function TaskSheet({
     const patch: Partial<TaskInput> = { kind };
     // A weigh-in or a photo takes no real time: don't count 30 minutes toward the day.
     if ((kind === 'measure' || kind === 'photo') && v.kind !== 'measure' && v.kind !== 'photo') patch.minutes = 0;
+    // A new workout starts from the exercises written in details, or one empty exercise.
+    if (kind === 'workout' && !v.workoutPlan?.length) {
+      const fromDetails = v.details?.trim() ? parseWorkoutPlan(v.details) : [];
+      patch.workoutPlan = fromDetails.length ? fromDetails : [blankExercise()];
+    }
     if (kind === 'measure' && !v.measurementTypeId && !v.newMeasure) {
       const fromGoals = goalIds.map((id) => view.goal(id)?.measurement_type_id).find((x) => x && types.some((t) => t.id === x));
       const first = fromGoals ?? types[0]?.id ?? null;
@@ -316,7 +323,7 @@ function TaskSheet({
     (d) => d >= week.start_date && d <= week.end_date && (d >= from || d === originalDate),
   );
   const measureOk = v.kind !== 'measure' || (v.newMeasure ? v.newMeasure.name.trim().length > 0 : !!v.measurementTypeId);
-  const valid = v.title.trim().length > 0 && (v.when !== 'days' || v.days.length > 0) && (v.when !== 'once' || dayChoices.includes(v.date)) && measureOk;
+  const valid = v.title.trim().length > 0 && (v.kind !== 'workout' || (v.workoutPlan ?? []).some((e) => e.name.trim())) && (v.when !== 'days' || v.days.length > 0) && (v.when !== 'once' || dayChoices.includes(v.date)) && measureOk;
 
   function save() {
     if (!valid) return;
@@ -345,8 +352,20 @@ function TaskSheet({
       )}
       <label className="field">
         Task
-        <input autoFocus value={v.title} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. Practice chord changes" />
+        <input autoFocus value={v.title} onChange={(e) => set({ title: e.target.value })} placeholder={v.kind === 'workout' ? 'e.g. Mon · Chest & Back A' : 'e.g. Practice chord changes'} />
       </label>
+      <div className="stack-sm">
+        <span className="xsmall muted">Task type</span>
+        <div className="seg" role="tablist" aria-label="Task type">
+          <button role="tab" aria-selected={v.kind !== 'workout'} onClick={() => v.kind === 'workout' && pickKind('check')}>
+            General
+          </button>
+          <button role="tab" aria-selected={v.kind === 'workout'} onClick={() => v.kind !== 'workout' && pickKind('workout')}>
+            Workout
+          </button>
+        </div>
+        {v.kind === 'workout' && <span className="xsmall muted">Plan the exercises with sets, reps and weight. On the day, the log opens with the plan filled in and you enter what you actually did.</span>}
+      </div>
       {matches.length > 0 && (
         <div className="banner info stack-sm" style={{ alignItems: 'stretch' }}>
           {matches.slice(0, 3).map((m) => (
@@ -439,6 +458,8 @@ function TaskSheet({
           </select>
         </label>
       )}
+      {v.kind === 'workout' && <WorkoutPlanEditor plan={v.workoutPlan ?? []} details={v.details ?? ''} unit={data.profile.units} onChange={(p) => set({ workoutPlan: p })} />}
+      {v.kind !== 'workout' && (
       <div className="stack-sm">
         <span className="xsmall muted">How you log it</span>
         <div className="chips">
@@ -451,6 +472,7 @@ function TaskSheet({
         {v.kind === 'measure' && <span className="xsmall muted">Checking it off asks for the number and saves it as that day's reading, so the goal's path updates.</span>}
         {v.kind === 'photo' && <span className="xsmall muted">Checking it off opens the camera or your photos and saves the photo to that day.</span>}
       </div>
+      )}
       {v.kind === 'measure' && (
         <div className="stack-sm">
           <label className="field">
@@ -497,8 +519,8 @@ function TaskSheet({
         )}
       </div>
       <label className="field">
-        Details (optional)
-        <textarea rows={4} value={v.details ?? ''} onChange={(e) => set({ details: e.target.value })} placeholder="e.g. exercises with sets × reps, starting weights and rest" />
+        {v.kind === 'workout' ? 'Warm-up and notes (optional)' : 'Details (optional)'}
+        <textarea rows={4} value={v.details ?? ''} onChange={(e) => set({ details: e.target.value })} placeholder={v.kind === 'workout' ? 'e.g. warm-up, how to progress' : 'e.g. what to cover, links, steps'} />
         <span className="xsmall muted">Shown when you tap the task on Today.</span>
       </label>
       <label className="field">

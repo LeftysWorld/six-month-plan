@@ -7,6 +7,7 @@ import { href } from '../router.ts';
 import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
 import { SessionFiles } from '../components/Attachments.tsx';
 import { lastReading, opsRecordReading, opsSetTaskGoals, readingOn } from '../data/connect.ts';
+import { WorkoutSheet } from '../components/Workout.tsx';
 
 /** Log an item beyond a one-tap check: amount, state, obstacles, note, or move it. */
 export function LogSheet({ session, onClose }: { session: Session; onClose: () => void }) {
@@ -33,6 +34,8 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
   });
   const noTime = action?.kind === 'measure' || action?.kind === 'photo';
 
+  // A workout with a plan opens the workout log; "Skip, move…" comes back here.
+  const [general, setGeneral] = useState(false);
   const minLabel = action?.min_label;
   const states: { value: SessionStatus; title: string; sub: string; amber?: boolean }[] = [
     { value: 'done', title: 'Done', sub: 'Full target met' },
@@ -70,6 +73,10 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
   const monday = weekStart(session.date ?? today);
   // A task happens at most once a day, so days that already have it aren't offered.
   const moveDates = [...weekDates(monday), ...weekDates(addDays(monday, 7))].filter((d) => d >= today && d !== session.date && view.canPlace(session, d));
+
+  if (action?.kind === 'workout' && action.workout_plan?.length && !general) {
+    return <WorkoutSheet session={session} plan={action.workout_plan} onClose={onClose} onMore={() => setGeneral(true)} />;
+  }
 
   return (
     <Sheet title={session.title} onClose={onClose}>

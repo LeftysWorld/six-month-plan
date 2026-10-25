@@ -11,6 +11,7 @@ import { opsAddOneOff, opsEnsureWeek, opsLogSession, opsLogUnplanned, opsMoveSes
 import { href } from '../router.ts';
 import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
+import { WorkoutCardPlan } from '../components/Workout.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { useAddFiles } from '../components/Attachments.tsx';
 import { lastReading, measureLabel, measureOnToday, opsRecordReading, readingOn } from '../data/connect.ts';
@@ -674,6 +675,7 @@ function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session
               <span style={{ marginLeft: goals.length > 1 ? 3 : 0 }}>{meta}</span>
             </span>
           )}
+          {action?.kind === 'workout' && action.workout_plan?.length ? <WorkoutCardPlan session={s} plan={action.workout_plan} /> : null}
         </button>
         <button type="button" className={`tick-btn ${ring}`} aria-label={label} onClick={onToggle}>
           {s.status === 'done' || s.status === 'planned' ? <Icon name="check" size={22} stroke={2.6} /> : s.status === 'skipped' ? <Icon name="x" size={20} stroke={2.4} /> : <Icon name="minus" size={22} stroke={2.6} />}

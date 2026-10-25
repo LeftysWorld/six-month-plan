@@ -6,6 +6,7 @@ import { applyOp, type AppData, type Op } from './model.ts';
 import { opsEnsureWeek } from './ops.ts';
 import { opsFoldLinksIntoGroups } from './groups.ts';
 import { opsMergeDuplicateMeasures } from './connect.ts';
+import { opsFillWorkoutPlans } from './breakdown.ts';
 
 export interface SyncState {
   /** Changes waiting to be saved. */
@@ -143,6 +144,9 @@ export function StoreProvider({ db, initial, children }: { db: Db; initial: AppD
     // A goal that ended up with the same measurement twice (two "Weight"s) gets them merged.
     const merge = opsMergeDuplicateMeasures(ops.length ? ops.reduce(applyOp, data) : data);
     if (merge.length > 0) commit(merge);
+    // Workout tasks with their exercises written in details get a plan to log against.
+    const plans = opsFillWorkoutPlans(data);
+    if (plans.length > 0) commit(plans);
     // Only when the app opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
