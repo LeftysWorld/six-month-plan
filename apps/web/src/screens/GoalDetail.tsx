@@ -157,9 +157,10 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
           className="link-btn small"
           style={{ color: 'var(--danger)' }}
           onClick={() => {
-            commit(opsArchiveGoal(goal, !goal.archived_at));
-            toast(goal.archived_at ? 'Goal restored' : 'Goal archived; its history is kept');
-            if (!goal.archived_at) navigate('/goals');
+            const was = goal.archived_at;
+            commit(opsArchiveGoal(goal, !was));
+            toast(was ? 'Goal restored' : `${goal.title} archived. Find it under Completed → Archived.`, was ? undefined : () => commit(opsArchiveGoal(goal, false)));
+            if (!was) navigate('/goals');
           }}
         >
           {goal.archived_at ? 'Restore goal' : 'Archive goal'}

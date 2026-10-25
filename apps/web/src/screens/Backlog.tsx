@@ -31,6 +31,7 @@ export function GoalsSwitch({ current }: { current: 'backlog' | 'goals' | 'compl
   const goals = view.activeGoals.length;
   const waiting = data.ideas.filter((i) => i.status === 'backlog' || i.status === 'selected').length;
   const done = data.goals.filter((g) => g.completed_at && !g.archived_at).length;
+  const archived = data.goals.filter((g) => g.archived_at).length;
   const tab = (key: typeof current, to: string, label: string, count: number) => (
     <a href={href(to)} aria-current={current === key ? 'page' : undefined}>
       {label} <span className="count">{count}</span>
@@ -40,7 +41,7 @@ export function GoalsSwitch({ current }: { current: 'backlog' | 'goals' | 'compl
     <nav className="seg goals-switch" aria-label="Backlog, goals or completed">
       {tab('backlog', '/goals/backlog', 'Backlog', waiting)}
       {tab('goals', '/goals', 'Goals', goals)}
-      {tab('completed', '/goals/completed', 'Completed', done)}
+      {tab('completed', '/goals/completed', archived ? 'Done & archived' : 'Completed', done + archived)}
     </nav>
   );
 }
@@ -54,6 +55,14 @@ export function IdeaAdd({ placeholder = 'A goal you might want…', after }: { p
   function add(e: FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
+    // Same name as a goal you're working on, or an idea already waiting? Say so instead of making a copy.
+    const key = title.trim().toLowerCase();
+    const goal = data.goals.find((g) => !g.archived_at && !g.completed_at && g.title.trim().toLowerCase() === key);
+    const idea = data.ideas.find((i) => (i.status === 'backlog' || i.status === 'selected') && i.title.trim().toLowerCase() === key);
+    if (goal || idea) {
+      toast(goal ? `You already have a goal called “${goal.title}”` : `“${idea!.title}” is already in your backlog`);
+      return;
+    }
     commit(opsAddIdea(data, title).ops);
     if (after) after(title.trim());
     else toast('Added to the backlog');

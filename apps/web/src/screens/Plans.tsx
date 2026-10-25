@@ -105,13 +105,16 @@ export function Plans() {
   const clocks = view.livePlans.filter((p) => p.solo);
   const sections = batches.map((plan) => ({ plan, cards: goalCards(view, data, plan, today) }));
   const own = clocks.flatMap((plan) => goalCards(view, data, plan, today).map((card) => ({ card, plan }))).sort((a, b) => a.card.rank - b.card.rank);
-  const all = [...sections.flatMap((x) => x.cards), ...own.map((x) => x.card)];
+  const all = [...new Map([...sections.flatMap((x) => x.cards), ...own.map((x) => x.card)].map((c) => [c.goal.id, c])).values()];
   const needCount = all.filter((c) => c.needs).length;
   const keep = (c: GoalCardData) => filter === 'all' || c.needs;
   const setup = setupSteps(view, data, today);
 
   // Groups first (in the order they were made), then goals on their own, needs-you first.
-  const placed: Placed[] = [...sections.flatMap(({ plan, cards }) => cards.map((card) => ({ card, plan, own: false }))), ...own.map(({ card, plan }) => ({ card, plan, own: true }))].sort((a, b) => a.card.rank - b.card.rank);
+  // A goal can belong to more than one live window (a batch and a later one, say): list it once,
+  // in the window it runs in now, so one goal never shows as several cards.
+  const everywhere: Placed[] = [...sections.flatMap(({ plan, cards }) => cards.map((card) => ({ card, plan, own: false }))), ...own.map(({ card, plan }) => ({ card, plan, own: true }))];
+  const placed: Placed[] = [...new Map(everywhere.filter((p) => view.planForGoal(p.card.goal)?.id === p.plan.id || !everywhere.some((q) => q.card.goal.id === p.card.goal.id && view.planForGoal(q.card.goal)?.id === q.plan.id)).map((p) => [p.card.goal.id, p])).values()].sort((a, b) => a.card.rank - b.card.rank);
   const shown = placed.filter((p) => keep(p.card));
   const groups = data.groups
     .map((group) => ({ group, members: shown.filter((p) => p.card.goal.group_id === group.id) }))

@@ -163,3 +163,28 @@ test('old connections become groups once, then the links are gone', async () => 
   assert.deepEqual(opsFoldLinksIntoGroups(d), [], 'nothing left to do the second time');
   assert.equal(suggestGroupNames([goal('a', 'JHU AI certificate'), goal('b', 'Pass IAPP AIGP')])[0], 'Learning');
 });
+
+test('deleting a goal removes its own tasks and logs, keeps shared tasks for other goals', async () => {
+  const { opsDeleteGoal } = await import('../src/data/ops.ts');
+  const { opsCreateGroup } = await import('../src/data/groups.ts');
+  let d = base();
+  d.actions.push({ id: 'photo', title: 'Body photo', kind: 'photo', planned_minutes: 0, planned_count: null, min_label: '', min_minutes: null, min_count: null, priority: false, archived_at: null });
+  d.actionGoals.push({ id: 'ag2', action_id: 'lift', goal_id: 'weight' }, { id: 'ag3', action_id: 'photo', goal_id: 'weight' });
+  d.schedules = [{ id: 'sp', action_id: 'photo', rule: 'days', days: [1, 2, 3, 4, 5, 6, 7], per_week: null, effective_from: '2026-10-19', effective_to: null }];
+  d.sessions = [{ id: 'ph1', action_id: 'photo', week_start: '2026-10-19', slot: 0, date: '2026-10-20', title: 'Body photo', priority: false, planned_minutes: 0, planned_count: null, status: 'done', actual_minutes: 0, actual_count: null, note: '', obstacles: [], origin: 'scheduled', source: 'manual', moved_from: null, logged_at: null }];
+  d.attachments = [{ id: 'f1', session_id: 'ph1', action_id: 'photo', path: 'demo/f1/me.jpg', name: 'me.jpg', mime_type: 'image/jpeg', size_bytes: 10, created_at: '' }];
+  d.planGoals = [{ id: 'pg', plan_id: 'p', goal_id: 'weight' }];
+  d = run(d, opsCreateGroup(d, 'Body', ['gym', 'weight']).ops);
+  const weight = d.goals.find((g) => g.id === 'weight')!;
+  const { ops, files } = opsDeleteGoal(d, weight);
+  d = run(d, ops);
+  assert.ok(!d.goals.some((g) => g.id === 'weight'));
+  assert.ok(d.actions.some((a) => a.id === 'lift'), 'the shared gym task keeps running for Work out');
+  assert.deepEqual(d.actionGoals.map((ag) => ag.goal_id), ['gym']);
+  assert.ok(!d.actions.some((a) => a.id === 'photo'), 'its own photo task is gone');
+  assert.equal(d.sessions.length, 0);
+  assert.equal(d.attachments.length, 0);
+  assert.deepEqual(files, ['demo/f1/me.jpg'], 'and its files are listed for removal');
+  assert.equal(d.planGoals.length, 0);
+  assert.equal(d.groups.length, 0, 'Body had one goal left, so the group is gone');
+});

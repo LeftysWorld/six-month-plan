@@ -1,10 +1,11 @@
 import { daysBetween, minutesDone, sessionCredit, shortDate, type Goal } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, useView } from '../data/derive.ts';
-import { opsReopenGoal } from '../data/ops.ts';
+import { opsArchiveGoal, opsDeleteGoal, opsReopenGoal } from '../data/ops.ts';
 import { actionLookup } from '../data/insights.ts';
 import { href } from '../router.ts';
 import { useToast } from '../components/ui.tsx';
+import { useState } from 'react';
 import { GoalsSwitch } from './Backlog.tsx';
 
 /** Goals you finished, newest first, with what it took. */
@@ -13,6 +14,7 @@ export function Completed() {
   const goals = data.goals
     .filter((g) => g.completed_at && !g.archived_at)
     .sort((a, b) => (a.completed_at! < b.completed_at! ? 1 : -1));
+  const archived = data.goals.filter((g) => g.archived_at).sort((a, b) => (a.archived_at! < b.archived_at! ? 1 : -1));
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   return (
     <div className="stack rise">
@@ -35,6 +37,85 @@ export function Completed() {
           {goals.map((g) => (
             <CompletedCard key={g.id} goal={g} />
           ))}
+        </div>
+      )}
+      {archived.length > 0 && (
+        <section className="stack-sm" id="archived" aria-label="Archived goals" style={{ marginTop: 8, scrollMarginTop: 12 }}>
+          <div className="row-between">
+            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Archived</span>
+            <span className="mono">{archived.length}</span>
+          </div>
+          <span className="xsmall muted">Archived goals are hidden everywhere else. Restore one to bring it back, or delete it for good.</span>
+          {archived.map((g) => (
+            <ArchivedRow key={g.id} goal={g} />
+          ))}
+        </section>
+      )}
+    </div>
+  );
+}
+
+/** One archived goal: when it was archived, where it lived, what it holds, and Restore or Delete. */
+function ArchivedRow({ goal }: { goal: Goal }) {
+  const { data, db, commit } = useStore();
+  const view = useView();
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
+  const plans = view.plansForGoal(goal.id);
+  const logged = view.sessionsForGoal(goal.id).filter((s) => s.status !== 'planned' && s.status !== 'moved').length;
+  const tasks = view.actionsForGoal(goal.id, true);
+  const shared = tasks.filter((a) => view.goalsForAction(a.id).length > 1);
+  const same = data.goals.filter((g) => g.id !== goal.id && g.title.trim().toLowerCase() === goal.title.trim().toLowerCase());
+  return (
+    <div className="card tight stack-sm">
+      <div className="row-between" style={{ gap: 10, alignItems: 'flex-start' }}>
+        <span className="row-start" style={{ gap: 9, flexWrap: 'nowrap', minWidth: 0 }}>
+          <span className="dot" style={{ background: goal.color, flex: 'none' }} />
+          <span className="strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{goal.title}</span>
+        </span>
+        <span className="xsmall muted" style={{ flex: 'none' }}>Archived {shortDate(goal.archived_at!.slice(0, 10))}</span>
+      </div>
+      <span className="xsmall muted">
+        {plans.length ? `In ${plans.map((p) => p.name).join(', ')}` : 'In no plan'} · {tasks.length} task{tasks.length === 1 ? '' : 's'} · {logged} logged
+        {same.length ? ` · ${same.length} other goal${same.length === 1 ? '' : 's'} with this name` : ''}
+      </span>
+      {confirming ? (
+        <div className="stack-sm" style={{ padding: 12, borderRadius: 14, background: 'var(--danger-soft)' }}>
+          <span className="small">
+            Delete <b>{goal.title}</b> for good? Its own tasks, {logged} logged day{logged === 1 ? '' : 's'}, photos and files, path and milestones go too.
+            {shared.length ? ` Shared tasks (${shared.map((a) => a.title).join(', ')}) keep running for your other goals.` : ''} This can't be undone.
+          </span>
+          <div className="btn-row">
+            <button className="btn small" onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+            <button
+              className="btn small danger-solid"
+              onClick={() => {
+                const { ops, files } = opsDeleteGoal(data, goal);
+                commit(ops);
+                if (files.length) void db.files.remove(files).catch(() => {});
+                toast(`${goal.title} deleted`);
+              }}
+            >
+              Delete for good
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="btn-row">
+          <button
+            className="btn small"
+            onClick={() => {
+              commit(opsArchiveGoal(goal, false));
+              toast(`${goal.title} restored`);
+            }}
+          >
+            Restore
+          </button>
+          <button className="btn small danger" onClick={() => setConfirming(true)}>
+            Delete…
+          </button>
         </div>
       )}
     </div>

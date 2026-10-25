@@ -19,7 +19,8 @@ import {
   type SessionStatus,
   type WorkoutSet,
 } from '@six/core';
-import type { AppData, Op, ReviewPayload } from './model.ts';
+import type { AppData, CollectionKey, Op, ReviewPayload } from './model.ts';
+import { opsRemoveFromGroup } from './groups.ts';
 
 /** Builders that turn a user intention into the database changes it needs. */
 
@@ -483,4 +484,47 @@ export function opsAddAttachment(session: Session, file: { id: string; path: str
 
 export function opsRemoveAttachment(attachment: Attachment): Op[] {
   return [{ kind: 'delete', collection: 'attachments', id: attachment.id }];
+}
+
+/**
+ * Delete a goal for good, with everything that only belongs to it: its own daily tasks with their
+ * schedules, logs, sets and attachment records; its breakdown, path, milestones and its own
+ * measurement (when nothing else uses it). Tasks it shares with other goals keep running for them.
+ * Returns the ops and the storage paths of attachment files to remove.
+ */
+export function opsDeleteGoal(data: AppData, goal: Goal): { ops: Op[]; files: string[] } {
+  const ops: Op[] = [];
+  const del = (collection: CollectionKey, id: string) => ops.push({ kind: 'delete', collection, id });
+  const links = data.actionGoals.filter((ag) => ag.goal_id === goal.id);
+  const own = new Set(links.filter((ag) => data.actionGoals.filter((x) => x.action_id === ag.action_id).length === 1).map((ag) => ag.action_id));
+  for (const ag of links) del('actionGoals', ag.id);
+  const sessions = data.sessions.filter((s) => s.action_id && own.has(s.action_id));
+  const sessionIds = new Set(sessions.map((s) => s.id));
+  const attachments = data.attachments.filter((a) => sessionIds.has(a.session_id) || (a.action_id && own.has(a.action_id)));
+  for (const a of attachments) del('attachments', a.id);
+  for (const w of data.workoutSets.filter((w) => sessionIds.has(w.session_id))) del('workoutSets', w.id);
+  for (const s of sessions) del('sessions', s.id);
+  for (const s of data.schedules.filter((x) => own.has(x.action_id))) del('schedules', s.id);
+  for (const id of own) del('actions', id);
+  for (const pg of data.planGoals.filter((x) => x.goal_id === goal.id)) del('planGoals', pg.id);
+  for (const st of data.planSteps.filter((x) => x.goal_id === goal.id)) del('planSteps', st.id);
+  for (const t of data.goalTargets.filter((x) => x.goal_id === goal.id)) del('goalTargets', t.id);
+  for (const m of data.milestones.filter((x) => x.goal_id === goal.id)) del('milestones', m.id);
+  for (const l of data.goalLinks.filter((x) => x.goal_a === goal.id || x.goal_b === goal.id)) del('goalLinks', l.id);
+  // Its own measurement goes too, unless another goal or a remaining task records it.
+  const usedElsewhere = (typeId: string) =>
+    data.goals.some((g) => g.id !== goal.id && g.measurement_type_id === typeId) || data.actions.some((a) => !own.has(a.id) && a.measurement_type_id === typeId);
+  for (const t of data.measurementTypes.filter((x) => x.goal_id === goal.id || x.id === goal.measurement_type_id)) {
+    if (usedElsewhere(t.id)) {
+      if (t.goal_id === goal.id) ops.push({ kind: 'update', collection: 'measurementTypes', id: t.id, patch: { goal_id: null } });
+    } else {
+      for (const m of data.measurements.filter((x) => x.type_id === t.id)) del('measurements', m.id);
+      del('measurementTypes', t.id);
+    }
+  }
+  for (const idea of data.ideas.filter((i) => i.goal_id === goal.id)) ops.push({ kind: 'update', collection: 'ideas', id: idea.id, patch: { goal_id: null } });
+  // Leaving its group first means a group left with one goal goes away too.
+  ops.push(...opsRemoveFromGroup(data, goal.id));
+  del('goals', goal.id);
+  return { ops, files: attachments.map((a) => a.path) };
 }
