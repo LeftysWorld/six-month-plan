@@ -8,13 +8,13 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const supabaseConfigured = Boolean(url && anonKey);
 
-const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql and 20261021000000_reminders_and_cues.sql';
+const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql and 20261025000000_review_overhaul.sql';
 
 /** Set when the database is missing a newer migration; the app shows it as a banner. */
 export let schemaWarning: string | null = null;
 
 function isMissingBreakdown(message: string): boolean {
-  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
 }
 
 let client: SupabaseClient | null = null;
@@ -60,7 +60,7 @@ const NUMERIC_FIELDS: Record<string, string[]> = {
   plan_steps: ['target_value'],
   measurements: ['value'],
   workout_sets: ['weight'],
-  reviews: ['actions_done'],
+  reviews: ['actions_done', 'minutes_planned', 'minutes_done'],
 };
 
 /** A network failure is worth retrying; a database refusal is not. */
@@ -97,6 +97,13 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
         const rows = numeric(results[i] ?? [], NUMERIC_FIELDS[table] ?? []);
         (data as unknown as Record<string, unknown>)[key] = rows;
       });
+      // A database without the review overhaul still loads; reviews just won't keep the new answers.
+      if (!schemaWarning) {
+        const probe = await sb.from('reviews').select('goal_results').limit(1);
+        if (probe.error && isMissingBreakdown(probe.error.message)) {
+          schemaWarning = `Your database needs the review update. In Supabase → SQL Editor, run supabase/migrations/20261025000000_review_overhaul.sql, then reload.`;
+        }
+      }
       const { data: profile, error } = await sb.from('profiles').select('*').eq('user_id', userId).maybeSingle();
       if (error) throw new Error(`profiles: ${error.message}`);
       if (profile) {

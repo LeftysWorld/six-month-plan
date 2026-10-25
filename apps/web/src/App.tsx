@@ -16,6 +16,7 @@ import { GoalNew } from './screens/GoalNew.tsx';
 import { ActionEdit } from './screens/ActionEdit.tsx';
 import { ReviewHub } from './screens/ReviewHub.tsx';
 import { WeeklyReview } from './screens/WeeklyReview.tsx';
+import { ReviewDetail, ReviewList } from './screens/ReviewPast.tsx';
 import { Progress } from './screens/Progress.tsx';
 import { Settings } from './screens/Settings.tsx';
 import { WorkoutLog } from './screens/WorkoutLog.tsx';
@@ -122,7 +123,7 @@ function Shell(props: ShellProps) {
   const route = useRoute();
   const { sync, clearError, today, data, commit } = useStore();
   const view = useView();
-  const [s0 = '', s1] = route.segments;
+  const [s0 = '', s1, s2] = route.segments;
   const [adding, setAdding] = useState(false);
 
   const away = view.daysAway();
@@ -176,7 +177,9 @@ function Shell(props: ShellProps) {
       screen = <ActionEdit id={s1 === 'new' ? null : s1 ?? null} goalId={route.query.get('goal')} />;
       break;
     case 'review':
-      screen = s1 === 'run' ? <WeeklyReview kind={route.query.get('kind') ?? 'weekly'} /> : <ReviewHub />;
+      if (s1 === 'run') screen = <WeeklyReview kind={route.query.get('kind') ?? 'weekly'} />;
+      else if (s1 === 'past') screen = s2 ? <ReviewDetail id={s2} /> : <ReviewList />;
+      else screen = <ReviewHub />;
       break;
     case 'progress':
       screen = <Progress />;

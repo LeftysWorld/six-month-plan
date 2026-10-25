@@ -188,6 +188,21 @@ export interface WeekPlan {
   saved_at: string;
 }
 
+export type CommitmentAnswer = 'yes' | 'partly' | 'no';
+export type GoalResult = 'hit' | 'partly' | 'missed';
+export type GoalDecision = 'keep' | 'adjust' | 'drop';
+
+/** How one goal's period goal (week, month, 3 months or the whole plan) turned out. */
+export interface ReviewGoalResult {
+  goal_id: string;
+  /** 'plan' = the 6-month goal itself (retrospective). */
+  level: StepLevel | 'plan';
+  step_id: string | null;
+  /** The goal as it was written for the period. */
+  note: string;
+  result: GoalResult;
+}
+
 export interface Review {
   id: string;
   kind: ReviewKind;
@@ -201,6 +216,16 @@ export interface Review {
   actions_done: number;
   actions_planned: number;
   completed_at: string | null;
+  // Added by the review overhaul. Older rows (or a database without the migration) may not have them.
+  /** Did last review's "change next" happen? */
+  commitment_kept?: CommitmentAnswer | null;
+  goal_results?: ReviewGoalResult[];
+  /** 3-month checkpoint: what was decided for each goal. */
+  goal_decisions?: { goal_id: string; decision: GoalDecision }[];
+  /** Retrospective: what carries into the next plan. */
+  carry_forward?: string;
+  minutes_planned?: number;
+  minutes_done?: number;
 }
 
 export interface ChangeLogEntry {

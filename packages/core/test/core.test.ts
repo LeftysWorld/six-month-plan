@@ -330,3 +330,114 @@ test('chainAt finds the current 3-month stage, month and week', async () => {
   const before = chainAt(plan, '2026-09-01');
   assert.equal(before.week.start, '2026-10-05');
 });
+
+test('review suggestions: pause, raise and move a missed weekday', async () => {
+  const { reviewSuggestions: suggest } = await import('../src/index.ts');
+  const reading = action({ id: 'read', title: 'Reading' });
+  const run = action({ id: 'run', title: 'Run', min_label: '10 minutes' });
+  const yoga = action({ id: 'yoga', title: 'Yoga', min_label: '5 minutes' });
+  const schedules = [
+    schedule({ id: 'r', action_id: 'read', rule: 'per_week', per_week: 3, days: [] }),
+    schedule({ id: 'u', action_id: 'run', rule: 'days', days: [1, 3, 5] }),
+    schedule({ id: 'y', action_id: 'yoga', rule: 'per_week', per_week: 2, days: [] }),
+  ];
+  const sessions: Session[] = [];
+  const mondays = ['2026-09-21', '2026-09-28', '2026-10-05', '2026-10-12'];
+  for (const monday of mondays) {
+    // Reading: planned 3 a week, never done.
+    for (let i = 0; i < 3; i++) sessions.push(session({ action_id: 'read', week_start: monday, slot: i, date: null, status: 'skipped' }));
+    // Run: Monday and Friday done, Wednesday always missed.
+    for (const [slot, day] of [[0, 1], [1, 3], [2, 5]] as const) {
+      sessions.push(session({ action_id: 'run', week_start: monday, slot, date: addDays(monday, day - 1), status: day === 3 ? 'skipped' : 'done' }));
+    }
+    // Yoga: every one done.
+    for (let i = 0; i < 2; i++) sessions.push(session({ action_id: 'yoga', week_start: monday, slot: i, date: null, status: 'done' }));
+  }
+  const out = suggest([reading, run, yoga], schedules, sessions, '2026-10-12', { availableMinutes: [60, 60, 60, 60, 60, 180, 30] });
+  assert.equal(out.find((s) => s.actionId === 'read')?.kind, 'pause');
+  const move = out.find((s) => s.actionId === 'run');
+  assert.equal(move?.kind, 'move_day');
+  assert.equal(move?.fromDay, 3);
+  assert.equal(move?.toDay, 6, 'moves to the free day with the most time (Saturday)');
+  const raise = out.find((s) => s.actionId === 'yoga');
+  assert.equal(raise?.kind, 'raise_frequency');
+  assert.equal(raise?.proposedPerWeek, 3);
+});
+
+test('review tallies: future days are upcoming, not misses; minutes and patterns', async () => {
+  const { periodTally, weeklyTrend, weekdayPattern, obstacleCounts, previousReview, commitmentStats, weeklyReviewCount } = await import('../src/index.ts');
+  const monday = '2026-10-12';
+  const sessions: Session[] = [
+    session({ week_start: monday, slot: 0, date: '2026-10-12', status: 'done', planned_minutes: 30 }),
+    session({ week_start: monday, slot: 1, date: '2026-10-14', status: 'partial', planned_minutes: 40, actual_minutes: 20, obstacles: ['Energy'] }),
+    session({ week_start: monday, slot: 2, date: '2026-10-16', status: 'skipped', obstacles: ['Energy', 'Time'] }),
+    session({ week_start: monday, slot: 3, date: '2026-10-18', status: 'planned' }),
+  ];
+  // Reviewed on Saturday: Sunday's task is still to come.
+  const t = periodTally(sessions, { start: monday, end: '2026-10-18' }, '2026-10-17');
+  assert.equal(t.planned, 3);
+  assert.equal(t.upcoming, 1);
+  assert.equal(t.credit, 1.5);
+  assert.equal(t.minutesDone, 50);
+  assert.equal(t.minutesPlanned, 100);
+  const trend = weeklyTrend(sessions, monday, 2, '2026-10-19');
+  assert.equal(trend.length, 2);
+  assert.equal(trend[0]!.rate, null);
+  assert.equal(trend[1]!.planned, 4);
+  assert.deepEqual(obstacleCounts(sessions, { start: monday, end: '2026-10-18' }), [{ name: 'Energy', count: 2 }, { name: 'Time', count: 1 }]);
+
+  const wed: Session[] = [];
+  for (const m of ['2026-09-21', '2026-09-28', '2026-10-05']) {
+    wed.push(session({ week_start: m, slot: 0, date: addDays(m, 2), status: 'skipped' }));
+    wed.push(session({ week_start: m, slot: 1, date: addDays(m, 4), status: 'done' }));
+  }
+  wed.push(session({ week_start: '2026-10-05', slot: 2, date: '2026-10-06', status: 'skipped' }));
+  assert.deepEqual(weekdayPattern(wed, { start: '2026-09-21', end: '2026-10-11' }, '2026-10-12'), { weekday: 3, misses: 3, total: 4 });
+
+  const review = (start: string, over: Partial<import('../src/index.ts').Review> = {}) => ({
+    id: start, kind: 'weekly' as const, period_start: start, period_end: addDays(start, 6), status: 'done' as const,
+    went_well: '', got_in_way: '', change_next: '', obstacles: [], actions_done: 0, actions_planned: 0, completed_at: null, ...over,
+  });
+  const reviews = [review('2026-10-05', { change_next: 'Guitar in the morning', commitment_kept: 'partly' }), review('2026-09-28', { commitment_kept: 'yes' })];
+  assert.equal(previousReview(reviews, 'weekly', '2026-10-12')?.change_next, 'Guitar in the morning');
+  assert.deepEqual(commitmentStats(reviews), { answered: 2, kept: 1, partly: 1 });
+  assert.deepEqual(weeklyReviewCount(plan, reviews, '2026-10-19'), { done: 2, weeks: 3 });
+});
+
+test('period reviews: a missed month stays open, the last 3 months fold into the retro', async () => {
+  const { periodReviewSlots, retroSlot, planMonths, periodNode } = await import('../src/index.ts');
+  const months = planMonths(plan);
+  const m1 = months[0]!;
+  // Two days before month 1 ends it opens; after it ends (not done) it's overdue.
+  const open = periodReviewSlots(plan, [], addDays(m1.end, -2));
+  assert.equal(open.find((s) => s.kind === 'block' && s.state !== 'upcoming')?.state, 'open');
+  const later = periodReviewSlots(plan, [], addDays(m1.end, 5));
+  const overdue = later.find((s) => s.kind === 'block' && s.state !== 'upcoming');
+  assert.equal(overdue?.state, 'overdue');
+  assert.equal(overdue?.period.start, m1.start);
+  // Done: nothing open, the next month is upcoming.
+  const done = periodReviewSlots(plan, [{ id: 'r', kind: 'block', period_start: m1.start, period_end: m1.end, status: 'done', went_well: '', got_in_way: '', change_next: '', obstacles: [], actions_done: 0, actions_planned: 0, completed_at: null }], addDays(m1.end, 5));
+  assert.equal(done.filter((s) => s.kind === 'block' && s.state !== 'upcoming').length, 0);
+  // Only the first 3-month stage gets a checkpoint review.
+  const quarters = periodReviewSlots(plan, [], '2026-10-20').filter((s) => s.kind === 'quarter');
+  assert.equal(quarters.length, 1);
+  assert.equal(quarters[0]!.state, 'upcoming');
+  assert.equal(retroSlot(plan, [], '2027-03-28')?.state, 'open');
+  assert.equal(retroSlot(plan, [], '2027-04-10')?.state, 'overdue');
+  assert.equal(periodNode(plan, 'block', m1.start)?.title, 'Month 1');
+});
+
+test('review suggestions skip one-time tasks and sessions that have not happened yet', () => {
+  const chat = action({ id: 'chat', title: 'Coffee chat' });
+  const prep = action({ id: 'prep', title: 'Meal prep' });
+  const schedules = [
+    schedule({ id: 'c', action_id: 'chat', rule: 'days', days: [7], effective_from: '2026-10-18', effective_to: '2026-10-18' }),
+    schedule({ id: 'p', action_id: 'prep', rule: 'days', days: [7] }),
+  ];
+  const sessions = [
+    session({ action_id: 'chat', week_start: '2026-10-12', date: '2026-10-18', status: 'skipped' }),
+    session({ action_id: 'prep', week_start: '2026-10-12', date: '2026-10-18', status: 'planned' }),
+  ];
+  // Reviewed on Sunday the 18th: the meal prep is today, not missed.
+  assert.deepEqual(reviewSuggestions([chat, prep], schedules, sessions, '2026-10-12', { today: '2026-10-18' }), []);
+});

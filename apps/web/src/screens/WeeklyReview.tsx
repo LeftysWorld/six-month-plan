@@ -3,232 +3,249 @@ import {
   addDays,
   chainAt,
   missingSessionsForWeek,
-  quarterRange,
+  periodNode,
+  periodTally,
+  previousReview,
   reviewSuggestions,
   scheduleForWeek,
-  sessionCredit,
+  sessionsPerWeek,
   shortDate,
+  suggestPath,
   weekDates,
+  weekStart,
   weekdayName,
+  WEEKDAY_LONG,
   type ActionSchedule,
+  type CommitmentAnswer,
   type DateRange,
+  type Goal,
+  type GoalDecision,
+  type GoalResult,
   type ISODate,
+  type Plan,
+  type ReviewGoalResult,
   type ReviewKind,
   type Session,
+  type Suggestion,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, minutesText, useView } from '../data/derive.ts';
-import type { ReviewPayload } from '../data/model.ts';
-import { opsCompleteReview } from '../data/ops.ts';
-import { chainFor, isSet, opsSetLevel, type ChainLevel } from '../data/chain.ts';
+import { fmt, minutesText, useView, type View } from '../data/derive.ts';
+import type { AppData, Op, ReviewPayload } from '../data/model.ts';
+import { opsArchiveAction, opsArchiveGoal, opsCompleteReview, opsCreatePlan, opsLinkGoalToPlan, opsReplacePath, opsUpdateGoal } from '../data/ops.ts';
+import { catchUp, chainFor, isSet, opsSetLevel, type ChainLevel } from '../data/chain.ts';
 import { withOps } from '../data/breakdown.ts';
-import type { Op } from '../data/model.ts';
+import { actionLookup, obstacleSentence, timeAverages, trendFor, weekdaySentence } from '../data/insights.ts';
 import { navigate, useRoute } from '../router.ts';
-import { BackLink, NumberInput, OBSTACLES, PacePill, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
+import { BackLink, Empty, NumberInput, OBSTACLES, PacePill, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
+import { TrendBars } from '../components/TrendBars.tsx';
 import { weekToReview } from './ReviewHub.tsx';
 
+/**
+ * One review flow for every kind. Each kind has its own last step:
+ * - weekly: look back, reflect, plan next week
+ * - month ("block" in the database): look back, reflect, set next month's goals
+ * - 3-month checkpoint: look back, reflect, keep / adjust / drop each goal and set the next 3 months
+ * - plan retrospective: look back, reflect, start the next plan
+ */
+
+type ChoiceKind = 'keep' | 'lower' | 'raise' | 'move' | 'minimum' | 'pause';
 interface Choice {
-  kind: 'keep' | 'lower' | 'minimum';
+  kind: ChoiceKind;
   perWeek?: number;
   minLabel?: string;
   minMinutes?: number | null;
 }
 
+interface Adjust {
+  target?: number | null;
+  date?: ISODate;
+  doneMeans?: string;
+}
+
 interface Draft {
+  v: 2;
+  savedAt: string;
   step: number;
   measurements: Record<string, number | null>;
   obstacles: string[];
   wentWell: string;
   gotInWay: string;
   changeNext: string;
+  carryForward: string;
+  commitment: CommitmentAnswer | null;
+  /** Goal id → how its period goal turned out. */
+  results: Record<string, GoalResult>;
   choices: Record<string, Choice>;
   /** Day chosen for each next-week session, keyed by "actionId:slot". */
   placements: Record<string, ISODate | null>;
-  /** Next period's goals typed in the plan step, keyed by "goalId:level". */
-  nextGoals?: Record<string, string>;
+  /** Sessions taken out of next week, keyed by "actionId:slot". */
+  removed: Record<string, boolean>;
+  /** Next period's goals typed in the last step, keyed by "goalId:level". */
+  nextGoals: Record<string, string>;
+  nextValues: Record<string, number | null>;
+  decisions: Record<string, GoalDecision>;
+  adjust: Record<string, Adjust>;
+  newPlan: { on: boolean; name: string; start: ISODate; end: ISODate; carry: Record<string, boolean> };
 }
 
-const STEPS = ['Look back', 'Reflect', 'Plan'];
+const STEPS: Record<ReviewKind, string[]> = {
+  weekly: ['Look back', 'Reflect', 'Plan'],
+  block: ['Look back', 'Reflect', 'Next month'],
+  quarter: ['Look back', 'Reflect', 'Decide'],
+  retro: ['Look back', 'Reflect', 'Next plan'],
+};
+const PERIOD_WORD: Record<ReviewKind, string> = { weekly: 'week', block: 'month', quarter: '3 months', retro: 'plan' };
+const RESULT_LEVEL: Record<ReviewKind, ChainLevel | 'plan'> = { weekly: 'week', block: 'month', quarter: 'quarter', retro: 'plan' };
+const DRAFT_DAYS = 21;
 const slotKey = (s: Pick<Session, 'action_id' | 'slot'>) => `${s.action_id}:${s.slot}`;
 
 export function WeeklyReview({ kind: kindParam }: { kind: string }) {
+  const { data, today } = useStore();
+  const view = useView();
+  const route = useRoute();
+  const kind = (['weekly', 'block', 'quarter', 'retro'].includes(kindParam) ? kindParam : 'weekly') as ReviewKind;
+  const planParam = route.query.get('plan');
+  const plan = (planParam ? view.plan(planParam) : undefined) ?? view.mainPlan;
+
+  let period: DateRange & { title: string };
+  if (kind === 'weekly') {
+    const monday = route.query.get('week') ?? weekToReview(data, today).monday;
+    period = { start: monday, end: addDays(monday, 6), title: `Week of ${shortDate(monday)}` };
+  } else if (!plan) {
+    return <Empty title="This review needs a plan." />;
+  } else if (kind === 'retro') {
+    period = { start: plan.start_date, end: plan.end_date, title: plan.name };
+  } else {
+    const fallback = chainAt(plan, today)[kind === 'block' ? 'month' : 'quarter'].start;
+    const node = periodNode(plan, kind, route.query.get('start') ?? fallback);
+    if (!node) return <Empty title="Couldn't find that period." />;
+    period = { start: node.start, end: node.end, title: node.title };
+  }
+  return <ReviewRun key={`${kind}:${period.start}`} kind={kind} plan={plan} period={period} />;
+}
+
+function freshDraft(data: AppData, kind: ReviewKind, period: DateRange, plan: Plan | null, today: ISODate): Draft {
+  const obstacles = data.sessions
+    .filter((s) => (s.date ? s.date >= period.start && s.date <= period.end : s.week_start >= period.start && s.week_start <= period.end))
+    .flatMap((s) => s.obstacles);
+  const start = plan ? (addDays(plan.end_date, 1) > today ? addDays(plan.end_date, 1) : today) : today;
+  return {
+    v: 2,
+    savedAt: new Date().toISOString(),
+    step: 0,
+    measurements: {},
+    obstacles: kind === 'weekly' ? [...new Set(obstacles)] : [],
+    wentWell: '',
+    gotInWay: '',
+    changeNext: '',
+    carryForward: '',
+    commitment: null,
+    results: {},
+    choices: {},
+    placements: {},
+    removed: {},
+    nextGoals: {},
+    nextValues: {},
+    decisions: {},
+    adjust: {},
+    newPlan: { on: true, name: 'My next six months', start, end: addDays(start, 182), carry: {} },
+  };
+}
+
+function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null; period: DateRange & { title: string } }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
-  const route = useRoute();
-  const kind = (['weekly', 'block', 'quarter', 'retro'].includes(kindParam) ? kindParam : 'weekly') as ReviewKind;
-  const monday = route.query.get('week') ?? weekToReview(data, today).monday;
-  const sunday = addDays(monday, 6);
-  const nextMonday = addDays(monday, 7);
-  const plan = view.mainPlan;
-  const draftKey = `six.review.draft.${kind}.${monday}`;
+  const steps = STEPS[kind];
+  const word = PERIOD_WORD[kind];
+  const draftKey = `six.review.draft.${kind}.${period.start}`;
+  const nextMonday = kind === 'weekly' ? addDays(period.start, 7) : addDays(weekStart(today), 7);
 
+  // ---- Draft (kept on this device only) ----
   const [draft, setDraft] = useState<Draft>(() => {
+    const base = freshDraft(data, kind, period, plan, today);
     try {
-      const saved = localStorage.getItem(draftKey);
-      if (saved) return JSON.parse(saved) as Draft;
+      const saved = JSON.parse(localStorage.getItem(draftKey) ?? 'null') as Partial<Draft> | null;
+      const age = saved?.savedAt ? (Date.now() - Date.parse(saved.savedAt)) / 864e5 : Infinity;
+      if (saved && saved.v === 2 && age < DRAFT_DAYS) return { ...base, ...saved, newPlan: { ...base.newPlan, ...saved.newPlan } };
     } catch {
       // ignore broken drafts
     }
-    const weekObstacles = data.sessions.filter((s) => s.week_start === monday).flatMap((s) => s.obstacles);
-    return {
-      step: 0,
-      measurements: {},
-      obstacles: [...new Set(weekObstacles)],
-      wentWell: '',
-      gotInWay: '',
-      changeNext: '',
-      choices: {},
-      placements: {},
-    };
+    return base;
   });
+  const [stored, setStored] = useState(true);
   useEffect(() => {
     try {
-      localStorage.setItem(draftKey, JSON.stringify(draft));
+      localStorage.setItem(draftKey, JSON.stringify({ ...draft, savedAt: new Date().toISOString() }));
+      setStored(true);
     } catch {
-      // the draft just won't survive a reload
+      setStored(false);
     }
   }, [draft, draftKey]);
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
 
-  // ---- Look back ----
-  const period: DateRange =
-    kind === 'block' && plan
-      ? chainAt(plan, today).month
-      : kind === 'quarter' && plan
-        ? quarterRange(plan, today)
-        : kind === 'retro' && plan
-          ? { start: plan.start_date, end: plan.end_date }
-          : { start: monday, end: sunday };
-  const lookEnd = period.end < today ? period.end : today;
-  const weekSessions = data.sessions.filter(
-    (s) => s.status !== 'moved' && (s.date ? s.date >= period.start && s.date <= period.end : s.week_start >= period.start && s.week_start <= period.end),
-  );
-  const credit = Math.round(weekSessions.reduce((sum, s) => sum + sessionCredit(s), 0) * 10) / 10;
-  const studyMinutes = weekSessions
-    .filter((s) => view.action(s.action_id)?.kind === 'study')
-    .reduce((sum, s) => sum + (s.status !== 'planned' ? s.actual_minutes ?? 0 : 0), 0);
+  // ---- What happened ----
+  const actionById = actionLookup(data);
+  const tally = periodTally(data.sessions, period, today, actionById);
   const goals = plan ? view.goalsForPlan(plan.id) : [];
+  const lookEnd = period.end < today ? period.end : today;
   const paces = goals.map((g) => view.goalPace(g, plan, { start: period.start, end: lookEnd }));
+  const prev = previousReview(data.reviews, kind, period.start);
+  const due = kind === 'weekly' || kind === 'block' ? view.measurementsDue(period.end) : [];
+  const lastMonday = weekStart(period.end < today ? period.end : today);
+  const trendWeeks = kind === 'weekly' || kind === 'block' ? 8 : Math.min(26, Math.max(1, Math.ceil((Date.parse(lookEnd) - Date.parse(period.start)) / (7 * 864e5))));
+  const trend = trendFor(data, lastMonday, trendWeeks, today);
+  const resultLines = plan ? goalResultLines(data, goals, plan, kind, period) : [];
 
-  // ---- Measure ----
-  const due = view.measurementsDue(sunday);
-
-  // ---- Adjust ----
+  // ---- Suggestions (weekly only) ----
   const suggestions = useMemo(
-    () => reviewSuggestions(data.actions, data.schedules, data.sessions, monday),
-    [data.actions, data.schedules, data.sessions, monday],
+    () => (kind === 'weekly' ? reviewSuggestions(data.actions, data.schedules, data.sessions, period.start, { availableMinutes: data.profile.available_minutes, today }) : []),
+    [kind, data.actions, data.schedules, data.sessions, period.start, data.profile.available_minutes, today],
+  );
+  const { schedulesAfter, scheduleChanges, actionChanges } = useMemo(
+    () => applyChoices(view, data, suggestions, draft.choices, nextMonday),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [suggestions, draft.choices, data.schedules, nextMonday],
   );
 
-  // Schedules and actions as they'll be next week, with the chosen changes applied.
-  const { schedulesAfter, scheduleChanges, actionChanges } = useMemo(() => {
-    const scheduleChanges: ReviewPayload['schedule_changes'] = [];
-    const actionChanges: ReviewPayload['action_changes'] = [];
-    let schedulesAfter: ActionSchedule[] = data.schedules;
-    for (const s of suggestions) {
-      const choice = draft.choices[s.actionId];
-      const action = view.action(s.actionId);
-      if (!choice || choice.kind === 'keep' || !action) continue;
-      if (choice.kind === 'lower') {
-        const current = scheduleForWeek(data.schedules, s.actionId, nextMonday);
-        if (!current || current.effective_from >= nextMonday) continue;
-        const perWeek = choice.perWeek ?? s.proposedPerWeek ?? 1;
-        const fresh: ActionSchedule = {
-          id: crypto.randomUUID(),
-          action_id: s.actionId,
-          rule: 'per_week',
-          days: [],
-          per_week: perWeek,
-          effective_from: nextMonday,
-          effective_to: null,
-        };
-        scheduleChanges.push({
-          end_schedule_id: current.id,
-          end_on: addDays(nextMonday, -1),
-          new_schedule: fresh,
-          summary: `${action.title}: ${current.rule === 'per_week' ? `${current.per_week}` : current.days.length} → ${perWeek} a week`,
-          old_value: { rule: current.rule, days: current.days, per_week: current.per_week },
-          new_value: { rule: 'per_week', per_week: perWeek },
-        });
-        schedulesAfter = [...schedulesAfter.map((x) => (x.id === current.id ? { ...x, effective_to: addDays(nextMonday, -1) } : x)), fresh];
-      }
-      if (choice.kind === 'minimum') {
-        actionChanges.push({
-          action_id: s.actionId,
-          min_label: choice.minLabel?.trim() || '5 minutes',
-          min_minutes: choice.minMinutes ?? 5,
-          min_count: null,
-          summary: `${action.title}: added minimum "${choice.minLabel?.trim() || '5 minutes'}"`,
-          old_value: { min_label: action.min_label },
-          new_value: { min_label: choice.minLabel?.trim() || '5 minutes' },
-        });
-      }
-    }
-    return { schedulesAfter, scheduleChanges, actionChanges };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestions, draft.choices, data.schedules, nextMonday]);
-
-  // ---- Plan next week ----
+  // ---- Plan next week (weekly) ----
   const existingNext = useMemo(() => data.sessions.filter((s) => s.week_start === nextMonday && s.status !== 'moved'), [data.sessions, nextMonday]);
   const generated = useMemo(
-    () => missingSessionsForWeek(data.actions, schedulesAfter, existingNext, nextMonday, () => crypto.randomUUID()),
-    [data.actions, schedulesAfter, existingNext, nextMonday],
+    () => (kind === 'weekly' ? missingSessionsForWeek(data.actions, schedulesAfter, existingNext, nextMonday, () => crypto.randomUUID()) : []),
+    [kind, data.actions, schedulesAfter, existingNext, nextMonday],
   );
+  // Sessions of a paused task don't belong in next week.
+  const paused = new Set(scheduleChanges.filter((c) => !c.new_schedule).map((c) => c.action_id));
   const days = weekDates(nextMonday);
   const available = data.profile.available_minutes;
-  // "Any day" tasks get a suggested day: the lightest day that doesn't already have the same task.
-  const suggested = useMemo(() => {
-    const out: Record<string, ISODate> = {};
-    const all = [...existingNext, ...generated];
-    const load = days.map((d) => all.filter((s) => s.date === d).reduce((sum, s) => sum + s.planned_minutes, 0));
-    const has = days.map((d) => new Set(all.filter((s) => s.date === d).map((s) => s.action_id)));
-    for (const s of all.filter((x) => !x.date && x.status === 'planned' && x.action_id)) {
-      let best = -1;
-      for (let i = 0; i < days.length; i++) {
-        if (has[i]!.has(s.action_id)) continue;
-        const room = (available[i] ?? 0) - load[i]!;
-        if (best === -1 || room > (available[best] ?? 0) - load[best]!) best = i;
-      }
-      if (best === -1) best = load.indexOf(Math.min(...load));
-      out[slotKey(s)] = days[best]!;
-      load[best]! += s.planned_minutes;
-      has[best]!.add(s.action_id);
-    }
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existingNext, generated, nextMonday]);
+  const suggested = useMemo(() => lightestDays([...existingNext, ...generated], days, available), [existingNext, generated, nextMonday]); // eslint-disable-line react-hooks/exhaustive-deps
   const placements: Record<string, ISODate | null> = { ...suggested, ...draft.placements };
+  const isOut = (s: Session) => s.status === 'planned' && !!s.action_id && (!!draft.removed[slotKey(s)] || paused.has(s.action_id));
   const nextSessions = [...existingNext, ...generated].map((s) => {
     const key = slotKey(s);
     return key in placements && s.status === 'planned' ? { ...s, date: placements[key] ?? null } : s;
   });
-  const plannedByDay = days.map((d) => nextSessions.filter((s) => s.date === d).reduce((sum, s) => sum + s.planned_minutes, 0));
-  const plannedTotal = nextSessions.reduce((sum, s) => sum + s.planned_minutes, 0);
+  const keptNext = nextSessions.filter((s) => !isOut(s));
+  const plannedByDay = days.map((d) => keptNext.filter((s) => s.date === d).reduce((sum, s) => sum + s.planned_minutes, 0));
+  const plannedTotal = keptNext.reduce((sum, s) => sum + s.planned_minutes, 0);
   const availableTotal = available.reduce((a, b) => a + b, 0);
-  const tray = nextSessions.filter((s) => !s.date && s.status === 'planned');
+  const tray = keptNext.filter((s) => !s.date && s.status === 'planned');
+  const outList = nextSessions.filter(isOut);
+  const recent = timeAverages(trendFor(data, weekStart(period.start), 3, today));
+  const [editing, setEditing] = useState<string | null>(null);
 
-  // Plan step: one line per goal for next week, plus next month / 3 months when they start next week and aren't set.
-  const nextGoalFields: { key: string; goal: (typeof goals)[number]; level: ChainLevel; label: string; current: string }[] = [];
-  if (plan && nextMonday <= plan.end_date && kind === 'weekly') {
-    for (const g of goals) {
-      const chain = chainFor(data, g, plan, nextMonday);
-      for (const level of ['quarter', 'month', 'week'] as ChainLevel[]) {
-        const link = chain[level];
-        const startsNext = link.node.start >= nextMonday;
-        if (level !== 'week' && (!startsNext || isSet(link))) continue;
-        nextGoalFields.push({
-          key: `${g.id}:${level}`,
-          goal: g,
-          level,
-          label: level === 'week' ? `${link.node.title} (${shortDate(link.node.start)})` : level === 'month' ? `${link.node.title} starts ${shortDate(link.node.start)}` : `${link.node.title} start ${shortDate(link.node.start)}`,
-          current: link.step?.target_note ?? '',
-        });
-      }
-    }
-  }
+  // ---- Next goals ----
+  const nextFields = plan ? nextGoalFields(data, goals, plan, kind, period, nextMonday) : [];
 
   function finish() {
-    const changedExisting = existingNext.filter((s) => s.status === 'planned' && slotKey(s) in placements && placements[slotKey(s)] !== s.date);
+    const now = new Date().toISOString();
+    const results: ReviewGoalResult[] = resultLines
+      .filter((l) => draft.results[l.goal.id])
+      .map((l) => ({ goal_id: l.goal.id, level: RESULT_LEVEL[kind], step_id: l.stepId, note: l.note, result: draft.results[l.goal.id]! }));
+    const changedExisting = existingNext.filter(
+      (s) => s.status === 'planned' && (isOut(s) || (slotKey(s) in placements && placements[slotKey(s)] !== s.date)),
+    );
+    const out = (s: Session): Session => (isOut(s) ? { ...s, status: 'moved', note: paused.has(s.action_id ?? '') ? 'Paused in the weekly review' : 'Taken out in the weekly review' } : s);
     const payload: ReviewPayload = {
       review: {
         id: crypto.randomUUID(),
@@ -238,56 +255,103 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
         status: 'done',
         went_well: draft.wentWell.trim(),
         got_in_way: draft.gotInWay.trim(),
-        change_next: draft.changeNext.trim(),
+        change_next: kind === 'retro' ? '' : draft.changeNext.trim(),
         obstacles: draft.obstacles,
-        actions_done: credit,
-        actions_planned: weekSessions.length,
+        actions_done: tally.credit,
+        actions_planned: tally.planned,
         completed_at: null,
+        commitment_kept: prev?.change_next ? draft.commitment : null,
+        goal_results: results,
+        goal_decisions: kind === 'quarter' ? Object.entries(draft.decisions).map(([goal_id, decision]) => ({ goal_id, decision })) : [],
+        carry_forward: kind === 'retro' ? draft.carryForward.trim() : '',
+        minutes_planned: tally.minutesPlanned,
+        minutes_done: tally.minutesDone,
       },
       measurements: due
         .filter((t) => draft.measurements[t.id] != null)
-        .map((t) => ({ id: crypto.randomUUID(), type_id: t.id, value: draft.measurements[t.id]!, measured_on: sunday < today ? sunday : today, source: 'manual', note: '' })),
+        .map((t) => ({ id: crypto.randomUUID(), type_id: t.id, value: draft.measurements[t.id]!, measured_on: period.end < today ? period.end : today, source: 'manual', note: '' })),
       schedule_changes: scheduleChanges,
       action_changes: actionChanges,
-      week_plan: { id: crypto.randomUUID(), week_start: nextMonday, available_minutes: availableTotal, planned_minutes: plannedTotal, saved_at: new Date().toISOString() },
-      sessions: [
-        ...generated.map((s) => ({ ...s, date: slotKey(s) in placements ? placements[slotKey(s)] ?? null : s.date })),
-        ...changedExisting.map((s) => ({ ...s, date: placements[slotKey(s)] ?? null })),
-      ],
+      week_plan:
+        kind === 'weekly'
+          ? { id: crypto.randomUUID(), week_start: nextMonday, available_minutes: availableTotal, planned_minutes: plannedTotal, saved_at: now }
+          : null,
+      sessions:
+        kind === 'weekly'
+          ? [
+              ...generated.map((s) => out({ ...s, date: slotKey(s) in placements ? placements[slotKey(s)] ?? null : s.date })),
+              ...changedExisting.map((s) => out({ ...s, date: placements[slotKey(s)] ?? s.date })),
+            ]
+          : [],
     };
     commit(opsCompleteReview(payload));
-    // Next week's (and, at a boundary, next month's) goals typed in the plan step.
-    if (plan) {
-      let next = data;
-      const goalOps: Op[] = [];
-      for (const f of nextGoalFields) {
-        const text = (draft.nextGoals ?? {})[f.key]?.trim();
-        if (!text || text === f.current) continue;
-        const ops = opsSetLevel(next, f.goal, plan, chainFor(next, f.goal, plan, nextMonday), f.level, { target_note: text });
-        goalOps.push(...ops);
-        next = withOps(next, ops);
-      }
-      if (goalOps.length) commit(goalOps);
+
+    // Everything else the review decided, applied one after another on fresh data.
+    let next = withOps(data, opsCompleteReview(payload));
+    const ops: Op[] = [];
+    const add = (more: Op[]) => {
+      ops.push(...more);
+      next = withOps(next, more);
+    };
+    // A period goal that was hit is marked complete (and unmarked if it wasn't).
+    for (const r of results) {
+      const step = r.step_id ? next.planSteps.find((s) => s.id === r.step_id) : null;
+      if (!step) continue;
+      const done = r.result === 'hit';
+      if (!!step.completed_at !== done) add([{ kind: 'update', collection: 'planSteps', id: step.id, patch: { completed_at: done ? now : null } }]);
     }
-    localStorage.removeItem(draftKey);
-    toast(kind === 'weekly' ? `Review saved. ${shortDate(nextMonday)} week is planned.` : 'Review saved.');
-    navigate('/review');
+    if (plan) {
+      // Keep / adjust / drop first, so next goals are suggested from the redrawn path.
+      if (kind === 'quarter') {
+        for (const g of goals) {
+          const decision = draft.decisions[g.id] ?? 'keep';
+          if (decision === 'drop') add(opsDropGoal(next, view, g, nextMonday));
+          if (decision === 'adjust') add(opsAdjustGoal(next, view, g, plan, draft.adjust[g.id] ?? {}, today));
+        }
+      }
+      for (const f of nextFields) {
+        if (kind === 'quarter' && draft.decisions[f.goal.id] === 'drop') continue;
+        const text = draft.nextGoals[f.key]?.trim();
+        const value = draft.nextValues[f.key];
+        const patch: { target_note?: string; target_value?: number | null } = {};
+        if (text && text !== f.current) patch.target_note = text;
+        if (f.goal.type === 'number' && value != null && value !== f.currentValue) patch.target_value = value;
+        if (!Object.keys(patch).length) continue;
+        add(opsSetLevel(next, f.goal, plan, chainFor(next, f.goal, plan, f.date), f.level, patch));
+      }
+    }
+    let newPlanId: string | null = null;
+    if (kind === 'retro' && draft.newPlan.on && draft.newPlan.name.trim() && draft.newPlan.end > draft.newPlan.start) {
+      const created = opsCreatePlan({ name: draft.newPlan.name, start: draft.newPlan.start, end: draft.newPlan.end });
+      add(created.ops);
+      newPlanId = created.plan.id;
+      for (const g of goals) if (carryDefault(draft, g)) add(opsLinkGoalToPlan(next, g.id, created.plan.id));
+    }
+    if (ops.length) commit(ops);
+
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {
+      // nothing to clean up
+    }
+    toast(kind === 'weekly' ? `Review saved. The ${shortDate(nextMonday)} week is planned.` : kind === 'retro' && newPlanId ? 'Retrospective saved. Your next plan is ready for goals.' : 'Review saved.');
+    navigate(newPlanId ? `/plans/${newPlanId}` : '/review');
   }
 
-  const step = Math.min(draft.step, STEPS.length - 1);
+  const step = Math.min(draft.step, steps.length - 1);
   return (
     <div className="stack">
       <div className="row-between">
         <BackLink label="Review" fallback="/review" />
-        <span className="xsmall muted">Draft saved</span>
+        <span className="xsmall muted">{stored ? 'Draft saved on this device' : "Draft can't be saved here"}</span>
       </div>
-      <div className="steps" aria-label={`Step ${step + 1} of ${STEPS.length}`}>
-        {STEPS.map((s, i) => (
+      <div className="steps" aria-label={`Step ${step + 1} of ${steps.length}`}>
+        {steps.map((s, i) => (
           <div key={s} className={i <= step ? 'on' : ''} />
         ))}
       </div>
       <div className="xsmall muted">
-        {STEPS.map((s, i) => (
+        {steps.map((s, i) => (
           <span key={s}>
             {i > 0 && ' · '}
             {i === step ? <b style={{ color: 'var(--ink)' }}>{s}</b> : s}
@@ -297,31 +361,91 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
 
       {step === 0 && (
         <>
-          <h1>
-            {kind === 'weekly' ? 'Week of' : kind === 'block' ? 'Month ending' : kind === 'quarter' ? '3 months to' : 'Plan ending'}{' '}
-            {shortDate(kind === 'weekly' ? monday : period.end)}
-          </h1>
-          <div className="grid-3">
-            <Tile label="Tasks done" value={`${fmt(credit, 0)} of ${weekSessions.length}`} />
-            <Tile label="Study logged" value={minutesText(studyMinutes)} />
-            <Tile label="Measurements due" value={String(due.length)} />
-          </div>
-          <div className="card stack-sm">
-            <span className="label">Goals this {kind === 'weekly' ? 'week' : 'period'}</span>
-            {paces.map((p) => (
-              <div key={p.goal.id} className="list-row">
-                <span className="dot" style={{ background: p.goal.color }} />
-                <span className="grow small">
-                  {p.goal.title}
-                  <span className="xsmall muted" style={{ display: 'block' }}>
-                    {p.summary}
-                  </span>
-                </span>
-                <PacePill label={p.label} />
+          <h1>{kind === 'weekly' ? period.title : kind === 'retro' ? `${period.title}: retrospective` : `${period.title} review`}</h1>
+          <span className="small muted" style={{ marginTop: -8 }}>
+            {shortDate(period.start)} – {shortDate(period.end)}
+          </span>
+
+          {prev?.change_next && (
+            <div className="card stack-sm">
+              <span className="label">Last {word} you said</span>
+              <p style={{ margin: 0, fontSize: 16, lineHeight: 1.4 }}>“{prev.change_next}”</p>
+              <span className="xsmall muted">Did it happen?</span>
+              <div className="chips" role="group" aria-label="Did it happen?">
+                {(['yes', 'partly', 'no'] as const).map((a) => (
+                  <button key={a} className="chip" aria-pressed={draft.commitment === a} onClick={() => set({ commitment: draft.commitment === a ? null : a })}>
+                    {a === 'yes' ? 'Yes' : a === 'partly' ? 'Partly' : 'No'}
+                  </button>
+                ))}
               </div>
-            ))}
-            {paces.length === 0 && <span className="small muted">No goals in the current plan.</span>}
+            </div>
+          )}
+
+          <div className="grid-3">
+            <Tile label="Tasks done" value={`${fmt(tally.credit, 0)} of ${tally.planned}`} />
+            <Tile label="Time" value={`${minutesText(tally.minutesDone)}`} sub={tally.minutesPlanned ? `of ${minutesText(tally.minutesPlanned)} planned` : undefined} />
+            {kind === 'weekly' ? (
+              <Tile label="Measurements due" value={String(due.length)} />
+            ) : (
+              <Tile label="Goals on pace" value={`${paces.filter((p) => p.label === 'ahead' || p.label === 'on_track').length} of ${paces.filter((p) => p.label !== 'none').length}`} />
+            )}
           </div>
+          {tally.upcoming > 0 && (
+            <span className="xsmall muted" style={{ marginTop: -6 }}>
+              {tally.upcoming} task{tally.upcoming === 1 ? '' : 's'} still to come (through {weekdayName(period.end)} {shortDate(period.end)}) {tally.upcoming === 1 ? "isn't" : "aren't"} counted as missed.
+            </span>
+          )}
+
+          <div className="card stack-sm">
+            <span className="label">{kind === 'retro' ? 'Your six-month goals' : `Your ${word} goals`}</span>
+            {resultLines.length === 0 && <span className="small muted">No goals in this plan.</span>}
+            {resultLines.map((l) => {
+              const pace = paces.find((p) => p.goal.id === l.goal.id);
+              const fix = plan && (kind === 'weekly' || kind === 'block') && pace?.label === 'behind' ? catchUp(view, data, l.goal, plan, today) : null;
+              const pick = (r: GoalResult) => {
+                const results = { ...draft.results };
+                if (results[l.goal.id] === r) delete results[l.goal.id];
+                else results[l.goal.id] = r;
+                set({ results });
+              };
+              return (
+                <div key={l.goal.id} className="stack-sm" style={{ gap: 6, padding: '10px 0', borderTop: '1px solid var(--line)' }}>
+                  <div className="row-between" style={{ gap: 8 }}>
+                    <span className="row-start small strong" style={{ flexWrap: 'nowrap', minWidth: 0 }}>
+                      <span className="dot" style={{ background: l.goal.color }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.goal.title}</span>
+                    </span>
+                    {pace && <PacePill label={pace.label} />}
+                  </div>
+                  {pace && <span className="xsmall muted">{pace.summary}</span>}
+                  {fix && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>{fix}</span>}
+                  {l.note ? (
+                    <>
+                      <span className="small" style={{ color: 'var(--ink-2)' }}>
+                        {kind === 'retro' ? 'Done means: ' : `${capital(word)} goal: `}
+                        {l.note}
+                      </span>
+                      <div className="chips" role="group" aria-label={`How did ${l.goal.title} go?`} style={{ gap: 6 }}>
+                        {(['hit', 'partly', 'missed'] as const).map((r) => (
+                          <button key={r} className="chip" style={{ minHeight: 34, padding: '0 12px', fontSize: 13 }} aria-pressed={draft.results[l.goal.id] === r} onClick={() => pick(r)}>
+                            {resultWord(kind, r)}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="xsmall muted">No {word} goal was written down.</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="card stack-sm">
+            <span className="label">{kind === 'weekly' || kind === 'block' ? 'Recent weeks' : `Every week of the ${word}`}</span>
+            <TrendBars weeks={trend} highlight={kind === 'weekly' ? period.start : undefined} />
+          </div>
+
           {due.length > 0 && (
             <div className="card stack-sm">
               <span className="label">Record results</span>
@@ -330,8 +454,9 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
                 return (
                   <NumberInput
                     key={t.id}
-                    label={`${t.name} (${t.unit})${last ? ` · last ${fmt(last.value)} on ${shortDate(last.measured_on)}` : ''}`}
+                    label={`${t.name}${t.unit ? ` (${t.unit})` : ''}${last ? ` · last ${fmt(last.value)} on ${shortDate(last.measured_on)}` : ''}`}
                     value={draft.measurements[t.id] ?? null}
+                    placeholder={last ? `e.g. ${fmt(last.value)}` : undefined}
                     onChange={(v) => set({ measurements: { ...draft.measurements, [t.id]: v } })}
                   />
                 );
@@ -342,113 +467,17 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
       )}
 
       {step === 1 && (
-        <>
-          <h1>Reflect</h1>
-          <div className="stack-sm">
-            <span className="xsmall muted">What got in the way? (from your logs, change as needed)</span>
-            <div className="chips">
-              {OBSTACLES.map((o) => {
-                const count = weekSessions.filter((s) => s.obstacles.includes(o)).length;
-                return (
-                  <button
-                    key={o}
-                    className="chip"
-                    aria-pressed={draft.obstacles.includes(o)}
-                    onClick={() => set({ obstacles: draft.obstacles.includes(o) ? draft.obstacles.filter((x) => x !== o) : [...draft.obstacles, o] })}
-                  >
-                    {o}
-                    {count ? ` ×${count}` : ''}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <label className="field">
-            What went well?
-            <textarea value={draft.wentWell} onChange={(e) => set({ wentWell: e.target.value })} />
-          </label>
-          <label className="field">
-            What should change next week?
-            <textarea value={draft.changeNext} onChange={(e) => set({ changeNext: e.target.value })} />
-          </label>
-          {suggestions.length > 0 && <span className="label" style={{ marginTop: 6 }}>Suggested changes</span>}
-          {suggestions.map((s) => {
-            const action = view.action(s.actionId);
-            const goal = view.goalsForAction(s.actionId)[0];
-            const choice = draft.choices[s.actionId] ?? { kind: 'keep' };
-            const pick = (c: Choice) => set({ choices: { ...draft.choices, [s.actionId]: c } });
-            return (
-              <div key={s.actionId} className="card stack-sm">
-                <div className="row-start small strong">
-                  <span className="dot" style={{ background: goal?.color }} />
-                  {action?.title}
-                </div>
-                <p style={{ margin: 0, fontSize: 14 }}>
-                  {s.reason}.{' '}
-                  {s.kind === 'lower_frequency' ? `Lower it to ${s.proposedPerWeek} a week?` : 'Add a minimum version for hard days?'}
-                </p>
-                <div className="btn-row">
-                  <button className={`btn small ${choice.kind === 'keep' ? 'dark' : ''}`} onClick={() => pick({ kind: 'keep' })}>
-                    Keep as is
-                  </button>
-                  {s.kind === 'lower_frequency' ? (
-                    <button className={`btn small ${choice.kind === 'lower' ? 'dark' : ''}`} onClick={() => pick({ kind: 'lower', perWeek: s.proposedPerWeek })}>
-                      Lower to {s.proposedPerWeek}
-                    </button>
-                  ) : (
-                    <button className={`btn small ${choice.kind === 'minimum' ? 'dark' : ''}`} onClick={() => pick({ kind: 'minimum', minLabel: '5 minutes', minMinutes: 5 })}>
-                      Add minimum
-                    </button>
-                  )}
-                </div>
-                {choice.kind === 'minimum' && (
-                  <div className="grid-2">
-                    <label className="field">
-                      Minimum version
-                      <input value={choice.minLabel ?? ''} onChange={(e) => pick({ ...choice, minLabel: e.target.value })} />
-                    </label>
-                    <NumberInput label="Minutes" value={choice.minMinutes ?? null} onChange={(v) => pick({ ...choice, minMinutes: v })} />
-                  </div>
-                )}
-                <span className="xsmall muted">Applies from {shortDate(nextMonday)}. Past weeks keep their old target.</span>
-              </div>
-            );
-          })}
-        </>
+        <Reflect kind={kind} period={period} draft={draft} set={set} suggestions={suggestions} nextMonday={nextMonday} />
       )}
 
-      {step === 2 && (
+      {step === 2 && kind === 'weekly' && (
         <>
           <h1>
             Plan {shortDate(nextMonday)} – {shortDate(addDays(nextMonday, 6))}
           </h1>
-          {nextGoalFields.length > 0 && (
-            <div className="card stack">
-              <span className="label">Next week's goals</span>
-              {nextGoalFields.map((f) => (
-                <label key={f.key} className="field">
-                  <span className="row-start" style={{ gap: 6 }}>
-                    <span className="dot" style={{ width: 7, height: 7, background: f.goal.color }} />
-                    {f.goal.title} · {f.label}
-                  </span>
-                  <input
-                    value={(draft.nextGoals ?? {})[f.key] ?? f.current}
-                    onChange={(e) => set({ nextGoals: { ...(draft.nextGoals ?? {}), [f.key]: e.target.value } })}
-                    placeholder={f.level === 'week' ? 'What should be true by Sunday?' : 'What should be true by the end?'}
-                  />
-                </label>
-              ))}
-            </div>
-          )}
-          <div className={`banner ${plannedTotal > availableTotal ? 'warn' : 'info'}`}>
-            <span>
-              <b>{minutesText(plannedTotal)}</b> planned · {minutesText(availableTotal)} available
-              {plannedTotal > availableTotal ? `. ${minutesText(plannedTotal - availableTotal)} more than you have: tap a task to move it, or keep it.` : ''}
-            </span>
-          </div>
-          {Object.keys(suggested).length > 0 && (
-            <span className="xsmall muted">"Any day" tasks are placed on your lightest days. Tap a task to move it to the next day.</span>
-          )}
+          {nextFields.length > 0 && <NextGoalsCard fields={nextFields} draft={draft} set={set} title="Next week's goals" />}
+          <TimeCheck planned={plannedTotal} available={availableTotal} recent={recent} />
+          {Object.keys(suggested).length > 0 && <span className="xsmall muted">"Any day" tasks are placed on your lightest days. Tap a task to move it or take it out.</span>}
           {tray.length > 0 && (
             <div className="card tight stack-sm">
               <span className="xsmall muted">Not on a day yet</span>
@@ -456,7 +485,7 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
                 <div key={slotKey(s)} className="row-between">
                   <span className="row-start small" style={{ flexWrap: 'nowrap' }}>
                     <span className="dot" style={{ background: view.colorFor(s) }} />
-                    {s.title}
+                    {s.title} · {minutesText(s.planned_minutes)}
                   </span>
                   <select
                     className="input"
@@ -478,42 +507,131 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
           )}
           <div className="stack-sm">
             {days.map((d, i) => {
-              const list = nextSessions.filter((s) => s.date === d);
+              const list = keptNext.filter((s) => s.date === d);
               const over = plannedByDay[i]! > (available[i] ?? 0);
+              const open = list.find((s) => slotKey(s) === editing);
               return (
-                <div key={d} className="day-row">
-                  <div className="small strong" style={{ lineHeight: 1.2 }}>
-                    {weekdayName(d)}
-                    <span className="xsmall muted" style={{ display: 'block', fontWeight: 400 }}>
-                      {d.slice(8)}
-                    </span>
+                <div key={d} className="stack-sm" style={{ gap: 4 }}>
+                  <div className="day-row">
+                    <div className="small strong" style={{ lineHeight: 1.2 }}>
+                      {weekdayName(d)}
+                      <span className="xsmall muted" style={{ display: 'block', fontWeight: 400 }}>
+                        {d.slice(8)}
+                      </span>
+                    </div>
+                    <div className="chips" style={{ gap: 4 }}>
+                      {list.map((s) => {
+                        const movable = s.status === 'planned' && !!s.action_id;
+                        const key = slotKey(s);
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className="mini-chip"
+                            aria-expanded={movable ? editing === key : undefined}
+                            style={{
+                              background: `color-mix(in srgb, ${view.colorFor(s)} 16%, transparent)`,
+                              color: 'var(--ink)',
+                              border: editing === key ? '1px solid var(--ink)' : 0,
+                              cursor: movable ? 'pointer' : 'default',
+                            }}
+                            aria-label={movable ? `${s.title}, ${minutesText(s.planned_minutes)}, ${weekdayName(d)}. Move or take out` : `${s.title}, ${minutesText(s.planned_minutes)}`}
+                            onClick={() => movable && setEditing(editing === key ? null : key)}
+                          >
+                            {s.title} · {minutesText(s.planned_minutes)}
+                          </button>
+                        );
+                      })}
+                      {list.length === 0 && <span className="xsmall muted">Rest</span>}
+                    </div>
+                    <div className="xsmall" style={{ textAlign: 'right', color: over ? 'var(--amber-ink)' : 'var(--muted)', fontWeight: over ? 600 : 400 }}>
+                      {minutesText(plannedByDay[i]!)}
+                    </div>
                   </div>
-                  <div className="chips" style={{ gap: 4 }}>
-                    {list.map((s) => {
-                      const movable = s.status === 'planned' && !!s.action_id;
-                      return (
+                  {open && (
+                    <div className="card tight stack-sm" style={{ gap: 8 }}>
+                      <span className="xsmall muted">Move {open.title} to</span>
+                      <div className="chips" style={{ gap: 6 }}>
+                        {days.map((other, j) => (
+                          <button
+                            key={other}
+                            type="button"
+                            className="chip"
+                            style={{ minHeight: 34, padding: '0 12px', fontSize: 13 }}
+                            aria-pressed={other === d}
+                            onClick={() => {
+                              set({ placements: { ...draft.placements, [editing!]: other } });
+                              setEditing(null);
+                            }}
+                          >
+                            {WEEKDAY_NAMES[j]}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="btn-row">
                         <button
-                          key={s.id}
-                          className="mini-chip"
-                          style={{ background: `color-mix(in srgb, ${view.colorFor(s)} 16%, transparent)`, color: 'var(--ink)', border: 0, cursor: movable ? 'pointer' : 'default' }}
-                          aria-label={movable ? `${s.title} on ${weekdayName(d)}. Move to ${weekdayName(days[(i + 1) % 7]!)}` : s.title}
-                          onClick={() => movable && set({ placements: { ...draft.placements, [slotKey(s)]: days[(i + 1) % 7]! } })}
+                          type="button"
+                          className="btn small danger"
+                          onClick={() => {
+                            set({ removed: { ...draft.removed, [editing!]: true } });
+                            setEditing(null);
+                          }}
                         >
-                          {s.title} {s.planned_minutes}
+                          Take out of next week
                         </button>
-                      );
-                    })}
-                    {list.length === 0 && <span className="xsmall muted">Rest</span>}
-                  </div>
-                  <div className="xsmall" style={{ textAlign: 'right', color: over ? 'var(--amber-ink)' : 'var(--muted)', fontWeight: over ? 600 : 400 }}>
-                    {minutesText(plannedByDay[i]!)}
-                  </div>
+                        <button type="button" className="btn small" onClick={() => setEditing(null)}>
+                          Done
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
+          {outList.length > 0 && (
+            <div className="card tight stack-sm">
+              <span className="xsmall muted">Not happening next week</span>
+              {outList.map((s) => (
+                <div key={slotKey(s)} className="row-between small">
+                  <span className="row-start" style={{ flexWrap: 'nowrap' }}>
+                    <span className="dot" style={{ background: view.colorFor(s) }} />
+                    {s.title} · {minutesText(s.planned_minutes)}
+                    {paused.has(s.action_id ?? '') ? ' (paused)' : ''}
+                  </span>
+                  {!paused.has(s.action_id ?? '') && (
+                    <button type="button" className="link-btn small" onClick={() => set({ removed: { ...draft.removed, [slotKey(s)]: false } })}>
+                      Put back
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
+
+      {step === 2 && kind === 'block' && (
+        <>
+          <h1>Next month</h1>
+          {nextFields.length > 0 ? (
+            <>
+              <span className="small muted" style={{ marginTop: -8 }}>
+                {nextFields[0]!.periodTitle} · what should be true by {shortDate(nextFields[0]!.end)}?
+              </span>
+              <NextGoalsCard fields={nextFields} draft={draft} set={set} title="Next month's goals" />
+            </>
+          ) : (
+            <div className="card small">This was the plan's last month. The plan retrospective comes next.</div>
+          )}
+        </>
+      )}
+
+      {step === 2 && kind === 'quarter' && plan && (
+        <Decide goals={goals} fields={nextFields} draft={draft} set={set} view={view} plan={plan} nextMonday={nextMonday} />
+      )}
+
+      {step === 2 && kind === 'retro' && plan && <NextPlan goals={goals} draft={draft} set={set} />}
 
       <div className="btn-row">
         {step > 0 ? (
@@ -525,13 +643,13 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
             Cancel
           </a>
         )}
-        {step < STEPS.length - 1 ? (
+        {step < steps.length - 1 ? (
           <button className="btn primary" onClick={() => set({ step: step + 1 })}>
-            Next: {STEPS[step + 1]?.toLowerCase()}
+            Next: {steps[step + 1]?.toLowerCase()}
           </button>
         ) : (
           <button className="btn primary" onClick={finish}>
-            Save review and plan
+            {kind === 'weekly' ? 'Save review and plan' : kind === 'retro' ? (draft.newPlan.on ? 'Save and start next plan' : 'Save retrospective') : 'Save review'}
           </button>
         )}
       </div>
@@ -539,13 +657,536 @@ export function WeeklyReview({ kind: kindParam }: { kind: string }) {
   );
 }
 
-function Tile({ label, value }: { label: string; value: string }) {
+// ---------- Reflect ----------
+
+function Reflect({
+  kind,
+  period,
+  draft,
+  set,
+  suggestions,
+  nextMonday,
+}: {
+  kind: ReviewKind;
+  period: DateRange;
+  draft: Draft;
+  set: (patch: Partial<Draft>) => void;
+  suggestions: Suggestion[];
+  nextMonday: ISODate;
+}) {
+  const { data, today } = useStore();
+  const view = useView();
+  const word = PERIOD_WORD[kind];
+  const periodSessions = data.sessions.filter((s) => (s.date ? s.date >= period.start && s.date <= period.end : s.week_start >= period.start && s.week_start <= period.end));
+  const wins = data.reviews
+    .filter((r) => r.status === 'done' && r.went_well.trim() && r.period_start < period.start)
+    .sort((a, b) => (a.period_start < b.period_start ? 1 : -1))
+    .slice(0, 3);
+  const window: DateRange = kind === 'weekly' ? { start: addDays(period.start, -21), end: period.end } : period;
+  const patterns = [obstacleSentence(data, window), weekdaySentence(data, window, today)].filter(Boolean) as string[];
+
+  return (
+    <>
+      <h1>Reflect</h1>
+      {patterns.length > 0 && (
+        <div className="card tight stack-sm">
+          <span className="label">Patterns</span>
+          {patterns.map((p) => (
+            <span key={p} className="small" style={{ color: 'var(--ink-2)' }}>
+              {p}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="stack-sm">
+        <span className="xsmall muted">What got in the way? (from your logs, change as needed)</span>
+        <div className="chips">
+          {OBSTACLES.map((o) => {
+            const count = periodSessions.filter((s) => s.obstacles.includes(o)).length;
+            return (
+              <button
+                key={o}
+                className="chip"
+                aria-pressed={draft.obstacles.includes(o)}
+                onClick={() => set({ obstacles: draft.obstacles.includes(o) ? draft.obstacles.filter((x) => x !== o) : [...draft.obstacles, o] })}
+              >
+                {o}
+                {count ? ` ×${count}` : ''}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {wins.length > 0 && (
+        <div className="card tight stack-sm">
+          <span className="label">What went well before</span>
+          {wins.map((r) => (
+            <span key={r.id} className="small" style={{ color: 'var(--ink-2)' }}>
+              <span className="mono" style={{ fontSize: 10.5 }}>
+                {shortDate(r.period_start)}
+              </span>{' '}
+              {r.went_well}
+            </span>
+          ))}
+        </div>
+      )}
+      <label className="field">
+        {kind === 'retro' ? 'What worked?' : 'What went well?'}
+        <textarea value={draft.wentWell} onChange={(e) => set({ wentWell: e.target.value })} placeholder={kind === 'retro' ? 'e.g. Studying first thing every weekday' : 'e.g. Studied every weekday before work'} />
+      </label>
+      <label className="field">
+        {kind === 'retro' ? "What didn't work?" : 'What got in the way?'}
+        <textarea value={draft.gotInWay} onChange={(e) => set({ gotInWay: e.target.value })} placeholder={kind === 'retro' ? 'e.g. Planning guitar for late evenings' : 'e.g. Too tired after work for guitar'} />
+      </label>
+      {kind === 'retro' ? (
+        <label className="field">
+          What carries into the next plan?
+          <textarea value={draft.carryForward} onChange={(e) => set({ carryForward: e.target.value })} placeholder="e.g. Morning study block, Sunday weigh-ins" />
+        </label>
+      ) : (
+        <label className="field">
+          What will you change {kind === 'weekly' ? 'next week' : kind === 'block' ? 'next month' : 'for the next 3 months'}?
+          <textarea value={draft.changeNext} onChange={(e) => set({ changeNext: e.target.value })} placeholder="e.g. Guitar right after breakfast" />
+          <span className="xsmall muted" style={{ fontWeight: 400 }}>
+            Your next {word} review starts by asking whether this happened.
+          </span>
+        </label>
+      )}
+      {suggestions.length > 0 && (
+        <span className="label" style={{ marginTop: 6 }}>
+          Suggested changes
+        </span>
+      )}
+      {suggestions.map((s) => (
+        <SuggestionCard key={s.actionId} s={s} draft={draft} set={set} view={view} nextMonday={nextMonday} />
+      ))}
+    </>
+  );
+}
+
+function SuggestionCard({ s, draft, set, view, nextMonday }: { s: Suggestion; draft: Draft; set: (p: Partial<Draft>) => void; view: View; nextMonday: ISODate }) {
+  const action = view.action(s.actionId);
+  const goal = view.goalsForAction(s.actionId)[0];
+  const choice = draft.choices[s.actionId] ?? { kind: 'keep' };
+  const pick = (c: Choice) => set({ choices: { ...draft.choices, [s.actionId]: c } });
+  const question =
+    s.kind === 'lower_frequency'
+      ? `Lower it to ${s.proposedPerWeek} a week?`
+      : s.kind === 'raise_frequency'
+        ? `Ready for ${s.proposedPerWeek} a week?`
+        : s.kind === 'move_day'
+          ? `Move ${WEEKDAY_LONG[s.fromDay! - 1]} to ${WEEKDAY_LONG[s.toDay! - 1]}?`
+          : s.kind === 'pause'
+            ? 'Pause it for now? You can turn it back on from the goal page.'
+            : 'Add a minimum version for hard days?';
+  const actionChoice: Choice =
+    s.kind === 'lower_frequency'
+      ? { kind: 'lower', perWeek: s.proposedPerWeek }
+      : s.kind === 'raise_frequency'
+        ? { kind: 'raise', perWeek: s.proposedPerWeek }
+        : s.kind === 'move_day'
+          ? { kind: 'move' }
+          : s.kind === 'pause'
+            ? { kind: 'pause' }
+            : { kind: 'minimum', minLabel: '5 minutes', minMinutes: 5 };
+  const actionLabel =
+    s.kind === 'lower_frequency'
+      ? `Lower to ${s.proposedPerWeek}`
+      : s.kind === 'raise_frequency'
+        ? `Raise to ${s.proposedPerWeek}`
+        : s.kind === 'move_day'
+          ? `Move to ${WEEKDAY_NAMES[s.toDay! - 1]}`
+          : s.kind === 'pause'
+            ? 'Pause it'
+            : 'Add minimum';
+  return (
+    <div className="card stack-sm">
+      <div className="row-start small strong">
+        <span className="dot" style={{ background: goal?.color }} />
+        {action?.title}
+      </div>
+      <p style={{ margin: 0, fontSize: 14 }}>
+        {s.reason}. {question}
+      </p>
+      <div className="btn-row">
+        <button className={`btn small ${choice.kind === 'keep' ? 'dark' : ''}`} onClick={() => pick({ kind: 'keep' })}>
+          Keep as is
+        </button>
+        <button className={`btn small ${choice.kind === actionChoice.kind ? 'dark' : ''}`} onClick={() => pick(actionChoice)}>
+          {actionLabel}
+        </button>
+      </div>
+      {choice.kind === 'minimum' && (
+        <div className="grid-2">
+          <label className="field">
+            Minimum version
+            <input value={choice.minLabel ?? ''} placeholder="e.g. 5 minutes" onChange={(e) => pick({ ...choice, minLabel: e.target.value })} />
+          </label>
+          <NumberInput label="Minutes" value={choice.minMinutes ?? null} placeholder="e.g. 5" onChange={(v) => pick({ ...choice, minMinutes: v })} />
+        </div>
+      )}
+      <span className="xsmall muted">Applies from {shortDate(nextMonday)}. Past weeks keep their old target.</span>
+    </div>
+  );
+}
+
+// ---------- Plan / next goals ----------
+
+function TimeCheck({ planned, available, recent }: { planned: number; available: number; recent: { done: number; planned: number; weeks: number } | null }) {
+  const realistic = recent && recent.done > 0 ? recent.done : null;
+  const tooMuch = (realistic != null && planned > realistic * 1.25) || planned > available;
+  return (
+    <div className={`banner ${tooMuch ? 'warn' : 'info'}`} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+      <span>
+        <b>{minutesText(planned)}</b> planned · {minutesText(available)} available
+      </span>
+      {recent && recent.planned > 0 && (
+        <span className="small">
+          Recent weeks you've done about <b>{minutesText(Math.round(recent.done / 5) * 5)}</b> of {minutesText(Math.round(recent.planned / 5) * 5)} planned.
+          {realistic != null && planned > realistic * 1.25 ? ` Plan around ${minutesText(Math.round(realistic / 5) * 5)}: tap a task to take it out or move it.` : ''}
+        </span>
+      )}
+      {planned > available && <span className="small">{minutesText(planned - available)} more than you have.</span>}
+    </div>
+  );
+}
+
+interface NextField {
+  key: string;
+  goal: Goal;
+  level: ChainLevel;
+  /** A date inside the period being set (used to find its chain). */
+  date: ISODate;
+  periodTitle: string;
+  end: ISODate;
+  label: string;
+  current: string;
+  currentValue: number | null;
+  suggested: number | null;
+}
+
+function NextGoalsCard({ fields, draft, set, title }: { fields: NextField[]; draft: Draft; set: (p: Partial<Draft>) => void; title: string }) {
+  return (
+    <div className="card stack">
+      <span className="label">{title}</span>
+      {fields.map((f) => (
+        <NextGoalField key={f.key} f={f} draft={draft} set={set} />
+      ))}
+    </div>
+  );
+}
+
+function NextGoalField({ f, draft, set }: { f: NextField; draft: Draft; set: (p: Partial<Draft>) => void }) {
+  return (
+    <div className="stack-sm" style={{ gap: 6 }}>
+      <label className="field">
+        <span className="row-start" style={{ gap: 6 }}>
+          <span className="dot" style={{ width: 7, height: 7, background: f.goal.color }} />
+          {f.goal.title} · {f.label}
+        </span>
+        <input
+          value={draft.nextGoals[f.key] ?? f.current}
+          onChange={(e) => set({ nextGoals: { ...draft.nextGoals, [f.key]: e.target.value } })}
+          placeholder={`What should be true by ${shortDate(f.end)}?`}
+        />
+      </label>
+      {f.goal.type === 'number' && (
+        <NumberInput
+          label={`Target by ${shortDate(f.end)}${f.goal.unit ? ` (${f.goal.unit})` : ''}`}
+          value={draft.nextValues[f.key] !== undefined ? draft.nextValues[f.key]! : f.currentValue}
+          placeholder={f.suggested != null ? `e.g. ${fmt(f.suggested)} (on your path)` : undefined}
+          onChange={(v) => set({ nextValues: { ...draft.nextValues, [f.key]: v } })}
+        />
+      )}
+    </div>
+  );
+}
+
+function Decide({ goals, fields, draft, set, view, plan, nextMonday }: { goals: Goal[]; fields: NextField[]; draft: Draft; set: (p: Partial<Draft>) => void; view: View; plan: Plan; nextMonday: ISODate }) {
+  return (
+    <>
+      <h1>Decide</h1>
+      <span className="small muted" style={{ marginTop: -8 }}>
+        Does each goal still make sense? Keep it, adjust it, or drop it, then set the next 3 months.
+      </span>
+      {goals.map((g) => {
+        const decision = draft.decisions[g.id] ?? 'keep';
+        const adjust = draft.adjust[g.id] ?? {};
+        const mine = fields.filter((f) => f.goal.id === g.id);
+        const setAdjust = (patch: Adjust) => set({ adjust: { ...draft.adjust, [g.id]: { ...adjust, ...patch } } });
+        const pace = view.goalPace(g, plan);
+        return (
+          <div key={g.id} className="card stack-sm">
+            <div className="row-between">
+              <span className="row-start small strong" style={{ flexWrap: 'nowrap' }}>
+                <span className="dot" style={{ background: g.color }} />
+                {g.title}
+              </span>
+              <PacePill label={pace.label} />
+            </div>
+            <span className="xsmall muted">{pace.summary}</span>
+            <div className="chips" role="group" aria-label={`What to do with ${g.title}`} style={{ gap: 6 }}>
+              {(['keep', 'adjust', 'drop'] as const).map((d) => (
+                <button key={d} className="chip" style={{ minHeight: 34, padding: '0 12px', fontSize: 13 }} aria-pressed={decision === d} onClick={() => set({ decisions: { ...draft.decisions, [g.id]: d } })}>
+                  {d === 'keep' ? 'Keep' : d === 'adjust' ? 'Adjust' : 'Drop'}
+                </button>
+              ))}
+            </div>
+            {decision === 'drop' && (
+              <span className="small" style={{ color: 'var(--amber-ink)' }}>
+                Archives this goal and takes its tasks off your list from {shortDate(nextMonday)}. Its history is kept.
+              </span>
+            )}
+            {decision === 'adjust' &&
+              (g.type === 'number' ? (
+                <div className="grid-2">
+                  <NumberInput label={`New 6-month target${g.unit ? ` (${g.unit})` : ''}`} value={adjust.target ?? null} placeholder={g.target_value != null ? `e.g. ${fmt(g.target_value)}` : undefined} onChange={(v) => setAdjust({ target: v })} />
+                  <label className="field">
+                    By
+                    <input type="date" value={adjust.date ?? g.target_date ?? plan.end_date} onChange={(e) => setAdjust({ date: e.target.value })} />
+                  </label>
+                  <span className="xsmall muted" style={{ gridColumn: 'span 2' }}>
+                    The path is redrawn from where you are now to the new target.
+                  </span>
+                </div>
+              ) : (
+                <label className="field">
+                  How will you know you made it?
+                  <input value={adjust.doneMeans ?? g.done_means} placeholder="e.g. 3 songs recorded start to finish" onChange={(e) => setAdjust({ doneMeans: e.target.value })} />
+                </label>
+              ))}
+            {decision !== 'drop' && mine.map((f) => <NextGoalField key={f.key} f={f} draft={draft} set={set} />)}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function NextPlan({ goals, draft, set }: { goals: Goal[]; draft: Draft; set: (p: Partial<Draft>) => void }) {
+  const np = draft.newPlan;
+  const setPlan = (patch: Partial<Draft['newPlan']>) => set({ newPlan: { ...np, ...patch } });
+  return (
+    <>
+      <h1>Next plan</h1>
+      <div className="chips" role="group" aria-label="Start the next plan now?">
+        <button className="chip" aria-pressed={np.on} onClick={() => setPlan({ on: true })}>
+          Start my next plan
+        </button>
+        <button className="chip" aria-pressed={!np.on} onClick={() => setPlan({ on: false })}>
+          Not now
+        </button>
+      </div>
+      {np.on && (
+        <div className="card stack">
+          <label className="field">
+            Name
+            <input value={np.name} placeholder="e.g. Spring to fall" onChange={(e) => setPlan({ name: e.target.value })} />
+          </label>
+          <div className="grid-2">
+            <label className="field">
+              Starts
+              <input type="date" value={np.start} onChange={(e) => setPlan({ start: e.target.value, end: addDays(e.target.value, 182) })} />
+            </label>
+            <label className="field">
+              Ends
+              <input type="date" value={np.end} min={addDays(np.start, 7)} onChange={(e) => setPlan({ end: e.target.value })} />
+            </label>
+          </div>
+          {goals.length > 0 && (
+            <div className="stack-sm">
+              <span className="label">Carry these goals over</span>
+              <span className="xsmall muted">Carried goals keep their tasks and history. Goals you hit are left behind unless you tick them.</span>
+              {goals.map((g) => (
+                <label key={g.id} className="row-start small" style={{ gap: 10, minHeight: 40, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={carryDefault(draft, g)}
+                    onChange={(e) => setPlan({ carry: { ...np.carry, [g.id]: e.target.checked } })}
+                    style={{ width: 20, height: 20 }}
+                  />
+                  <span className="dot" style={{ background: g.color }} />
+                  {g.title}
+                  {draft.results[g.id] ? <span className="xsmall muted">· {resultWord('retro', draft.results[g.id]!)}</span> : null}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------- Helpers ----------
+
+function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="card tight">
       <div className="xsmall muted">{label}</div>
       <div className="num" style={{ fontSize: 18 }}>
         {value}
       </div>
+      {sub && <div className="xsmall muted">{sub}</div>}
     </div>
   );
+}
+
+function capital(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function resultWord(kind: ReviewKind, r: GoalResult): string {
+  if (kind === 'retro') return r === 'hit' ? 'Achieved' : r === 'partly' ? 'Partly' : 'Not this time';
+  return r === 'hit' ? 'Hit' : r === 'partly' ? 'Partly' : 'Missed';
+}
+
+/** A goal is carried into the next plan unless it was achieved (or the person changed the tick). */
+function carryDefault(draft: Draft, g: Goal): boolean {
+  return draft.newPlan.carry[g.id] ?? draft.results[g.id] !== 'hit';
+}
+
+/** Each goal's written goal for the period under review (or the 6-month goal for a retrospective). */
+function goalResultLines(data: AppData, goals: Goal[], plan: Plan, kind: ReviewKind, period: DateRange): { goal: Goal; note: string; stepId: string | null }[] {
+  return goals.map((goal) => {
+    if (kind === 'retro') {
+      const target = goal.type === 'number' && goal.target_value != null ? `${fmt(goal.target_value)} ${goal.unit ?? ''}`.trim() : '';
+      return { goal, note: [target, goal.done_means.trim()].filter(Boolean).join(' · ') || goal.title, stepId: null };
+    }
+    const level = RESULT_LEVEL[kind] as ChainLevel;
+    const link = chainFor(data, goal, plan, period.start)[level];
+    const value = link.step?.target_value != null && goal.type === 'number' ? `${fmt(link.step.target_value)} ${goal.unit ?? ''}`.trim() : '';
+    const note = isSet(link) ? [value, link.step!.target_note.trim()].filter(Boolean).join(' · ') : '';
+    return { goal, note, stepId: link.step?.id ?? null };
+  });
+}
+
+/** Goals to write down in the last step: next week's (weekly), next month's (month), next 3 months + its first month (3-month). */
+function nextGoalFields(data: AppData, goals: Goal[], plan: Plan, kind: ReviewKind, period: DateRange, nextMonday: ISODate): NextField[] {
+  const out: NextField[] = [];
+  const startOfNext = kind === 'weekly' ? nextMonday : addDays(period.end, 1);
+  if (kind === 'retro' || startOfNext > plan.end_date) return out;
+  const levels: ChainLevel[] = kind === 'weekly' ? ['quarter', 'month', 'week'] : kind === 'block' ? ['month'] : ['quarter', 'month'];
+  for (const g of goals) {
+    const chain = chainFor(data, g, plan, startOfNext);
+    for (const level of levels) {
+      const link = chain[level];
+      // Weekly: always next week; next month / 3 months only when they start next week and aren't set yet.
+      if (kind === 'weekly' && level !== 'week' && (link.node.start < nextMonday || isSet(link))) continue;
+      out.push({
+        key: `${g.id}:${level}`,
+        goal: g,
+        level,
+        date: startOfNext,
+        periodTitle: link.node.title,
+        end: link.node.end,
+        label: level === 'week' ? `${link.node.title} (${shortDate(link.node.start)})` : level === 'month' ? `${link.node.title}, ${shortDate(link.node.start)} – ${shortDate(link.node.end)}` : `${link.node.title}, from ${shortDate(link.node.start)}`,
+        current: link.step?.target_note ?? '',
+        currentValue: link.step?.target_value ?? null,
+        suggested: link.suggested,
+      });
+    }
+  }
+  return out;
+}
+
+/** "Any day" tasks go on the lightest day that doesn't already have the same task. */
+function lightestDays(all: Session[], days: ISODate[], available: number[]): Record<string, ISODate> {
+  const out: Record<string, ISODate> = {};
+  const load = days.map((d) => all.filter((s) => s.date === d).reduce((sum, s) => sum + s.planned_minutes, 0));
+  const has = days.map((d) => new Set(all.filter((s) => s.date === d).map((s) => s.action_id)));
+  for (const s of all.filter((x) => !x.date && x.status === 'planned' && x.action_id)) {
+    let best = -1;
+    for (let i = 0; i < days.length; i++) {
+      if (has[i]!.has(s.action_id)) continue;
+      const room = (available[i] ?? 0) - load[i]!;
+      if (best === -1 || room > (available[best] ?? 0) - load[best]!) best = i;
+    }
+    if (best === -1) best = load.indexOf(Math.min(...load));
+    out[slotKey(s)] = days[best]!;
+    load[best]! += s.planned_minutes;
+    has[best]!.add(s.action_id);
+  }
+  return out;
+}
+
+/** Turn the chosen suggestions into schedule and task changes, and the schedules as they'll be next week. */
+function applyChoices(view: View, data: AppData, suggestions: Suggestion[], choices: Record<string, Choice>, nextMonday: ISODate) {
+  const scheduleChanges: ReviewPayload['schedule_changes'] = [];
+  const actionChanges: ReviewPayload['action_changes'] = [];
+  let schedulesAfter: ActionSchedule[] = data.schedules;
+  for (const s of suggestions) {
+    const choice = choices[s.actionId];
+    const action = view.action(s.actionId);
+    if (!choice || choice.kind === 'keep' || !action) continue;
+    if (choice.kind === 'minimum') {
+      const label = choice.minLabel?.trim() || '5 minutes';
+      actionChanges.push({
+        action_id: s.actionId,
+        min_label: label,
+        min_minutes: choice.minMinutes ?? 5,
+        min_count: null,
+        summary: `${action.title}: added minimum "${label}"`,
+        old_value: { min_label: action.min_label },
+        new_value: { min_label: label },
+      });
+      continue;
+    }
+    const current = scheduleForWeek(data.schedules, s.actionId, nextMonday);
+    if (!current || current.effective_from >= nextMonday) continue;
+    const before = { rule: current.rule, days: current.days, per_week: current.per_week };
+    let fresh: ActionSchedule | null = null;
+    let summary = '';
+    if (choice.kind === 'lower' || choice.kind === 'raise') {
+      const perWeek = choice.perWeek ?? s.proposedPerWeek ?? 1;
+      fresh = { id: crypto.randomUUID(), action_id: s.actionId, rule: 'per_week', days: [], per_week: perWeek, effective_from: nextMonday, effective_to: null };
+      summary = `${action.title}: ${sessionsPerWeek(current)} → ${perWeek} a week`;
+    } else if (choice.kind === 'move' && s.fromDay && s.toDay) {
+      const days = [...new Set(current.days.map((d) => (d === s.fromDay ? s.toDay! : d)))].sort((a, b) => a - b);
+      fresh = { id: crypto.randomUUID(), action_id: s.actionId, rule: 'days', days, per_week: null, effective_from: nextMonday, effective_to: null };
+      summary = `${action.title}: ${WEEKDAY_NAMES[s.fromDay - 1]} → ${WEEKDAY_NAMES[s.toDay - 1]}`;
+    } else if (choice.kind === 'pause') {
+      summary = `${action.title}: paused`;
+    } else {
+      continue;
+    }
+    scheduleChanges.push({
+      end_schedule_id: current.id,
+      end_on: addDays(nextMonday, -1),
+      action_id: s.actionId,
+      new_schedule: fresh,
+      summary,
+      old_value: before,
+      new_value: fresh ? { rule: fresh.rule, days: fresh.days, per_week: fresh.per_week } : { paused: true },
+    });
+    schedulesAfter = [...schedulesAfter.map((x) => (x.id === current.id ? { ...x, effective_to: addDays(nextMonday, -1) } : x)), ...(fresh ? [fresh] : [])];
+  }
+  return { schedulesAfter, scheduleChanges, actionChanges };
+}
+
+/** Drop a goal: archive it and its own tasks, and take its planned sessions off the list from `from`. */
+function opsDropGoal(data: AppData, view: View, goal: Goal, from: ISODate): Op[] {
+  const ops: Op[] = [...opsArchiveGoal(goal, true)];
+  const own = view.actionsForGoal(goal.id).filter((a) => data.actionGoals.filter((ag) => ag.action_id === a.id).length === 1);
+  const ids = new Set(own.map((a) => a.id));
+  for (const a of own) ops.push(...opsArchiveAction(a, true));
+  for (const s of data.sessions) {
+    if (!s.action_id || !ids.has(s.action_id) || s.status !== 'planned') continue;
+    if ((s.date ?? s.week_start) >= from) ops.push({ kind: 'delete', collection: 'sessions', id: s.id });
+  }
+  return ops;
+}
+
+/** Adjust a goal: a number goal gets a new target and a path redrawn from where it is now; others a new "done means". */
+function opsAdjustGoal(data: AppData, view: View, goal: Goal, plan: Plan, adjust: Adjust, today: ISODate): Op[] {
+  if (goal.type === 'number') {
+    if (adjust.target == null) return [];
+    const date = adjust.date ?? goal.target_date ?? plan.end_date;
+    const status = view.goalPace(goal, plan).number;
+    const from = status?.trend ?? status?.latest ?? goal.baseline_value ?? adjust.target;
+    const path = suggestPath(from, adjust.target, today, date, plan.block_days);
+    return [...opsUpdateGoal(goal, { target_value: adjust.target, target_date: date }), ...opsReplacePath(data, goal, path, today)];
+  }
+  const doneMeans = adjust.doneMeans?.trim();
+  return doneMeans && doneMeans !== goal.done_means ? opsUpdateGoal(goal, { done_means: doneMeans }) : [];
 }
