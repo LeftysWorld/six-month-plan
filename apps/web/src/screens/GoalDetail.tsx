@@ -180,6 +180,159 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
   );
 }
 
+/** "Why it matters", as one quiet line under the goal's title. Tap to edit it (and what done means). */
+export function WhyLine({ goal }: { goal: Goal }) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return (
+      <div className="card tight stack-sm">
+        <GoalEdit goal={goal} onSaved={() => setEditing(false)} />
+        <button className="link-btn small" onClick={() => setEditing(false)} style={{ alignSelf: 'flex-start' }}>
+          Cancel
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button type="button" className="why-line" onClick={() => setEditing(true)} aria-label="Edit why it matters">
+      {goal.why ? `“${goal.why}”` : 'Add a line about why this matters. It helps on hard days.'}
+    </button>
+  );
+}
+
+/**
+ * The goal's record: milestones (for "finish" goals or any that have them), photos and files, and
+ * other measurements. A number goal's readings and path live in its progress card instead.
+ */
+export function GoalRecord({ goal }: { goal: Goal }) {
+  const { data, today, commit } = useStore();
+  const view = useView();
+  const toast = useToast();
+  const [msTitle, setMsTitle] = useState('');
+  const [msDate, setMsDate] = useState(today);
+  const actions = view.actionsForGoal(goal.id, true);
+  const actionIds = new Set(actions.map((a) => a.id));
+  const milestones = data.milestones.filter((m) => m.goal_id === goal.id).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
+  const types = data.measurementTypes.filter((t) => !t.archived_at && (t.goal_id === goal.id || t.id === goal.measurement_type_id));
+  return (
+    <>
+      {(goal.type === 'finish' || milestones.length > 0) && (
+        <div className="card stack-sm">
+          <span className="label">Milestones</span>
+          {milestones.length === 0 && <span className="small muted">No milestones yet.</span>}
+          {milestones.map((m) => (
+            <div key={m.id} className="list-row">
+              <button
+                aria-label={m.completed_at ? `${m.title} complete, tap to reopen` : `Mark ${m.title} complete`}
+                onClick={() => commit(opsToggleMilestone(m))}
+                style={{ width: 44, height: 44, border: 0, background: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginLeft: -10 }}
+              >
+                <span className={`ring ${m.completed_at ? 'done' : ''}`} style={{ width: 22, height: 22 }}>
+                  {m.completed_at && <Icon name="check" size={12} stroke={3.2} />}
+                </span>
+              </button>
+              <div className="grow">
+                <div style={{ textDecoration: m.completed_at ? 'line-through' : undefined, color: m.completed_at ? 'var(--muted)' : undefined }}>{m.title}</div>
+                <div className="xsmall muted">
+                  {shortDate(m.due_date)}
+                  {!m.completed_at && m.due_date < today ? ' · past due' : ''}
+                </div>
+              </div>
+            </div>
+          ))}
+          <form
+            className="stack-sm"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!msTitle.trim()) return;
+              commit(opsAddMilestone(goal.id, msTitle, msDate));
+              setMsTitle('');
+            }}
+          >
+            <input className="input" placeholder="New milestone" aria-label="New milestone" value={msTitle} onChange={(e) => setMsTitle(e.target.value)} />
+            <div className="row-start" style={{ flexWrap: 'nowrap' }}>
+              <input className="input" type="date" aria-label="Milestone date" value={msDate} onChange={(e) => setMsDate(e.target.value)} />
+              <button className="btn small" type="submit" style={{ flex: 'none' }}>
+                Add milestone
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <GoalFiles actionIds={actionIds} />
+      <Measurements goal={goal} types={goal.type === 'number' ? types.filter((t) => t.id !== goal.measurement_type_id) : types} onAdd={(name) => toast(`Added ${name}`)} />
+    </>
+  );
+}
+
+/** Everything done rarely, folded away: complete, move, change history, archive. */
+export function GoalManage({ goal }: { goal: Goal }) {
+  const { data, today, commit } = useStore();
+  const view = useView();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const plans = view.plansForGoal(goal.id);
+  const actions = view.actionsForGoal(goal.id, true);
+  const actionIds = new Set(actions.map((a) => a.id));
+  const history = data.changeLog
+    .filter((c) => c.entity_id === goal.id || actionIds.has(c.entity_id))
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return (
+    <div className="card manage-card">
+      <button type="button" className="manage-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span>Manage goal</span>
+        <span style={{ transform: open ? 'rotate(-90deg)' : 'rotate(90deg)', display: 'inline-flex' }}>
+          <Icon name="chevron" size={16} stroke={2.2} />
+        </span>
+      </button>
+      {open && (
+        <div className="stack-sm" style={{ padding: '0 16px 14px' }}>
+          <CompleteGoal goal={goal} />
+          <div className="row-between small" style={{ gap: 8 }}>
+            <span className="muted">
+              In {plans.filter((p) => !p.archived_at && p.end_date >= today).map((p) => (p.solo ? 'its own clock' : p.name)).join(', ') || 'no running window'}
+            </span>
+            {!goal.archived_at && !goal.completed_at && (
+              <button className="link-btn small" onClick={() => setMoving(true)}>
+                Move to…
+              </button>
+            )}
+          </div>
+      {history.length > 0 && (
+        <details className="card tight">
+          <summary className="label" style={{ cursor: 'pointer', minHeight: 32, display: 'flex', alignItems: 'center' }}>
+            Change history · {history.length}
+          </summary>
+          {history.map((c) => (
+            <div key={c.id} className="list-row small">
+              <span className="grow">{c.summary}</span>
+              <span className="xsmall muted">from {shortDate(c.effective_from)}</span>
+            </div>
+          ))}
+        </details>
+      )}
+
+          <button
+            className="link-btn small"
+            style={{ color: 'var(--danger)', alignSelf: 'flex-start', paddingLeft: 0 }}
+            onClick={() => {
+              const was = goal.archived_at;
+              commit(opsArchiveGoal(goal, !was));
+              toast(was ? 'Goal restored' : `${goal.title} archived. Find it under Completed → Archived.`, was ? undefined : () => commit(opsArchiveGoal(goal, false)));
+              if (!was) navigate('/goals');
+            }}
+          >
+            {goal.archived_at ? 'Restore goal' : 'Archive goal'}
+          </button>
+        </div>
+      )}
+      {moving && <MoveSheet goals={[goal]} onClose={() => setMoving(false)} />}
+    </div>
+  );
+}
+
 /** Finish the goal (it moves to Completed with a note on how it ended), or reopen a finished one. */
 function CompleteGoal({ goal }: { goal: Goal }) {
   const { data, today, commit } = useStore();
@@ -286,7 +439,7 @@ function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementTy
   return (
     <div className="card stack-sm">
       <div className="row-between">
-        <span className="label">Measurements</span>
+        <span className="label">{goal.type === 'number' ? 'Other measurements' : 'Measurements'}</span>
         <button className="link-btn small" onClick={() => setAdding(!adding)}>
           {adding ? 'Cancel' : '+ Track something'}
         </button>

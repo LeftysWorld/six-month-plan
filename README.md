@@ -11,11 +11,13 @@ Three places, one job each: **Today** to do, **Goals** to see and shape, **Revie
   - **Morning plan** (before noon): yesterday's leftovers and a capacity check, with "move to tomorrow". **Evening wrap-up** (after 6 pm): tick what you did, roll the rest to tomorrow.
   - **Quick add** in plain words: "guitar 20m mon wed fri #guitar", "call mom tomorrow !", "stretch 10m daily".
 - **Goals**: where you are in the plan (day, timeline, 3-month checkpoint), a setup checklist for new plans, **Needs attention** (goals to catch up on, unset week/month goals, overdue milestones, stale weigh-ins), each goal with real numbers and this week's goal, and what's coming up.
-- **One page per goal**: the goal chain, then this week's daily tasks.
-  - **The chain**: the 6-month goal, plus *one* current 3-month goal, *one* month goal and *one* week goal. Only the current period is shown and stored; when a month or week ends, you set the next one (on the goal page, or in the weekly review). Number goals suggest each target from your path.
+- **One page per goal**, in order of how often you need it:
+  - **Header**: the title, one line with its season (or own clock), group and status, and *why it matters* as a quote you can tap to edit.
+  - **Progress**: the only place the goal's numbers appear. Where it is, a track across the whole season with a tick at even pace, what done is and when, and the one next step as a button (**Log today's weight**, **Add 1 this week**, **Set this week's goal**, or the next milestone). Number goals open their trend chart and recent readings here, and log today's reading here (a "Log a number" task for it is checked off too).
+  - **This week**: the week goal (tap to edit), then each daily task with a Monday-to-Sunday strip: done, partly done, missed (amber), skipped and planned days. Tap a day to log it or change its log; tap the task to edit it. **+ Add a task** offers the tasks you already have; **Copy last week's tasks** when there are some.
+  - **The plan**: season → 3 months → this month → this week, one line each with its status. Tap a line to edit it.
+  - **Progress record** (milestones, photos and files, other measurements), the **group**, and **Manage goal** (complete, move, change history, archive), folded away. On a computer these sit in a column on the right.
   - **Catch-up math** next to anything behind: "2 extra a week for the next 2 weeks catches you up", "1.3 lb a week reaches 207.8 by Nov 1".
-  - **Daily tasks**: set days, times a week, or one day; for this week, the month, 3 months, the plan or no end date; with an optional "after ___, at ___" cue that shows on Today.
-  - Why it matters, the path chart, milestones, measurements and change history.
 - **Review**: one flow for every review, each with its own last step.
   - **Weekly** (opens Saturday): look back (did last week's planned change happen, hit / partly / missed for each week goal, tasks and time done, recent weeks chart, measurements), reflect (patterns such as your most-missed weekday and top obstacle, past wins, what went well, what got in the way, what to change), plan next week (next week's goals, a time check against what you've actually been doing, move any task to any day or take it out).
   - **Suggested changes**: pause a task nothing happened on for 3 weeks, move a weekday that keeps getting missed, lower or raise how often, or add a minimum version.
