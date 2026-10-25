@@ -13,7 +13,7 @@ import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { useAddFiles } from '../components/Attachments.tsx';
-import { readingOn } from '../data/connect.ts';
+import { lastReading, opsRecordReading, readingOn } from '../data/connect.ts';
 import { CommitmentCard } from '../components/Commitment.tsx';
 import { opsAddIdea } from '../data/backlog.ts';
 import { currentCommitment } from '../data/insights.ts';
@@ -334,6 +334,8 @@ export function Today() {
             Add a task, or rest. Rest counts.
           </div>
         )}
+
+        {isToday && <TodayNumbers />}
 
         {planned.length + done.length > 0 && (
           <div className="task-cards">
@@ -855,5 +857,97 @@ export function QuickAdd({ date, onClose }: { date: ISODate; onClose: () => void
         </form>
       )}
     </Sheet>
+  );
+}
+
+/**
+ * Today's numbers: one row per measurement your goals track (weight, waist…), logged right here
+ * so you never have to open each goal. Goals without a measurement don't appear. A measurement
+ * that already has a "Log a number" task today is left to that task.
+ */
+function TodayNumbers() {
+  const { data, today, commit } = useStore();
+  const toast = useToast();
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [changing, setChanging] = useState<Record<string, boolean>>({});
+
+  const liveGoals = data.goals.filter((g) => !g.archived_at && !g.completed_at);
+  const taskTypes = new Set(
+    data.sessions
+      .filter((s) => s.date === today && s.status !== 'skipped')
+      .map((s) => data.actions.find((a) => a.id === s.action_id))
+      .filter((a) => a?.kind === 'measure' && a.measurement_type_id)
+      .map((a) => a!.measurement_type_id!),
+  );
+  const rows = data.measurementTypes
+    .filter((t) => !t.archived_at && !taskTypes.has(t.id))
+    .map((t) => ({ type: t, goal: liveGoals.find((g) => g.id === t.goal_id || g.measurement_type_id === t.id) }))
+    .filter((r): r is { type: typeof r.type; goal: NonNullable<typeof r.goal> } => !!r.goal)
+    .sort((a, b) => Number(b.goal.measurement_type_id === b.type.id) - Number(a.goal.measurement_type_id === a.type.id));
+  if (rows.length === 0) return null;
+
+  function save(typeId: string, name: string, unit: string) {
+    const raw = (values[typeId] ?? '').trim();
+    const v = Number(raw);
+    if (raw === '' || !Number.isFinite(v)) return;
+    const { ops, undo } = opsRecordReading(data, typeId, v, today);
+    commit(ops);
+    toast(`${name}: ${fmt(v)} ${unit}`.trim(), () => commit(undo));
+    setValues({ ...values, [typeId]: '' });
+    setChanging({ ...changing, [typeId]: false });
+  }
+
+  return (
+    <section className="card tight stack-sm today-numbers" aria-label="Today's numbers">
+      <span className="label">Today’s numbers</span>
+      {rows.map(({ type, goal }) => {
+        const logged = readingOn(data, type.id, today);
+        const last = lastReading(data, type.id);
+        const editing = logged == null || changing[type.id];
+        return (
+          <form
+            key={type.id}
+            className="today-number"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save(type.id, type.name, type.unit);
+            }}
+          >
+            <span className="dot" style={{ background: goal.color }} />
+            <span className="grow" style={{ minWidth: 0 }}>
+              <span className="today-number-name">{type.name}</span>
+              <span className="xsmall muted today-number-goal">{goal.title}</span>
+            </span>
+            {editing ? (
+              <>
+                <input
+                  className="input"
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  aria-label={`${type.name} today${type.unit ? ` (${type.unit})` : ''}`}
+                  placeholder={last ? fmt(last.value) : ''}
+                  value={values[type.id] ?? ''}
+                  onChange={(e) => setValues({ ...values, [type.id]: e.target.value })}
+                />
+                <span className="small muted">{type.unit}</span>
+                <button className="btn small primary" type="submit" disabled={(values[type.id] ?? '').trim() === ''}>
+                  Save
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="num">
+                  <Icon name="check" size={13} stroke={3} /> {fmt(logged!)} {type.unit}
+                </span>
+                <button type="button" className="link-btn xsmall" onClick={() => setChanging({ ...changing, [type.id]: true })}>
+                  Change
+                </button>
+              </>
+            )}
+          </form>
+        );
+      })}
+    </section>
   );
 }
