@@ -3,6 +3,7 @@ import { useStore } from '../data/store.tsx';
 import { opsProfile } from '../data/ops.ts';
 import { resetDemo } from '../data/local.ts';
 import type { AppData } from '../data/model.ts';
+import { opsAddPracticeWorkout, opsRemovePracticeWorkouts, practiceSource, practiceWorkouts } from '../data/practice.ts';
 import { BackLink, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import type { ShellProps } from '../App.tsx';
 import { getTheme, setTheme, type Theme } from '../theme.ts';
@@ -310,6 +311,36 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
           </div>
         </>
       )}
+
+      <div className="section-label">Try the workout log</div>
+      <div className="card stack-sm">
+        <p className="small muted" style={{ margin: 0 }}>
+          Adds a copy of {practiceSource(data)?.title ?? 'your first workout'} on today only, so you can try logging sets before your first real workout. Removing it deletes it and anything you logged on it.
+        </p>
+        <div className="btn-row">
+          <button
+            className="btn small"
+            disabled={!practiceSource(data)}
+            onClick={() => {
+              commit(opsAddPracticeWorkout(data, today));
+              toast("Practice workout added. It's on Today.");
+            }}
+          >
+            Add a practice workout today
+          </button>
+          {practiceWorkouts(data).length > 0 && (
+            <button
+              className="btn small danger"
+              onClick={() => {
+                commit(opsRemovePracticeWorkouts(data));
+                toast('Practice workout removed');
+              }}
+            >
+              Remove practice workout{practiceWorkouts(data).length > 1 ? 's' : ''}
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className="section-label">Start from scratch</div>
       <div className="card stack-sm">

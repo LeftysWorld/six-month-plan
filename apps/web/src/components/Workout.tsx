@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView } from '../data/derive.ts';
-import { opsLogSession, opsRestoreSession, opsSaveWorkout } from '../data/ops.ts';
+import { opsLogSession, opsRestoreSession, opsSaveWorkout, opsStartExtra } from '../data/ops.ts';
 import type { AppData, Op } from '../data/model.ts';
 import { Icon, Sheet, useToast } from './ui.tsx';
 
@@ -209,12 +209,13 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
       const draft = localStorage.getItem(draftKey(session.id));
       const parsed = draft ? (JSON.parse(draft) as Row[][]) : null;
       // A draft only fits if the plan still has the same exercises and sets.
-      if (parsed && parsed.length === plan.length && parsed.every((r, i) => r.length === plan[i]!.sets)) return parsed;
+      if (parsed && parsed.length === plan.length && parsed.every((r, i) => r.length >= plan[i]!.sets)) return parsed;
     } catch {
       // no draft
     }
     return plan.map((e) =>
-      Array.from({ length: e.sets }, (_, k) => {
+      // Extra sets you added last time you saved come back too.
+      Array.from({ length: Math.max(e.sets, ...saved.filter((w) => w.exercise.toLowerCase() === e.name.toLowerCase()).map((w) => w.set_no)) }, (_, k) => {
         const s = saved.find((w) => w.exercise.toLowerCase() === e.name.toLowerCase() && w.set_no === k + 1);
         return s ? { weight: s.weight == null ? '' : String(s.weight), reps: s.reps == null ? '' : String(s.reps), done: s.done } : { weight: '', reps: '', done: false };
       }),
@@ -283,6 +284,11 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
     const p = last.get(plan[i]!.name.toLowerCase())?.[k];
     if (p) setRow(i, k, { weight: p.weight == null ? '' : String(p.weight), reps: p.reps == null ? '' : String(p.reps) });
   };
+  /** One more set on an exercise, starting from the weight of its last set. */
+  const addSet = (i: number) => setRows((all) => all.map((r, a) => (a === i ? [...r, { weight: r.at(-1)?.weight ?? '', reps: '', done: false }] : r)));
+  const removeSet = (i: number, k: number) => setRows((all) => all.map((r, a) => (a === i ? r.filter((_, b) => b !== k) : r)));
+  const [another, setAnother] = useState(false);
+  const workouts = data.actions.filter((a) => !a.archived_at && a.kind === 'workout' && a.workout_plan?.length);
   const doneCount = rows.flat().filter((r) => r.done).length;
   const total = rows.flat().length;
 
@@ -341,7 +347,7 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
           const sug = suggestions[i]!;
           const mine = rows[i]!;
           const done = mine.filter((r) => r.done).length;
-          const finished = done === e.sets;
+          const finished = done >= mine.length;
           const isOpen = open === i;
           const did = mine.map((r, k) => ({ ...actual(i, k), done: r.done })).filter((s) => s.done);
           return (
@@ -357,7 +363,7 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
                           {s.weight == null ? 'BW' : fmt(s.weight)} × {s.reps ?? '?'}
                         </span>
                       ))}
-                      {done < e.sets && <span className="xsmall muted">{e.sets - done} not done</span>}
+                      {done < mine.length && <span className="xsmall muted">{mine.length - done} not done</span>}
                     </span>
                   ) : (
                     <span className="xsmall muted num">
@@ -368,7 +374,7 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
                 </span>
                 {!future && (
                   <span className="xsmall muted num" style={{ flex: 'none' }}>
-                    {done}/{e.sets}
+                    {done}/{mine.length}
                   </span>
                 )}
                 <span style={{ transform: isOpen ? 'rotate(-90deg)' : 'rotate(90deg)', display: 'inline-flex', color: 'var(--muted)', flex: 'none' }}>
@@ -425,9 +431,19 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
                             <button type="button" className={`set-tick${r.done ? ' on' : ''}`} aria-pressed={r.done} aria-label={`Set ${k + 1} done`} disabled={future} onClick={() => tick(i, k)}>
                               <Icon name="check" size={16} stroke={2.6} />
                             </button>
+                            {k >= e.sets && !r.done && (
+                              <button type="button" className="link-btn xsmall workout-remove-set" onClick={() => removeSet(i, k)} aria-label={`Remove set ${k + 1}`}>
+                                Remove extra set
+                              </button>
+                            )}
                           </div>
                         );
                       })}
+                      {!future && (
+                        <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start' }} onClick={() => addSet(i)}>
+                          + Add set
+                        </button>
+                      )}
                       {!future && i === firstOpen(rows) && doneCount === 0 && (
                         <span className="xsmall muted">Grey numbers are the plan ({repsText(e)} reps). Tick to log them as is, or type what you did first.</span>
                       )}
@@ -453,6 +469,31 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
       <button type="button" className="link-btn small" onClick={onMore}>
         Skip, move to another day, or add a photo
       </button>
+      {day === today && workouts.length > 0 && (
+        <div className="stack-sm">
+          <button type="button" className="link-btn small" onClick={() => setAnother(!another)}>
+            {another ? 'Cancel' : 'Do another workout today'}
+          </button>
+          {another && (
+            <div className="chips" role="group" aria-label="Pick a workout">
+              {workouts.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className="chip"
+                  onClick={() => {
+                    commit(opsStartExtra(data, a, today).ops);
+                    toast(`${a.title} added to today as an extra`);
+                    onClose();
+                  }}
+                >
+                  {a.title}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {restEnd != null && (
         <div className="rest-bar" role="timer" aria-live="off">
           <span className="grow">

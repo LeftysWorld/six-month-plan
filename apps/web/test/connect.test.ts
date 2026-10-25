@@ -279,3 +279,22 @@ test('workout summaries and rest times', async () => {
   assert.equal(restSeconds('90 s after each round'), 90);
   assert.equal(restSeconds(''), null);
 });
+
+test('a practice workout is a one-day copy on today, and removing it deletes everything on it', async () => {
+  const { opsAddPracticeWorkout, opsRemovePracticeWorkouts, practiceWorkouts } = await import('../src/data/practice.ts');
+  const d = base();
+  d.actions = [{ ...d.actions[0]!, title: 'Mon · Chest & Back A', workout_plan: [{ name: 'Bench', sets: 3, reps_min: 8, reps_max: 12, weight: 50, weight_note: '', rest: '2 min', note: '' }], details: 'WORKOUT\n• Bench: 3×8–12 @ 50 lb' }];
+  let out = run(d, opsAddPracticeWorkout(d, '2026-10-25'));
+  const p = practiceWorkouts(out);
+  assert.equal(p.length, 1);
+  assert.equal(p[0]!.title, 'Practice · Mon · Chest & Back A');
+  assert.deepEqual(out.sessions.filter((s) => s.action_id === p[0]!.id).map((s) => s.date), ['2026-10-25']);
+  assert.deepEqual(out.actionGoals.filter((ag) => ag.action_id === p[0]!.id).map((ag) => ag.goal_id), ['gym']);
+  const sid = out.sessions.find((s) => s.action_id === p[0]!.id)!.id;
+  out = { ...out, workoutSets: [{ id: 'w1', session_id: sid, exercise: 'Bench', set_no: 1, weight: 50, reps: 12, done: true }] };
+  out = run(out, opsRemovePracticeWorkouts(out));
+  assert.equal(practiceWorkouts(out).length, 0);
+  assert.equal(out.sessions.length, 0);
+  assert.equal(out.workoutSets.length, 0);
+  assert.equal(out.actions.length, 1, 'the real workout stays');
+});

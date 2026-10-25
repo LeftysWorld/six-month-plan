@@ -99,6 +99,45 @@ export function opsAddOneOff(input: { title: string; minutes: number; priority: 
   return [{ kind: 'insert', collection: 'sessions', rows: rows([session]) }];
 }
 
+/**
+ * An extra session of a task on a day, to do now and log as usual: a workout on a day it isn't
+ * planned, or a second one on a day that already has one. It shows on Today as "Extra".
+ */
+export function opsStartExtra(data: AppData, action: Action, date: ISODate): { ops: Op[]; session: Session } {
+  const monday = weekStart(date);
+  const used = data.sessions.filter((s) => s.action_id === action.id && s.week_start === monday && s.origin === 'unplanned').length;
+  const session: Session = {
+    id: newId(),
+    action_id: action.id,
+    week_start: monday,
+    slot: 1000 + used,
+    date,
+    title: action.title,
+    priority: false,
+    planned_minutes: action.planned_minutes,
+    planned_count: action.planned_count,
+    status: 'planned',
+    actual_minutes: null,
+    actual_count: null,
+    note: '',
+    obstacles: [],
+    origin: 'unplanned',
+    source: 'manual',
+    moved_from: null,
+    logged_at: null,
+  };
+  return { ops: [{ kind: 'insert', collection: 'sessions', rows: rows([session]) }], session };
+}
+
+/** Delete an extra session (not a planned one) with its logged sets. Returns the ops that bring it back. */
+export function opsDeleteExtra(data: AppData, session: Session): { ops: Op[]; undo: Op[] } {
+  const sets = data.workoutSets.filter((w) => w.session_id === session.id);
+  return {
+    ops: [...sets.map((w): Op => ({ kind: 'delete', collection: 'workoutSets', id: w.id })), { kind: 'delete', collection: 'sessions', id: session.id }],
+    undo: [{ kind: 'insert', collection: 'sessions', rows: rows([session]) }, ...(sets.length ? [{ kind: 'insert', collection: 'workoutSets', rows: rows(sets) } as Op] : [])],
+  };
+}
+
 /** Log something done that wasn't on the plan. */
 export function opsLogUnplanned(data: AppData, action: Action, date: ISODate, minutes: number): Op[] {
   const monday = weekStart(date);

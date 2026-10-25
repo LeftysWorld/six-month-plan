@@ -596,7 +596,7 @@ function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session
   if (s.status === 'minimum') meta = `Minimum kept${action?.min_label ? ` · ${action.min_label}` : ''}`;
   if (s.status === 'partial') meta = s.planned_count ? `Partial · ${s.actual_count ?? 0} of ${s.planned_count}` : 'Partial';
   if (s.status === 'skipped') meta = s.obstacles.length ? `Skipped · ${s.obstacles.join(', ')}` : 'Skipped';
-  if (s.origin === 'unplanned') meta = 'Logged extra';
+  if (s.origin === 'unplanned') meta = s.status === 'planned' ? 'Extra today' : 'Logged extra';
   if (hint && s.status === 'planned') meta = [hint, meta].filter(Boolean).join(' · ');
   const fileCount = data.attachments.filter((a) => a.session_id === s.id).length;
   if (fileCount > 0) meta = [meta, fileCount === 1 ? '1 file' : `${fileCount} files`].filter(Boolean).join(' · ');
