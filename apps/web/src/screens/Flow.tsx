@@ -592,7 +592,8 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
 
   // The one next step.
   let next: { label: string; sub: string; run: () => void } | null = null;
-  if (t.started && goal.type === 'number' && type && last?.measured_on !== today) {
+  // A number goal's reading can be logged any day, including before its window starts.
+  if (goal.type === 'number' && type && last?.measured_on !== today) {
     const age = last ? daysBetween(last.measured_on, today) : null;
     next = { label: `Log today’s ${type.name.toLowerCase()}`, sub: age == null ? 'No readings yet' : `Last one ${age === 1 ? 'yesterday' : `${age} days ago`}`, run: () => setLogging(true) };
   } else if (t.started && fix?.extra) {
@@ -628,13 +629,56 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
     setValue('');
   }
 
+  const nextButton = next && (
+    <button type="button" className="next-step" onClick={next.run}>
+      <b>{next.label}</b>
+      <span>{next.sub}</span>
+    </button>
+  );
+  const logForm =
+      logging && type ? (
+      <form
+        className="stack-sm"
+        onSubmit={(e) => {
+          e.preventDefault();
+          saveReading();
+        }}
+      >
+        <div className="row-start" style={{ flexWrap: 'nowrap' }}>
+          <label className="visually-hidden" htmlFor="reading-today">
+            {type.name} today
+          </label>
+          <input id="reading-today" className="input" type="number" step="any" inputMode="decimal" autoFocus value={value} placeholder={last ? fmt(last.value) : ''} onChange={(e) => (setValue(e.target.value), setError(''))} />
+          <span className="small muted">{type.unit}</span>
+          <button className="btn small primary" type="submit" style={{ minHeight: 44, flex: 'none' }}>
+            Save
+          </button>
+          <button className="btn small" type="button" onClick={() => setLogging(false)} style={{ minHeight: 44, flex: 'none' }}>
+            Cancel
+          </button>
+        </div>
+        {error && <span className="xsmall" style={{ color: 'var(--danger)' }}>{error}</span>}
+      </form>
+    ) : null;
+
   if (!t.started) {
     return (
       <section className="card stack-sm progress-card">
-        <span className="mono">STARTS {shortDate(plan.start_date).toUpperCase()}</span>
-        <span style={{ fontSize: 17, fontWeight: 600 }}>
-          {t.target} by {shortDate(t.by)}
-        </span>
+        <div className="progress-top">
+          <div className="stack-sm" style={{ gap: 4, minWidth: 0 }}>
+            <span className="mono">STARTS {shortDate(plan.start_date).toUpperCase()}</span>
+            <span style={{ fontSize: 17, fontWeight: 600 }}>
+              {t.target} by {shortDate(t.by)}
+            </span>
+            {goal.type === 'number' && last && (
+              <span className="small muted">
+                Last {type?.name.toLowerCase() ?? 'reading'}: {fmt(Number(last.value))} {type?.unit} · {last.measured_on === today ? 'today' : shortDate(last.measured_on)}
+              </span>
+            )}
+          </div>
+          {nextButton}
+        </div>
+        {logForm}
       </section>
     );
   }
@@ -647,37 +691,9 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
             toward {t.target} by {shortDate(t.by)}
           </span>
         </div>
-        {next && (
-          <button type="button" className="next-step" onClick={next.run}>
-            <b>{next.label}</b>
-            <span>{next.sub}</span>
-          </button>
-        )}
+        {nextButton}
       </div>
-      {logging && type && (
-        <form
-          className="stack-sm"
-          onSubmit={(e) => {
-            e.preventDefault();
-            saveReading();
-          }}
-        >
-          <div className="row-start" style={{ flexWrap: 'nowrap' }}>
-            <label className="visually-hidden" htmlFor="reading-today">
-              {type.name} today
-            </label>
-            <input id="reading-today" className="input" type="number" step="any" inputMode="decimal" autoFocus value={value} placeholder={last ? fmt(last.value) : ''} onChange={(e) => (setValue(e.target.value), setError(''))} />
-            <span className="small muted">{type.unit}</span>
-            <button className="btn small primary" type="submit" style={{ minHeight: 44, flex: 'none' }}>
-              Save
-            </button>
-            <button className="btn small" type="button" onClick={() => setLogging(false)} style={{ minHeight: 44, flex: 'none' }}>
-              Cancel
-            </button>
-          </div>
-          {error && <span className="xsmall" style={{ color: 'var(--danger)' }}>{error}</span>}
-        </form>
-      )}
+      {logForm}
       <span className="season-track" style={{ marginLeft: 0, height: 8 }} aria-label={`${t.prog}% done, even pace ${t.exp}%`}>
         <span className="season-fill" style={{ width: `${t.prog}%`, background: goal.color }} />
         <span className="season-tick" style={{ left: `${t.exp}%` }} />

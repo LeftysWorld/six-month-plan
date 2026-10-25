@@ -135,7 +135,7 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
         </div>
       )}
 
-      <Measurements goal={goal} types={types} onAdd={(name) => toast(`Added ${name}`)} />
+      <Measurements goal={goal} types={types} onAdd={(msg) => toast(msg.startsWith('Stopped') ? msg : `Added ${msg}`)} />
 
       {history.length > 0 && (
         <details className="card tight">
@@ -261,7 +261,7 @@ export function GoalRecord({ goal }: { goal: Goal }) {
       )}
 
       <GoalFiles actionIds={actionIds} />
-      <Measurements goal={goal} types={goal.type === 'number' ? types.filter((t) => t.id !== goal.measurement_type_id) : types} onAdd={(name) => toast(`Added ${name}`)} />
+      <Measurements goal={goal} types={goal.type === 'number' ? types.filter((t) => t.id !== goal.measurement_type_id) : types} onAdd={(msg) => toast(msg.startsWith('Stopped') ? msg : `Added ${msg}`)} />
     </>
   );
 }
@@ -489,6 +489,20 @@ function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementTy
                 {first && last && first !== last ? ` · start ${fmt(first.value)}` : ''}
               </span>
             </div>
+            {t.id !== goal.measurement_type_id && (
+              <button
+                type="button"
+                className="link-btn xsmall"
+                style={{ alignSelf: 'flex-start', paddingLeft: 0 }}
+                onClick={() => {
+                  // Archived, not deleted: past readings stay in your export.
+                  commit([{ kind: 'update', collection: 'measurementTypes', id: t.id, patch: { archived_at: new Date().toISOString() } }]);
+                  onAdd(`Stopped tracking ${t.name.toLowerCase()}`);
+                }}
+              >
+                Stop tracking {t.name.toLowerCase()}
+              </button>
+            )}
             <form
               className="grid-3"
               style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}
