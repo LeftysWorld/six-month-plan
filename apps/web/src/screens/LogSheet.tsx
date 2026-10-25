@@ -75,7 +75,7 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
   const moveDates = [...weekDates(monday), ...weekDates(addDays(monday, 7))].filter((d) => d >= today && d !== session.date && view.canPlace(session, d));
 
   if (action?.kind === 'workout' && action.workout_plan?.length && !general) {
-    return <WorkoutSheet session={session} plan={action.workout_plan} onClose={onClose} onMore={() => setGeneral(true)} />;
+    return <WorkoutSheet session={session} plan={action.workout_plan} onClose={onClose} />;
   }
 
   return (

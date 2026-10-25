@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
-import { parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
+import { useEffect, useRef, useState } from 'react';
+import { addDays, parseWorkoutPlan, shortDate, weekDates, weekStart, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView } from '../data/derive.ts';
-import { opsLogSession, opsRestoreSession, opsSaveWorkout, opsStartExtra } from '../data/ops.ts';
+import { opsLogSession, opsMoveSession, opsRestoreSession, opsSaveWorkout, opsStartExtra } from '../data/ops.ts';
+import { cleanPlan } from '../data/breakdown.ts';
+import { SessionFiles, useAddFiles } from './Attachments.tsx';
 import type { AppData, Op } from '../data/model.ts';
 import { Icon, Sheet, useToast } from './ui.tsx';
 
@@ -181,6 +183,36 @@ function lastTime(data: AppData, session: Session): Map<string, DoneSet[]> {
 }
 
 const draftKey = (sessionId: string) => `six.workout.${sessionId}`;
+
+/** An exercise added during a workout; `keep` adds it to the task's plan when you finish. */
+type Extra = PlannedExercise & { keep?: boolean };
+interface Draft {
+  rows: Row[][];
+  extras: Extra[];
+}
+
+function readDraft(sessionId: string): Draft | null {
+  try {
+    const raw = localStorage.getItem(draftKey(sessionId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Draft | Row[][];
+    // Drafts from before exercises could be added were just the rows.
+    return Array.isArray(parsed) ? { rows: parsed, extras: [] } : parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Exercises in a saved workout that aren't in the plan (added that day), so they show again when reopened. */
+function savedExtras(plan: PlannedExercise[], saved: WorkoutSet[]): Extra[] {
+  const inPlan = new Set(plan.map((e) => e.name.toLowerCase()));
+  const names = [...new Set(saved.map((w) => w.exercise))].filter((n) => !inPlan.has(n.toLowerCase()));
+  return names.map((name) => {
+    const sets = saved.filter((w) => w.exercise === name);
+    const reps = sets.map((w) => w.reps ?? 0).filter((r) => r > 0);
+    return { name, sets: sets.length, reps_min: reps.length ? Math.min(...reps) : 10, reps_max: reps.length ? Math.max(...reps) : 10, weight: sets[0]?.weight ?? null, weight_note: '', rest: '', note: 'Added this workout' };
+  });
+}
 const clock = (t: number) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 
 /**
@@ -191,7 +223,7 @@ const clock = (t: number) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2,
  * finished exercise folds to what you actually did. Progress is kept on this device until you
  * finish, so a locked phone loses nothing.
  */
-export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Session; plan: PlannedExercise[]; onClose: () => void; onMore: () => void }) {
+export function WorkoutSheet({ session, plan: basePlan, onClose }: { session: Session; plan: PlannedExercise[]; onClose: () => void }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
@@ -201,19 +233,21 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
   const future = day > today;
   const last = lastTime(data, session);
   const saved = data.workoutSets.filter((w) => w.session_id === session.id);
+  // The draft kept on this device: the set rows and any exercises added today.
+  const [draft] = useState<Draft | null>(() => readDraft(session.id));
+  // Exercises added for this workout only (or to keep in the plan from now on).
+  const [extras, setExtras] = useState<Extra[]>(() => draft?.extras ?? savedExtras(basePlan, saved));
+  const plan: Extra[] = [...basePlan, ...extras];
   const suggestions = plan.map((e) => suggestWeight(e, last.get(e.name.toLowerCase()) ?? null));
   const planWeight = (i: number) => suggestions[i]!.weight;
 
   const [rows, setRows] = useState<Row[][]>(() => {
-    try {
-      const draft = localStorage.getItem(draftKey(session.id));
-      const parsed = draft ? (JSON.parse(draft) as Row[][]) : null;
+    {
+      const parsed = draft?.rows ?? null;
       // A draft only fits if the plan still has the same exercises and sets.
       if (parsed && parsed.length === plan.length && parsed.every((r, i) => r.length >= plan[i]!.sets)) {
         return parsed.map((r, i) => r.map((x) => (x.done ? x : { ...x, weight: x.weight || (suggestions[i]!.weight == null ? '' : String(suggestions[i]!.weight)), reps: x.reps || String(plan[i]!.reps_max) })));
       }
-    } catch {
-      // no draft
     }
     return plan.map((e) =>
       // Extra sets you added last time you saved come back too.
@@ -235,11 +269,11 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
   useEffect(() => {
     if (future) return;
     try {
-      localStorage.setItem(draftKey(session.id), JSON.stringify(rows));
+      localStorage.setItem(draftKey(session.id), JSON.stringify({ rows, extras } satisfies Draft));
     } catch {
       // storage blocked: the draft just isn't kept
     }
-  }, [rows, future, session.id]);
+  }, [rows, extras, future, session.id]);
 
   // The rest timer counts to a time (not by ticks), so it stays right after the phone sleeps.
   useEffect(() => {
@@ -293,6 +327,34 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
   const addSet = (i: number) => setRows((all) => all.map((r, a) => (a === i ? [...r, { weight: r.at(-1)?.weight ?? '', reps: r.at(-1)?.reps ?? String(plan[i]!.reps_max), done: false }] : r)));
   const removeSet = (i: number, k: number) => setRows((all) => all.map((r, a) => (a === i ? r.filter((_, b) => b !== k) : r)));
   const [another, setAnother] = useState(false);
+  const [adding, setAdding] = useState<{ name: string; sets: string; reps: string; weight: string; keep: boolean } | null>(null);
+  const [moving, setMoving] = useState(false);
+  const known = [...new Set(data.actions.flatMap((a) => a.workout_plan ?? []).map((e) => e.name))].sort();
+  const { addFiles, uploading } = useAddFiles();
+  const photoInput = useRef<HTMLInputElement>(null);
+  const photos = data.attachments.filter((a) => a.session_id === session.id).length;
+
+  function addExercise() {
+    if (!adding || !adding.name.trim()) return;
+    const sets = Math.max(1, Math.round(Number(adding.sets) || 3));
+    const reps = Math.max(1, Math.round(Number(adding.reps) || 10));
+    const weight = adding.weight.trim() === '' ? null : Number(adding.weight);
+    // Same name as one you've planned elsewhere? Start from that plan's numbers.
+    const like = data.actions.flatMap((a) => a.workout_plan ?? []).find((e) => e.name.toLowerCase() === adding.name.trim().toLowerCase());
+    const ex: Extra = { ...(like ?? {}), name: adding.name.trim(), sets, reps_min: like && like.reps_max === reps ? like.reps_min : reps, reps_max: reps, weight, weight_note: '', rest: like?.rest ?? '', note: like?.note ?? '', keep: adding.keep };
+    setExtras((x) => [...x, ex]);
+    setRows((r) => [...r, Array.from({ length: sets }, () => ({ weight: weight == null ? '' : String(weight), reps: String(reps), done: false }))]);
+    setOpen(plan.length);
+    setAdding(null);
+  }
+  function removeExtra(i: number) {
+    const x = i - basePlan.length;
+    setExtras((all) => all.filter((_, j) => j !== x));
+    setRows((all) => all.filter((_, j) => j !== i));
+    setOpen(-1);
+  }
+  const monday = weekStart(day);
+  const moveDates = [...weekDates(monday), ...weekDates(addDays(monday, 7))].filter((d) => d >= today && d !== session.date && view.canPlace(session, d));
   const workouts = data.actions.filter((a) => !a.archived_at && a.kind === 'workout' && a.workout_plan?.length);
   const doneCount = rows.flat().filter((r) => r.done).length;
   const total = rows.flat().length;
@@ -309,7 +371,12 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
       ...added.map((id): Op => ({ kind: 'delete', collection: 'workoutSets', id })),
       ...(saved.length ? [{ kind: 'insert', collection: 'workoutSets', rows: saved as unknown as ({ id: string } & Record<string, unknown>)[] } as Op] : []),
     ];
-    commit([...saveOps, ...opsLogSession(session, { status, note, on: today })]);
+    const kept = extras.filter((e) => e.keep);
+    const planOps: Op[] =
+      kept.length && action
+        ? [{ kind: 'update', collection: 'actions', id: action.id, patch: { workout_plan: cleanPlan([...basePlan, ...kept.map(({ keep: _k, ...e }) => ({ ...e, note: e.note === 'Added this workout' ? '' : e.note }))]) } }]
+        : [];
+    commit([...saveOps, ...planOps, ...opsLogSession(session, { status, note, on: today })]);
     try {
       localStorage.removeItem(draftKey(session.id));
     } catch {
@@ -327,11 +394,31 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
             {future ? `${plan.length} exercises · ${total} sets` : `${doneCount} of ${total} sets`}
             {session.planned_minutes ? ` · about ${session.planned_minutes} min` : ''}
           </span>
-          {!future && doneCount > 0 && (
-            <button type="button" className="btn small primary" onClick={finish}>
-              {session.status === 'planned' ? 'Finish' : 'Save'}
-            </button>
-          )}
+          <span className="row-start" style={{ gap: 6, flexWrap: 'nowrap' }}>
+            {!future && (
+              <button type="button" className="btn small" onClick={() => photoInput.current?.click()} disabled={uploading > 0} aria-label="Add a photo">
+                <Icon name="camera" size={16} /> {uploading > 0 ? '…' : photos > 0 ? photos : 'Photo'}
+              </button>
+            )}
+            {!future && doneCount > 0 && (
+              <button type="button" className="btn small primary" onClick={finish}>
+                {session.status === 'planned' ? 'Finish' : 'Save'}
+              </button>
+            )}
+          </span>
+          <input
+            ref={photoInput}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(e) => {
+              const files = e.target.files;
+              void addFiles(session, files).then(() => {
+                if (photoInput.current) photoInput.current.value = '';
+              });
+            }}
+          />
         </div>
         {!future && (
           <span className="workout-progress" aria-hidden="true">
@@ -394,6 +481,16 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
                     </span>
                   )}
                   {e.note && <span className="xsmall muted">{e.note}</span>}
+                  {i >= basePlan.length && !future && (
+                    <span className="row-between xsmall muted">
+                      <span>{(e as Extra).keep ? 'Added today · will be kept in the plan' : 'Added for today only'}</span>
+                      {mine.every((r) => !r.done) && (
+                        <button type="button" className="link-btn xsmall" onClick={() => removeExtra(i)}>
+                          Remove exercise
+                        </button>
+                      )}
+                    </span>
+                  )}
                   {future && <span className="xsmall muted">The plan for each set. You can enter what you actually did on {weekdayName(day)}.</span>}
                   {(
                     <div className={`workout-sets${future ? ' preview' : ''}`} role="table" aria-label={`${e.name} sets`}>
@@ -470,8 +567,59 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
           );
         })}
       </div>
+      {!future &&
+        (adding ? (
+          <form
+            className="card tight stack-sm"
+            onSubmit={(x) => {
+              x.preventDefault();
+              addExercise();
+            }}
+          >
+            <label className="field">
+              Exercise
+              <input autoFocus list="known-exercises" value={adding.name} onChange={(x) => setAdding({ ...adding, name: x.target.value })} placeholder="Face pulls" />
+              <datalist id="known-exercises">
+                {known.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
+            </label>
+            <div className="plan-ex-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+              <label className="field">
+                Sets
+                <input type="number" inputMode="numeric" min={1} value={adding.sets} onChange={(x) => setAdding({ ...adding, sets: x.target.value })} />
+              </label>
+              <label className="field">
+                Reps
+                <input type="number" inputMode="numeric" min={1} value={adding.reps} onChange={(x) => setAdding({ ...adding, reps: x.target.value })} />
+              </label>
+              <label className="field">
+                {unit}
+                <input type="number" inputMode="decimal" step="any" value={adding.weight} onChange={(x) => setAdding({ ...adding, weight: x.target.value })} placeholder="—" />
+              </label>
+            </div>
+            <label className="row-start small" style={{ gap: 6 }}>
+              <input type="checkbox" checked={adding.keep} onChange={(x) => setAdding({ ...adding, keep: x.target.checked })} />
+              Keep it in {action?.title ?? 'this workout'} from now on
+            </label>
+            <div className="btn-row">
+              <button type="button" className="btn small" onClick={() => setAdding(null)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn small primary" disabled={!adding.name.trim()}>
+                Add exercise
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button type="button" className="btn ghost" onClick={() => setAdding({ name: '', sets: '3', reps: '10', weight: '', keep: false })}>
+            <Icon name="plus" size={18} stroke={2.2} /> Add exercise
+          </button>
+        ))}
       {!future && (
         <>
+          <SessionFiles session={session} title="Photos" accept="image/*" cta="Add a photo" hideEmpty />
           <label className="field">
             Note
             <textarea rows={2} value={note} onChange={(x) => setNote(x.target.value)} placeholder="How it felt, the knee, anything to change" />
@@ -481,9 +629,32 @@ export function WorkoutSheet({ session, plan, onClose, onMore }: { session: Sess
           </button>
         </>
       )}
-      <button type="button" className="link-btn small" onClick={onMore}>
-        Skip, move to another day, or add a photo
-      </button>
+      {session.status === 'planned' && moveDates.length > 0 && (
+        <div className="stack-sm">
+          <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setMoving(!moving)}>
+            {moving ? 'Cancel' : 'Move to another day'}
+          </button>
+          {moving && (
+            <div className="chips" role="group" aria-label="Move to">
+              {moveDates.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className="chip"
+                  onClick={() => {
+                    const before = session;
+                    commit(opsMoveSession(session, d));
+                    toast(`Moved to ${weekdayName(d)} ${shortDate(d)}`, () => commit(opsRestoreSession(before)));
+                    onClose();
+                  }}
+                >
+                  {d === today ? 'Today' : `${weekdayName(d)} ${shortDate(d).split(' ')[1]}`}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {day === today && workouts.length > 0 && (
         <div className="stack-sm">
           <button type="button" className="btn small" onClick={() => setAnother(!another)}>

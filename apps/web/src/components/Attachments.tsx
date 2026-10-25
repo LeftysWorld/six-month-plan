@@ -123,7 +123,7 @@ export function useAddFiles() {
 }
 
 /** Photos and files on one task: add from the camera roll, the camera or files; tap to open; × to remove. */
-export function SessionFiles({ session }: { session: Session }) {
+export function SessionFiles({ session, title = 'Photos and files', accept, cta = 'Add a photo or file', hideEmpty = false }: { session: Session; title?: string; accept?: string; cta?: string; hideEmpty?: boolean }) {
   const { data, db, commit } = useStore();
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
@@ -142,9 +142,11 @@ export function SessionFiles({ session }: { session: Session }) {
     toast(`Removed ${file.name}`);
   }
 
+  // In the workout log the camera button sits at the top, so an empty photo section isn't shown.
+  if (hideEmpty && files.length === 0 && uploading === 0) return null;
   return (
     <div className="stack-sm">
-      <div className="xsmall muted">Photos and files</div>
+      <div className="xsmall muted">{title}</div>
       {(files.length > 0 || uploading > 0) && (
         <div className="file-grid">
           {files.map((f) => (
@@ -160,9 +162,9 @@ export function SessionFiles({ session }: { session: Session }) {
           ))}
         </div>
       )}
-      <input ref={input} type="file" multiple hidden onChange={(e) => void add(e.target.files)} />
+      <input ref={input} type="file" accept={accept} multiple hidden onChange={(e) => void add(e.target.files)} />
       <button type="button" className="btn small" onClick={() => input.current?.click()} disabled={uploading > 0}>
-        <Icon name="plus" size={16} stroke={2.2} /> {uploading > 0 ? 'Uploading…' : 'Add a photo or file'}
+        <Icon name="plus" size={16} stroke={2.2} /> {uploading > 0 ? 'Uploading…' : cta}
       </button>
     </div>
   );
