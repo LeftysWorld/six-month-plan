@@ -298,3 +298,17 @@ test('a practice workout is a one-day copy on today, and removing it deletes eve
   assert.equal(out.workoutSets.length, 0);
   assert.equal(out.actions.length, 1, 'the real workout stays');
 });
+
+test('tracking a photo on a goal makes a photo task on its days, and stopping ends it', async () => {
+  const { opsAddPhotoTracker, opsStopPhotoTracker, photoTrackers, daysText } = await import('../src/data/tracking.ts');
+  const d = base();
+  let out = run(d, opsAddPhotoTracker(d, 'weight', 'Progress photo', [7, 3], '2026-10-25'));
+  const [t] = photoTrackers(out, 'weight', '2026-10-25');
+  assert.equal(t!.action.kind, 'photo');
+  assert.deepEqual(t!.schedule!.days, [3, 7]);
+  assert.deepEqual(out.sessions.filter((s) => s.action_id === t!.action.id).map((s) => s.date), ['2026-10-25'], 'Sunday this week');
+  out = run(out, opsStopPhotoTracker(out, t!.action, '2026-10-26'));
+  assert.equal(photoTrackers(out, 'weight', '2026-10-26').length, 0);
+  assert.equal(daysText([1, 2, 3, 4, 5, 6, 7]), 'Every day');
+  assert.equal(daysText([1, 4]), 'Mon, Thu');
+});

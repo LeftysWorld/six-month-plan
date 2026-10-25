@@ -63,7 +63,7 @@ function useFileUrl(path: string): string | null {
 }
 
 /** One attachment: a photo thumbnail, or a tile with the file type. Tap to open it. */
-function FileThumb({ file, caption, onRemove }: { file: Attachment; caption?: string; onRemove?: () => void }) {
+export function FileThumb({ file, caption, onRemove }: { file: Attachment; caption?: string; onRemove?: () => void }) {
   const url = useFileUrl(file.path);
   const image = isImage(file.mime_type);
   return (

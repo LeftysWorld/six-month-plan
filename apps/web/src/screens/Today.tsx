@@ -13,7 +13,7 @@ import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
 import { AddWorkoutToday, WorkoutCardPlan } from '../components/Workout.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
-import { useAddFiles } from '../components/Attachments.tsx';
+import { FileThumb, useAddFiles } from '../components/Attachments.tsx';
 import { lastReading, measureLabel, measureOnToday, opsRecordReading, readingOn } from '../data/connect.ts';
 import { CommitmentCard } from '../components/Commitment.tsx';
 import { opsAddIdea } from '../data/backlog.ts';
@@ -69,7 +69,11 @@ export function Today() {
     return () => window.removeEventListener('keydown', onKey);
   }, [day]);
 
-  const sessions = view.sessionsOn(day);
+  // On today, photo tasks (a progress photo) sit with your numbers instead of as task cards.
+  const allSessions = view.sessionsOn(day);
+  const isCheckInPhoto = (s: Session) => day === today && view.action(s.action_id)?.kind === 'photo';
+  const sessions = allSessions.filter((s) => !isCheckInPhoto(s));
+  const photoSessions = allSessions.filter(isCheckInPhoto);
   const done = sessions.filter((s) => s.status !== 'planned');
   const tray = view.unplacedThisWeek();
   const trayGroups = [...new Map(tray.map((s) => [s.action_id ?? s.id, s])).values()].map((s) => ({
@@ -332,14 +336,14 @@ export function Today() {
         )}
         {isFuture && <span className="xsmall muted">Coming up. You can check these off on the day.</span>}
 
+        {isToday && <TodayNumbers photoSessions={photoSessions} />}
+
         {sessions.length === 0 && planned.length === 0 && (
           <div className="card empty">
             <h3 style={{ marginBottom: 6 }}>Nothing planned {isToday ? 'today' : `on ${fullDay(day)}`}.</h3>
             Add a task, or rest. Rest counts.
           </div>
         )}
-
-        {isToday && <TodayNumbers />}
 
         {planned.length + done.length > 0 && (
           <div className="task-cards">
@@ -872,9 +876,13 @@ export function QuickAdd({ date, onClose }: { date: ISODate; onClose: () => void
  * logged right here so you never have to open each goal. Stopped measurements never show. One
  * that already has a "Log a number" task today is left to that task.
  */
-function TodayNumbers() {
+function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
   const { data, today, commit } = useStore();
+  const view = useView();
   const toast = useToast();
+  const { addFiles, uploading } = useAddFiles();
+  const photoInput = useRef<HTMLInputElement>(null);
+  const photoFor = useRef<Session | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [changing, setChanging] = useState<Record<string, boolean>>({});
 
@@ -891,7 +899,22 @@ function TodayNumbers() {
     .map((t) => ({ type: t, goal: liveGoals.find((g) => g.id === t.goal_id || g.measurement_type_id === t.id) }))
     .filter((r): r is { type: typeof r.type; goal: NonNullable<typeof r.goal> } => !!r.goal)
     .sort((a, b) => Number(b.goal.measurement_type_id === b.type.id) - Number(a.goal.measurement_type_id === a.type.id));
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && photoSessions.length === 0) return null;
+
+  async function photoPicked(list: FileList | null) {
+    const s = photoFor.current;
+    const files = [...(list ?? [])];
+    if (photoInput.current) photoInput.current.value = '';
+    photoFor.current = null;
+    if (!s || files.length === 0) return;
+    const added = await addFiles(s, files, { quiet: true });
+    if (added === 0) return;
+    if (s.status === 'planned') {
+      commit(opsLogSession(s, { status: 'done', on: today }));
+      toast(`${s.title}: saved`, () => commit(opsRestoreSession(s)));
+    } else toast(`${s.title}: photo added`);
+  }
+  const title = rows.length && photoSessions.length ? 'Today’s numbers and photos' : photoSessions.length ? 'Today’s photos' : 'Today’s numbers';
 
   function save(typeId: string, name: string, unit: string) {
     const raw = (values[typeId] ?? '').trim();
@@ -905,8 +928,9 @@ function TodayNumbers() {
   }
 
   return (
-    <section className="card tight stack-sm today-numbers" aria-label="Today's numbers">
-      <span className="label">Today’s numbers</span>
+    <section className="card tight stack-sm today-numbers" aria-label={title}>
+      <span className="label">{title}</span>
+      <input ref={photoInput} type="file" accept="image/*" hidden onChange={(e) => void photoPicked(e.target.files)} />
       {rows.map(({ type, goal }) => {
         const logged = readingOn(data, type.id, today);
         const last = lastReading(data, type.id);
@@ -953,6 +977,37 @@ function TodayNumbers() {
               </>
             )}
           </form>
+        );
+      })}
+      {photoSessions.map((s) => {
+        const goal = view.goalsForAction(s.action_id).find((g) => !g.archived_at);
+        const files = data.attachments.filter((a) => a.session_id === s.id);
+        const done = s.status !== 'planned';
+        return (
+          <div key={s.id} className="today-number">
+            <span className="dot" style={{ background: goal?.color ?? 'var(--muted)' }} />
+            <span className="grow" style={{ minWidth: 0 }}>
+              <span className="today-number-name">{s.title}</span>
+              {goal && <span className="xsmall muted today-number-goal">{goal.title}</span>}
+            </span>
+            {files.slice(-2).map((f) => (
+              <span key={f.id} className="today-photo">
+                <FileThumb file={f} caption="" />
+              </span>
+            ))}
+            {done && files.length > 0 && <Icon name="check" size={13} stroke={3} />}
+            <button
+              type="button"
+              className={`btn small${done ? '' : ' primary'}`}
+              disabled={uploading > 0}
+              onClick={() => {
+                photoFor.current = s;
+                photoInput.current?.click();
+              }}
+            >
+              <Icon name="camera" size={16} /> {uploading > 0 ? '…' : done ? 'Add' : 'Take'}
+            </button>
+          </div>
         );
       })}
     </section>

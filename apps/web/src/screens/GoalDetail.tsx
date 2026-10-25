@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { shortDate, type Goal, type MeasurementType, type Plan } from '@six/core';
 import { findMeasure, measureLabel, measureOnToday } from '../data/connect.ts';
+import { daysText, opsAddPhotoTracker, opsStopPhotoTracker, photoTrackers } from '../data/tracking.ts';
 import { useStore } from '../data/store.tsx';
 import { fmt, useView } from '../data/derive.ts';
 import {
@@ -442,6 +443,10 @@ function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementTy
   const [cadence, setCadence] = useState(7);
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; name: string; unit: string } | null>(null);
+  const [kind, setKind] = useState<'number' | 'photo'>('number');
+  const [photoName, setPhotoName] = useState('Progress photo');
+  const [photoDays, setPhotoDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const photos = photoTrackers(data, goal.id, today);
   const update = (id: string, patch: Partial<MeasurementType>) => commit([{ kind: 'update', collection: 'measurementTypes', id, patch }]);
   const sorted = [...types].sort((a, b) => Number(b.id === goal.measurement_type_id) - Number(a.id === goal.measurement_type_id));
 
@@ -454,6 +459,52 @@ function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementTy
         </button>
       </div>
       {adding && (
+        <div className="seg" role="tablist" aria-label="What to track">
+          <button role="tab" aria-selected={kind === 'number'} onClick={() => setKind('number')}>
+            A number
+          </button>
+          <button role="tab" aria-selected={kind === 'photo'} onClick={() => setKind('photo')}>
+            A photo
+          </button>
+        </div>
+      )}
+      {adding && kind === 'photo' && (
+        <form
+          className="stack-sm"
+          onSubmit={(e) => {
+            e.preventDefault();
+            commit(opsAddPhotoTracker(data, goal.id, photoName, photoDays, today));
+            onAdd(photoName.trim() || 'Progress photo');
+            setAdding(false);
+          }}
+        >
+          <label className="field">
+            Name
+            <input value={photoName} onChange={(e) => setPhotoName(e.target.value)} placeholder="Progress photo" />
+          </label>
+          <div className="stack-sm">
+            <span className="xsmall muted">Which days</span>
+            <div className="chips" role="group" aria-label="Days">
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => {
+                const on = photoDays.includes(i + 1);
+                return (
+                  <button key={d} type="button" className="chip" aria-pressed={on} onClick={() => setPhotoDays(on ? photoDays.filter((x) => x !== i + 1) : [...photoDays, i + 1])}>
+                    {d}
+                  </button>
+                );
+              })}
+              <button type="button" className="chip" onClick={() => setPhotoDays([1, 2, 3, 4, 5, 6, 7])}>
+                Every day
+              </button>
+            </div>
+          </div>
+          <span className="xsmall muted">On those days it shows on Today with your numbers, with a camera button. Photos are saved to the day and collect on this goal.</span>
+          <button className="btn small" type="submit" disabled={photoDays.length === 0}>
+            Track this photo
+          </button>
+        </form>
+      )}
+      {adding && kind === 'number' && (
         <form
           className="stack-sm"
           onSubmit={(e) => {
@@ -489,7 +540,36 @@ function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementTy
           </button>
         </form>
       )}
-      {sorted.length === 0 && !adding && <span className="small muted">Track a number for evidence, like arm size or the splits gap.</span>}
+      {sorted.length === 0 && photos.length === 0 && !adding && <span className="small muted">Track a number (like arm size) or a photo (like a weekly progress photo).</span>}
+      {photos.map(({ action, schedule }) => {
+        const taken = data.attachments.filter((f) => data.sessions.some((s) => s.id === f.session_id && s.action_id === action.id));
+        const lastDay = data.sessions.filter((s) => s.action_id === action.id && data.attachments.some((f) => f.session_id === s.id)).map((s) => s.date ?? '').sort().at(-1);
+        return (
+          <div key={action.id} className="stack-sm" style={{ borderTop: '1px solid var(--line-2)', paddingTop: 8 }}>
+            <div className="row-between small">
+              <b>
+                {action.title} <span className="xsmall muted" style={{ fontWeight: 400 }}>· photo · {schedule ? daysText(schedule.days) : ''}</span>
+              </b>
+              <span className="muted">
+                {taken.length ? `${taken.length} photo${taken.length === 1 ? '' : 's'} · last ${shortDate(lastDay!)}` : 'No photos yet'}
+              </span>
+            </div>
+            <div className="row-start" style={{ gap: 14 }}>
+              <span className="xsmall muted">Shows on Today on its days</span>
+              <button
+                type="button"
+                className="link-btn xsmall"
+                onClick={() => {
+                  commit(opsStopPhotoTracker(data, action, today));
+                  onAdd(`Stopped tracking ${action.title.toLowerCase()}`);
+                }}
+              >
+                Stop tracking
+              </button>
+            </div>
+          </div>
+        );
+      })}
       {sorted.map((t) => {
         const main = t.id === goal.measurement_type_id;
         const readings = view.measurementsFor(t.id);
