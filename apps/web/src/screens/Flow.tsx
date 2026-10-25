@@ -582,13 +582,12 @@ function TaskSheet({
 /**
  * Progress: the only place the goal's numbers appear. Where it is, a track across the whole window
  * against even pace, what done is and when, and the one next step as a button. A number goal's
- * trend and readings open from here, and today's reading is logged here.
+ * trend, readings and chart show here (always, no button), and today's reading is logged here.
  */
 function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan; chain: Chain; onSetWeek: () => void }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
-  const [open, setOpen] = useState(false);
   const [logging, setLogging] = useState(false);
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
@@ -643,6 +642,35 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
       <span>{next.sub}</span>
     </button>
   );
+  // A number goal's chart is always shown: the path, every reading and the 7-day trend.
+  // It starts at the first reading when that's before the window (a starting weigh-in, say).
+  const chartStart = readings[0] && readings[0].measured_on < plan.start_date ? readings[0].measured_on : plan.start_date;
+  const chart =
+    goal.type === 'number' ? (
+      <div className="stack-sm">
+        <WeightChart
+          start={view.goalPace(goal, plan).number?.start ?? { date: chartStart, value: Number(goal.baseline_value ?? readings[0]?.value ?? 0) }}
+          path={view.pathFor(goal)}
+          readings={readings}
+          range={{ start: chartStart, end: goal.target_date ?? plan.end_date }}
+          today={today}
+          unit={goal.unit ?? ''}
+          color={goal.color}
+        />
+        {readings.length > 0 && (
+          <div>
+            {[...readings].reverse().slice(0, 5).map((m) => (
+              <div key={m.id} className="list-row small" style={{ minHeight: 40, padding: '8px 0' }}>
+                <span className="grow">{m.measured_on === today ? 'Today' : shortDate(m.measured_on)}</span>
+                <span className="num">
+                  {fmt(Number(m.value))} {type?.unit}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    ) : null;
   const logForm =
       logging && type ? (
       <form
@@ -687,6 +715,7 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
           {nextButton}
         </div>
         {logForm}
+        {chart}
       </section>
     );
   }
@@ -712,36 +741,7 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
         <span>{shortDate(t.by)}</span>
       </span>
       {fix && !fix.extra && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>{fix.text}</span>}
-      {goal.type === 'number' && readings.length > 0 && (
-        <>
-          <button type="button" className="link-btn small" onClick={() => setOpen(!open)} style={{ alignSelf: 'flex-start', paddingLeft: 0 }}>
-            {open ? 'Show less' : 'Show trend and readings'}
-          </button>
-          {open && (
-            <div className="stack-sm">
-              <WeightChart
-                start={view.goalPace(goal, plan).number?.start ?? { date: plan.start_date, value: Number(goal.baseline_value ?? readings[0]!.value) }}
-                path={view.pathFor(goal)}
-                readings={readings}
-                range={{ start: plan.start_date, end: goal.target_date ?? plan.end_date }}
-                today={today}
-                unit={goal.unit ?? ''}
-                color={goal.color}
-              />
-              <div>
-                {[...readings].reverse().slice(0, 6).map((m) => (
-                  <div key={m.id} className="list-row small" style={{ minHeight: 40, padding: '8px 0' }}>
-                    <span className="grow">{m.measured_on === today ? 'Today' : shortDate(m.measured_on)}</span>
-                    <span className="num">
-                      {fmt(Number(m.value))} {type?.unit}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
+      {chart}
     </section>
   );
 }
