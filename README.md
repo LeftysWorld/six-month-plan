@@ -15,7 +15,7 @@ Three places, one job each: **Today** to do, **Goals** to see and shape, **Revie
   - **Header**: the title, one line with its season (or own clock), group and status, and *why it matters* as a quote you can tap to edit.
   - **Progress**: the only place the goal's numbers appear. Where it is, a track across the whole season with a tick at even pace, what done is and when, and the one next step as a button (**Log today's weight**, **Add 1 this week**, **Set this week's goal**, or the next milestone). Number goals open their trend chart and recent readings here, and log today's reading here (a "Log a number" task for it is checked off too).
   - **This week**: the week goal (tap to edit), then each daily task with a Monday-to-Sunday strip: done, partly done, missed (amber), skipped and planned days. Tap a day to log it or change its log; tap the task to edit it. **+ Add a task** offers the tasks you already have; **Copy last week's tasks** when there are some.
-  - **The plan**: season → 3 months → this month → this week, one line each with its status. Tap a line to edit it.
+  - **The plan**: this week → this month → 3 months → the season, soonest first, one line each with its status. Tap a line to edit it.
   - **Progress record** (milestones, photos and files, other measurements), the **group**, and **Manage goal** (complete, move, change history, archive), folded away. On a computer these sit in a column on the right.
   - **Catch-up math** next to anything behind: "2 extra a week for the next 2 weeks catches you up", "1.3 lb a week reaches 207.8 by Nov 1".
 - **Review**: one flow for every review, each with its own last step.

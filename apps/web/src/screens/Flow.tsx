@@ -846,11 +846,12 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
   );
 }
 
-/** The plan: season → 3 months → this month → this week, one line each with its status. Tap to edit. */
+/** The plan: this week → this month → 3 months → the season, soonest first, one line each with its status. Tap to edit. */
 function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain: Chain; onEdit: (level: ChainLevel | 'goal') => void }) {
   const { data, today } = useStore();
   const view = useView();
   const seasonTarget = goal.type === 'number' && goal.target_value != null ? `${fmt(goal.target_value)} ${goal.unit ?? ''}`.trim() : '';
+  // Soonest first: this week → this month → 3 months → the season.
   const lines: { key: ChainLevel | 'goal'; name: string; text: string; when: string; status: { text: string; label: PaceLabel } | null; current: boolean }[] = [
     {
       key: 'goal',
@@ -874,7 +875,7 @@ function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain
         current: level === 'week',
       };
     }),
-  ];
+  ].reverse();
   return (
     <section className="card plan-card" aria-label="The plan">
       <b className="plan-card-title">The plan</b>
