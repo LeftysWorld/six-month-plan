@@ -41,10 +41,13 @@ export function Today() {
   const isThisWeek = monday === thisMonday;
   const weekOffset = Math.round((Date.parse(monday) - Date.parse(thisMonday)) / (7 * 86400000));
   const weekName = weekOffset === 0 ? 'This week' : weekOffset === 1 ? 'Next week' : weekOffset === -1 ? 'Last week' : `Week of ${shortDate(monday)}`;
-  /** Show the same weekday in another week; landing on this week shows today. */
+  /**
+   * Page to another week. Forward lands on its Monday, back on its Sunday (the day next to where
+   * you were), and landing on this week shows today.
+   */
   const goWeek = (by: number) => {
     const target = addDays(monday, 7 * by);
-    setPicked(target === thisMonday ? today : addDays(day, 7 * by));
+    setPicked(target === thisMonday ? today : by > 0 ? target : addDays(target, 6));
   };
 
   // A future week's tasks are made when you look at it, so you can see what's coming.
