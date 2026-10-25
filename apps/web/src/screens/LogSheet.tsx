@@ -74,6 +74,12 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
   return (
     <Sheet title={session.title} onClose={onClose}>
       {goal && <CountsFor actionId={session.action_id!} cue={action?.cue} />}
+      {action?.details?.trim() && (
+        <details className="task-details" open={session.status === 'planned'}>
+          <summary>{action.kind === 'workout' ? 'The workout' : 'Details'}</summary>
+          <div className="task-details-body">{action.details}</div>
+        </details>
+      )}
       {moving ? (
         <div className="stack-sm">
           <div className="small muted">Move this one only. To change how often it happens, edit the task on its goal page.</div>

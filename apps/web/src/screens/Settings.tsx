@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../data/store.tsx';
 import { opsProfile } from '../data/ops.ts';
 import { resetDemo } from '../data/local.ts';
+import type { AppData } from '../data/model.ts';
 import { BackLink, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import type { ShellProps } from '../App.tsx';
 import { getTheme, setTheme, type Theme } from '../theme.ts';
@@ -82,12 +83,81 @@ function StartOver({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Replaces everything in the app with a JSON file (from Export everything, or one made for you). */
+function ImportData({ onClose }: { onClose: () => void }) {
+  const { db } = useStore();
+  const [file, setFile] = useState<{ name: string; data: AppData } | null>(null);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pick(f: File | undefined) {
+    setError(null);
+    setFile(null);
+    if (!f) return;
+    try {
+      const parsed = JSON.parse(await f.text()) as Partial<AppData>;
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.goals) || !Array.isArray(parsed.actions)) {
+        throw new Error("This doesn't look like a Six Months file.");
+      }
+      setFile({ name: f.name, data: parsed as AppData });
+    } catch (e) {
+      setError(e instanceof SyntaxError ? "This file isn't valid JSON." : (e as Error).message);
+    }
+  }
+
+  async function run() {
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      localStorage.removeItem('six.outbox.v1'); // unsaved changes belong to the data being replaced
+      await db.importAll(file.data);
+      window.location.hash = '#/';
+      window.location.reload();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+
+  const d = file?.data;
+  const count = (n: number | undefined, w: string) => `${n ?? 0} ${w}${n === 1 ? '' : 's'}`;
+  return (
+    <Sheet title="Import from a file" onClose={busy ? () => {} : onClose}>
+      <p className="small" style={{ margin: 0 }}>
+        Everything in the app is replaced by what's in the file. Attachments aren't included in files, so they're left out.
+      </p>
+      <label className="field">
+        Choose a .json file
+        <input type="file" accept="application/json,.json" onChange={(e) => void pick(e.target.files?.[0])} />
+      </label>
+      {d && (
+        <div className="banner" role="status">
+          {file.name}: {count(d.goals?.length, 'goal')}, {count(d.actions?.length, 'task')}, {count(d.measurements?.length, 'measurement')}
+        </div>
+      )}
+      {d && (
+        <label className="field">
+          Type REPLACE to confirm
+          <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoCapitalize="characters" />
+        </label>
+      )}
+      {error && <div className="banner warn" role="alert">{error}</div>}
+      <button className="btn danger-solid" disabled={!d || typed.trim().toUpperCase() !== 'REPLACE' || busy} onClick={() => void run()}>
+        {busy ? 'Importing…' : 'Replace my data with this file'}
+      </button>
+    </Sheet>
+  );
+}
+
 export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
   const { data, db, commit, today } = useStore();
   const toast = useToast();
   const p = data.profile;
   const [name, setName] = useState(p.display_name);
   const [startOver, setStartOver] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [theme, setThemeState] = useState<Theme>(getTheme);
   const zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [p.timezone];
 
@@ -201,7 +271,11 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
             Measurements CSV
           </button>
         </div>
+        <button className="btn" onClick={() => setImporting(true)}>
+          Import from a file…
+        </button>
       </div>
+      {importing && <ImportData onClose={() => setImporting(false)} />}
 
       {demo && (
         <>

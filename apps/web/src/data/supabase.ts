@@ -15,7 +15,7 @@ const BACKLOG_MIGRATION = 'supabase/migrations/20261026000000_goal_backlog.sql';
 export let schemaWarning: string | null = null;
 
 function isMissingBreakdown(message: string): boolean {
-  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas|completion_note|done_means|goals\.completed_at|\bprep\b|\bsolo\b|attachments|goal_links|goal_groups|group_id|actions\.measurement_type_id|'measurement_type_id' column of 'actions'/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas|completion_note|done_means|goals\.completed_at|\bprep\b|\bsolo\b|attachments|goal_links|goal_groups|group_id|actions\.measurement_type_id|'details' column|actions\.details|'measurement_type_id' column of 'actions'/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
 }
 
 let client: SupabaseClient | null = null;
@@ -223,6 +223,36 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       }
       const saveError = toSaveError(error);
       if (saveError) throw saveError;
+    },
+
+    async importAll(incoming: AppData): Promise<void> {
+      await this.wipeAll();
+      const strip = (rows: unknown[]) => (rows as Record<string, unknown>[]).map(({ user_id: _u, ...r }) => r);
+      const insert = async (table: string, rows: unknown[]) => {
+        for (let i = 0; i < rows.length; i += 500) {
+          const { error } = await sb.from(table).insert(strip(rows.slice(i, i + 500)));
+          if (error) throw new Error(`${table}: ${error.message}`);
+        }
+      };
+      const { error: pe } = await sb.from('profiles').upsert({ ...defaultProfile(), ...incoming.profile, user_id: userId });
+      if (pe) throw new Error(`profiles: ${pe.message}`);
+      await insert('plans', incoming.plans ?? []);
+      await insert('goal_groups', incoming.groups ?? []);
+      // Goals and their measurements point at each other: goals first without it, then the link.
+      await insert('goals', (incoming.goals ?? []).map((g) => ({ ...g, measurement_type_id: null })));
+      await insert('measurement_types', incoming.measurementTypes ?? []);
+      for (const g of incoming.goals ?? []) {
+        if (!g.measurement_type_id) continue;
+        const { error } = await sb.from('goals').update({ measurement_type_id: g.measurement_type_id }).eq('id', g.id);
+        if (error) throw new Error(`goals: ${error.message}`);
+      }
+      const rest: [string, unknown[] | undefined][] = [
+        ['plan_goals', incoming.planGoals], ['goal_targets', incoming.goalTargets], ['plan_steps', incoming.planSteps], ['milestones', incoming.milestones],
+        ['actions', incoming.actions], ['action_goals', incoming.actionGoals], ['action_schedules', incoming.schedules], ['sessions', incoming.sessions],
+        ['workout_sets', incoming.workoutSets], ['measurements', incoming.measurements], ['week_plans', incoming.weekPlans], ['reviews', incoming.reviews],
+        ['change_log', incoming.changeLog], ['goal_ideas', incoming.ideas], ['goal_links', incoming.goalLinks],
+      ];
+      for (const [table, rows] of rest) if (rows?.length) await insert(table, rows);
     },
 
     async wipeAll(): Promise<void> {

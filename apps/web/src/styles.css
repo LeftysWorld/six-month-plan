@@ -1157,3 +1157,6 @@ button.week-day:active { transform: scale(0.9); }
 .plan-text { display: flex; flex-direction: column; gap: 2px; padding-bottom: 14px; min-width: 0; }
 
 .manage-toggle { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 52px; padding: 0 16px; border: 0; background: none; font: inherit; font-size: 15px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.task-details { border-radius: 14px; background: var(--fill); padding: 0 14px; margin-top: -4px; }
+.task-details summary { min-height: 44px; display: flex; align-items: center; font-size: 14px; font-weight: 600; cursor: pointer; }
+.task-details-body { white-space: pre-line; font-size: 13.5px; line-height: 1.55; color: var(--ink-2); padding-bottom: 12px; max-height: 50vh; overflow-y: auto; }

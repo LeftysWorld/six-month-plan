@@ -250,6 +250,8 @@ export interface TaskInput {
   measurementTypeId?: string | null;
   /** For a measure task: a new measurement to create for it (when none fits). */
   newMeasure?: { name: string; unit: string } | null;
+  /** What the task involves (exercises, sets and reps…), shown when you log it. */
+  details?: string;
 }
 
 /** The measurement a measure task records: an existing one, or a new one created with the task. */
@@ -307,6 +309,8 @@ export function opsAddTask(data: AppData, goal: Goal, step: PlanStep, input: Tas
     // Only sent when used, so a database without the cue column still works.
     ...(input.cue.trim() ? { cue: input.cue.trim() } : {}),
     ...(measure.id ? { measurement_type_id: measure.id } : {}),
+    // Only sent when used, so a database without the details column still works.
+    ...(input.details?.trim() ? { details: input.details.trim() } : {}),
   };
   const schedule = scheduleFor(action.id, input, applyFrom(step, today));
   const ops: Op[] = [
@@ -343,6 +347,7 @@ export function opsEditTask(data: AppData, action: Action, input: TaskInput, fro
         priority: input.priority,
         ...(input.cue.trim() || action.cue ? { cue: input.cue.trim() } : {}),
         ...(measure.id || action.measurement_type_id ? { measurement_type_id: measure.id } : {}),
+        ...(input.details?.trim() || action.details ? { details: input.details?.trim() ?? '' } : {}),
       },
     },
   ];
@@ -424,6 +429,7 @@ export function inputFromTask(t: WeekTask, week: PlanStep): TaskInput {
     cue: t.action.cue ?? '',
     measurementTypeId: t.action.measurement_type_id ?? null,
     newMeasure: null,
+    details: t.action.details ?? '',
   };
 }
 

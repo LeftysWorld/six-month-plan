@@ -94,6 +94,8 @@ Any static host works (Netlify, Cloudflare Pages): the app uses `#/` URLs, so no
 ## Backups and the free plan
 
 - The Supabase free plan has no automatic backups. Use **Settings → Export everything** regularly (JSON, plus CSV for sessions and measurements). The export lists your attachments but doesn't include the files; download those from Supabase → Storage → `attachments`.
+- **Settings → Import from a file** replaces everything in the app with a JSON file (an export, or one made for you). You type REPLACE to confirm. Attachments aren't in the file, so they're left out.
+- Tasks have an optional **Details** field (a workout's exercises, a study plan). It shows when you tap the task on Today. On Supabase, run `supabase/migrations/20261102000000_task_details.sql` (or `python scripts/run_migration.py`).
 - Free storage is 1 GB; a shrunk progress photo is usually 300–600 KB, so a daily photo for six months is well under 150 MB.
 - Free projects pause after a week without activity. Daily use keeps it awake; if it pauses, restore it from the Supabase dashboard.
 

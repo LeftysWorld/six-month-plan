@@ -133,6 +133,8 @@ export interface Action {
   cue?: string;
   /** For a measure task: the measurement it records (e.g. Weight). Missing on older databases. */
   measurement_type_id?: string | null;
+  /** What the task involves, in your words: a workout's exercises, a study plan. Shown when you log it. */
+  details?: string;
   archived_at: string | null;
 }
 

@@ -489,6 +489,11 @@ function TaskSheet({
         )}
       </div>
       <label className="field">
+        Details (optional)
+        <textarea rows={4} value={v.details ?? ''} onChange={(e) => set({ details: e.target.value })} placeholder="e.g. exercises with sets × reps, starting weights and rest" />
+        <span className="xsmall muted">Shown when you tap the task on Today.</span>
+      </label>
+      <label className="field">
         When does it happen? (optional)
         <input value={v.cue} onChange={(e) => set({ cue: e.target.value })} placeholder="e.g. After morning coffee, at my desk" />
         <span className="xsmall muted">A specific cue ("after ___, at ___") makes a habit much more likely to stick. It shows on Today.</span>

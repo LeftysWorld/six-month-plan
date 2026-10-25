@@ -9,6 +9,11 @@ export interface Db {
   apply(op: Op): Promise<void>;
   /** Delete every plan, goal, task, log and review. Settings (name, time zone, hours) are kept. */
   wipeAll(): Promise<void>;
+  /**
+   * Replace everything with this data (a file from Export everything, or one made for you).
+   * Your sign-in stays; attachment records are skipped (their files aren't in the export).
+   */
+  importAll(data: AppData): Promise<void>;
   /** Set when the database is missing an update (shown as a banner; some changes wait for it). */
   schemaWarning?: () => string | null;
   /** File storage for attachments. Needs a connection (uploads aren't queued offline). */
