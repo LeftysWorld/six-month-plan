@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { applyOp, emptyData, type AppData, type Op } from '../src/data/model.ts';
 import { opsRecordReading, opsSetTaskGoals, opsShareTask, opsUnshareTask } from '../src/data/connect.ts';
 import { View } from '../src/data/derive.ts';
-import { prepGaps } from '@six/core';
 import type { Goal } from '@six/core';
 
 const goal = (id: string, title: string): Goal => ({ id, title, type: 'practice', why: '', done_means: '', unit: null, baseline_value: null, baseline_date: null, target_value: null, target_date: null, color: '#000', measurement_type_id: null, archived_at: null });
@@ -61,13 +60,6 @@ test('goals in a group are listed next to each other', async () => {
   const view = new View(d, '2026-10-25', 0.5);
   const order = view.groupConnected([d.goals[0]!, d.goals[2]!, d.goals[1]!]).map((g) => g.id);
   assert.deepEqual(order, ['gym', 'weight', 'guitar']);
-});
-
-test('a prepared idea can be ready with a shared task instead of its own', () => {
-  const periods = { quarter: { start: '2026-10-01' }, month: { start: '2026-10-01' }, week: { start: '2026-10-19' } } as Parameters<typeof prepGaps>[1];
-  const prep = { quarter: 'q', month: 'm', week: 'w', clock: 'own' as const };
-  assert.ok(prepGaps(prep, periods).includes('task'));
-  assert.ok(!prepGaps({ ...prep, reuse: ['lift'] }, periods).includes('task'));
 });
 
 test('a task goes on a day at most once, so missed days cannot pile onto one day', () => {
@@ -174,29 +166,22 @@ test('deleting a goal removes its own tasks and logs, keeps shared tasks for oth
   assert.equal(d.groups.length, 0, 'Body had one goal left, so the group is gone');
 });
 
-test('moving goals into a batch keeps tasks and the week goal; an emptied own clock is archived', async () => {
-  const { opsMoveGoals, currentWindow, planMove } = await import('../src/data/move.ts');
+test('moving a goal to another season keeps its tasks and this week\'s goal', async () => {
+  const { opsMoveGoals, currentWindow } = await import('../src/data/move.ts');
   const { opsStartChain } = await import('../src/data/chain.ts');
   const today = '2026-10-25';
   let d = base();
-  const own = { id: 'own', name: 'Work out', start_date: '2026-10-01', end_date: '2027-03-31', block_days: 28, archived_at: null, solo: true } as AppData['plans'][number];
-  const batch = { id: 'batch', name: 'Career & credentials', start_date: '2026-10-19', end_date: '2027-04-18', block_days: 28, archived_at: null } as AppData['plans'][number];
-  d.plans = [own, batch];
-  d.planGoals = [{ id: 'pg1', plan_id: 'own', goal_id: 'gym' }];
-  d = run(d, opsStartChain(d, d.goals[0]!, own, today, { quarter: 'Gym habit locked in', month: 'Twenty sessions', week: 'Five sessions, legs twice' }));
-  const move = planMove(d, d.goals[0]!, batch, today);
-  assert.equal(move.notes.week, 'Five sessions, legs twice', 'the week goal carries over');
-  d = run(d, opsMoveGoals(d, [d.goals[0]!], { kind: 'plan', plan: batch }, today));
-  assert.equal(currentWindow(d, 'gym', today)?.id, 'batch');
-  assert.ok(d.plans.find((p) => p.id === 'own')!.archived_at, 'its old own clock had nothing left, so it is archived');
-  assert.ok(d.actions.some((a) => a.id === 'lift'), 'daily tasks stay');
-  const weekStep = d.planSteps.find((st) => st.plan_id === 'batch' && st.goal_id === 'gym' && st.level === 'week');
-  assert.equal(weekStep?.target_note, 'Five sessions, legs twice');
-  // Moving a whole group onto own clocks gives each goal its own window.
-  d = run(d, opsMoveGoals(d, [d.goals[0]!, d.goals[1]!], { kind: 'own', months: 3 }, today));
-  const w1 = currentWindow(d, 'gym', today)!;
-  const w2 = currentWindow(d, 'weight', today)!;
-  assert.ok(w1.solo && w2.solo && w1.id !== w2.id);
+  const a = { id: 'a', name: 'Autumn', start_date: '2026-10-01', end_date: '2027-03-31', block_days: 28, archived_at: null } as AppData['plans'][number];
+  const b = { id: 'b', name: 'Career & credentials', start_date: '2026-10-19', end_date: '2027-04-18', block_days: 28, archived_at: null } as AppData['plans'][number];
+  d.plans = [a, b];
+  d.planGoals = [{ id: 'pg1', plan_id: 'a', goal_id: 'gym' }];
+  d = run(d, opsStartChain(d, d.goals[0]!, a, today, { week: 'Five sessions, legs twice' }));
+  d = run(d, opsMoveGoals(d, [d.goals[0]!], b, today));
+  assert.equal(currentWindow(d, 'gym', today)?.id, 'b');
+  assert.ok(d.actions.some((x) => x.id === 'lift'), 'daily tasks stay');
+  const weekStep = d.planSteps.find((st) => st.plan_id === 'b' && st.goal_id === 'gym' && st.level === 'week');
+  assert.equal(weekStep?.target_note, 'Five sessions, legs twice', 'the week goal carries over');
+  assert.deepEqual(opsMoveGoals(d, [d.goals[0]!], b, today), [], 'already there: nothing to do');
 });
 
 test('seasons: this season is the batch running today, next is the one after; tracks measure the whole window', async () => {

@@ -16,7 +16,7 @@ import { useShownDay } from './data/shownDay.ts';
 import { Plans } from './screens/Plans.tsx';
 import { GoalNew } from './screens/GoalNew.tsx';
 import { ReviewHub } from './screens/ReviewHub.tsx';
-import { WeeklyReview } from './screens/WeeklyReview.tsx';
+import { Review } from './screens/Review.tsx';
 import { ReviewDetail, ReviewList } from './screens/ReviewPast.tsx';
 import { ThenNow } from './screens/ThenNow.tsx';
 import { Progress } from './screens/Progress.tsx';
@@ -187,7 +187,7 @@ function Shell(props: ShellProps) {
       else screen = <Plans />;
       break;
     case 'review':
-      if (s1 === 'run') screen = <WeeklyReview kind={route.query.get('kind') ?? 'weekly'} />;
+      if (s1 === 'run') screen = <Review kind={route.query.get('kind') ?? 'weekly'} />;
       else if (s1 === 'past') screen = s2 ? <ReviewDetail id={s2} /> : <ReviewList />;
       else if (s1 === 'then-now') screen = <ThenNow planId={route.query.get('plan')} />;
       else screen = <ReviewHub />;

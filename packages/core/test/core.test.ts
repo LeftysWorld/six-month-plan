@@ -456,16 +456,16 @@ test('review suggestions skip one-time tasks and sessions that have not happened
   assert.deepEqual(reviewSuggestions([chat, prep], schedules, sessions, '2026-10-12', { today: '2026-10-18' }), []);
 });
 
-test('backlog: columns in order, reorder, room in selected, age', async () => {
-  const { column, reorder, hasRoom, rankAtEnd, rankAtTop, ageInDays, SELECTED_LIMIT } = await import('../src/index.ts');
-  const idea = (id: string, rank: number, status: 'backlog' | 'selected' | 'started' | 'discarded' = 'backlog') => ({
-    id, title: id, note: '', status, rank, goal_id: null, created_at: '2026-10-01T00:00:00.000Z', selected_at: null, started_at: null,
+test('backlog: one ordered list; reorder, drop positions, age', async () => {
+  const { column, reorder, rankAtEnd, rankAtTop, rankAt, ageInDays } = await import('../src/index.ts');
+  const idea = (id: string, rank: number, status: 'backlog' | 'started' | 'discarded' = 'backlog') => ({
+    id, title: id, note: '', status, rank, goal_id: null, created_at: '2026-10-01T00:00:00.000Z', started_at: null,
   });
-  const ideas = [idea('c', 3), idea('a', 1), idea('b', 2), idea('s', 1, 'selected')];
+  const ideas = [idea('c', 3), idea('a', 1), idea('b', 2), idea('s', 1, 'started')];
   assert.deepEqual(column(ideas, 'backlog').map((i) => i.id), ['a', 'b', 'c']);
   assert.equal(rankAtEnd(ideas, 'backlog'), 4);
   assert.equal(rankAtTop(ideas, 'backlog'), 0);
-  assert.equal(rankAtEnd(ideas, 'started'), 1);
+  assert.equal(rankAtEnd(ideas, 'started'), 2);
   // Moving b up swaps it with a; the top idea can't move up; c to the top goes before a.
   assert.deepEqual(reorder(ideas, 'b', 'up'), [{ id: 'b', rank: 1 }, { id: 'a', rank: 2 }]);
   assert.deepEqual(reorder(ideas, 'a', 'up'), []);
@@ -476,57 +476,17 @@ test('backlog: columns in order, reorder, room in selected, age', async () => {
   const moved = reorder(tied, 'y', 'up');
   const after = tied.map((i) => ({ ...i, rank: moved.find((m) => m.id === i.id)?.rank ?? i.rank }));
   assert.deepEqual(column(after, 'backlog').map((i) => i.id), ['y', 'x']);
-  // Selected holds up to the limit.
-  assert.equal(SELECTED_LIMIT, 3);
-  assert.equal(hasRoom(ideas), true);
-  assert.equal(hasRoom([...ideas, idea('s2', 2, 'selected'), idea('s3', 3, 'selected')]), false);
+  // Drop positions.
+  const place = (id: string, index: number) => {
+    const rank = rankAt(ideas, id, 'backlog', index);
+    return column(ideas.map((i) => (i.id === id ? { ...i, rank } : i)), 'backlog').map((i) => i.id);
+  };
+  assert.deepEqual(place('c', 0), ['c', 'a', 'b']);
+  assert.deepEqual(place('a', 1), ['b', 'a', 'c']);
+  assert.deepEqual(place('a', 9), ['b', 'c', 'a']);
   assert.equal(ageInDays({ created_at: '2026-10-01T00:00:00.000Z' }, new Date('2026-10-25T12:00:00.000Z')), 24);
 });
 
-test('backlog: an idea needs a why and what done looks like before it can be selected', async () => {
-  const { readinessGaps } = await import('../src/index.ts');
-  assert.deepEqual(readinessGaps({ note: '', done_means: '' }), ['why', 'done']);
-  assert.deepEqual(readinessGaps({ note: 'Health', done_means: undefined }), ['done']);
-  assert.deepEqual(readinessGaps({ note: '  ', done_means: 'Finish a half in under 2h' }), ['why']);
-  assert.deepEqual(readinessGaps({ note: 'Health', done_means: 'Finish a half in under 2h' }), []);
-});
-
-test('prepare and commit: what a selected idea needs, stale notes, own clock, drop positions', async () => {
-  const { prepGaps, isStale, rankAt, column, clockDays } = await import('../src/index.ts');
-  const periods = { quarter: { start: '2026-10-11' }, month: { start: '2026-10-11' }, week: { start: '2026-10-19' } };
-  assert.deepEqual(prepGaps(undefined, periods), ['quarter', 'month', 'week', 'task', 'timing']);
-  const ready = { clock: 'batch' as const, plan_id: 'p1', quarter: 'Q', quarter_of: '2026-10-11', month: 'M', month_of: '2026-10-11', week: 'W', week_of: '2026-10-19', task: { title: 'Run', days: [1, 3], minutes: 30 } };
-  assert.deepEqual(prepGaps(ready, periods), []);
-  assert.deepEqual(prepGaps(ready, periods, { doneMeans: '' }), ['goal']);
-  // Joining a batch, a week note written last week has to be looked at again.
-  const nextWeek = { ...periods, week: { start: '2026-10-26' } };
-  assert.deepEqual(prepGaps(ready, nextWeek), ['week']);
-  assert.equal(isStale(ready, 'week', '2026-10-26'), true);
-  assert.equal(isStale({}, 'week', '2026-10-26'), false);
-  // On its own clock the notes are for its first weeks: they never go stale.
-  const own = { ...ready, clock: 'own' as const, months: 6, plan_id: undefined };
-  assert.deepEqual(prepGaps(own, nextWeek), []);
-  assert.equal(isStale(own, 'week', '2026-10-26'), false);
-  // A 3-month goal doesn't need a separate 3-month goal.
-  assert.deepEqual(prepGaps({ ...own, months: 3, quarter: '' }, periods, { horizonDays: clockDays(3) }), []);
-  assert.equal(clockDays(3), 91);
-  assert.equal(clockDays(6), 183);
-  assert.deepEqual(prepGaps({ ...ready, task: { title: 'Run', days: [], minutes: 30 } }, periods), ['task']);
-  assert.deepEqual(prepGaps({ ...ready, type: 'number' as const, target: 180 }, periods), ['target']);
-  assert.deepEqual(prepGaps({ ...ready, clock: 'batch' as const, plan_id: undefined }, periods), ['timing']);
-  // Drop positions.
-  const idea = (id: string, rank: number, status: 'backlog' | 'selected' = 'backlog') => ({ id, title: id, note: '', status, rank, goal_id: null, created_at: '2026-10-01T00:00:00.000Z', selected_at: null, started_at: null });
-  const ideas = [idea('a', 1), idea('b', 2), idea('c', 3), idea('s', 1, 'selected')];
-  const place = (id: string, status: 'backlog' | 'selected', index: number) => {
-    const rank = rankAt(ideas, id, status, index);
-    return column(ideas.map((i) => (i.id === id ? { ...i, status, rank } : i)), status).map((i) => i.id);
-  };
-  assert.deepEqual(place('c', 'backlog', 0), ['c', 'a', 'b']);
-  assert.deepEqual(place('a', 'backlog', 1), ['b', 'a', 'c']);
-  assert.deepEqual(place('a', 'backlog', 9), ['b', 'c', 'a']);
-  assert.deepEqual(place('b', 'selected', 0), ['b', 's']);
-  assert.deepEqual(place('b', 'selected', 1), ['s', 'b']);
-});
 
 test('a schedule replaced on a Monday never collides with the sessions the old one made', () => {
   const actions = [action()];

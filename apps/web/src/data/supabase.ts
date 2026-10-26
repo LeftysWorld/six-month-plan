@@ -33,6 +33,8 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
 
 /** Columns older exports may still carry that the schema no longer has. */
 const GONE_GOAL_COLUMNS = ['after_goal_id'];
+const GONE_IDEA_COLUMNS = ['prep', 'selected_at'];
+const GONE_GROUP_COLUMNS = ['outcome'];
 
 function without<T extends object>(row: T, keys: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = { ...(row as Record<string, unknown>) };
@@ -251,7 +253,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       const { error: pe } = await sb.from('profiles').upsert({ ...defaultProfile(), ...incoming.profile, user_id: userId });
       if (pe) throw new Error(`profiles: ${pe.message}`);
       await insert('plans', incoming.plans ?? []);
-      await insert('goal_groups', incoming.groups ?? []);
+      await insert('goal_groups', (incoming.groups ?? []).map((g) => without(g, GONE_GROUP_COLUMNS)));
       // Goals and their measurements point at each other: goals first without it, then the link.
       // Older exports may carry columns this version no longer has.
       await insert('goals', (incoming.goals ?? []).map((g) => ({ ...without(g, GONE_GOAL_COLUMNS), measurement_type_id: null })));
@@ -265,7 +267,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
         ['plan_goals', incoming.planGoals], ['goal_targets', incoming.goalTargets], ['plan_steps', incoming.planSteps], ['milestones', incoming.milestones],
         ['actions', incoming.actions], ['action_goals', incoming.actionGoals], ['action_schedules', incoming.schedules], ['sessions', incoming.sessions],
         ['workout_sets', incoming.workoutSets], ['measurements', incoming.measurements], ['week_plans', incoming.weekPlans], ['reviews', incoming.reviews],
-        ['change_log', incoming.changeLog], ['goal_ideas', incoming.ideas],
+        ['change_log', incoming.changeLog], ['goal_ideas', (incoming.ideas ?? []).map((i) => ({ ...without(i, GONE_IDEA_COLUMNS), status: (i as { status: string }).status === 'selected' ? 'backlog' : i.status }))],
       ];
       for (const [table, rows] of rest) if (rows?.length) await insert(table, rows);
     },

@@ -60,7 +60,7 @@ test('the calendar shows milestones, goal starts and things added on a date', ()
   assert.equal(isHabit(d, exam.id), false);
 });
 
-test('dates inside a goal: milestones change and undo; set 3-month, month and week goals show as checkpoints', async () => {
+test('dates inside a goal: milestones change and undo; set week goals show as checkpoints', async () => {
   const { checkpointsOf, opsUpdateMilestone, opsDeleteMilestone, opsRestoreMilestone } = await import('../src/data/dated.ts');
   let d = base();
   d.goals[0]!.unit = 'lb';
@@ -77,10 +77,10 @@ test('dates inside a goal: milestones change and undo; set 3-month, month and we
   const step = (id: string, level: 'quarter' | 'month' | 'week', end: string, note: string, value: number | null = null) => ({ id, goal_id: 'jhu', plan_id: 'plan', parent_id: null, level, idx: 0, title: '', start_date: '2026-10-19', end_date: end, target_value: value, target_note: note, completed_at: null });
   d.planSteps = [step('q', 'quarter', '2027-01-17', 'Modules 1–6', 197), step('m', 'month', '2026-11-15', ''), step('w0', 'week', '2026-10-25', 'old week'), step('w1', 'week', '2026-11-01', 'Module 2 quiz')];
   const cps = checkpointsOf(d, d.goals[0]!, '2026-10-26');
-  assert.deepEqual(cps.map((c) => [c.level, c.date, c.text]), [['week', '2026-11-01', 'Module 2 quiz'], ['quarter', '2027-01-17', '197 lb · Modules 1–6']], 'unset steps and past weeks left out');
-  assert.equal(checkpointsOf(d, d.goals[0]!).length, 3, 'the calendar keeps past weeks');
+  assert.deepEqual(cps.map((c) => [c.level, c.date, c.text]), [['week', '2026-11-01', 'Module 2 quiz']], 'unset steps, past weeks and old month/3-month notes left out');
+  assert.equal(checkpointsOf(d, d.goals[0]!).length, 2, 'the calendar keeps past weeks');
   const items = calendarItems(new View(d, TODAY, 0.5), '2026-10-19', '2027-04-19');
-  assert.ok((items.get('2027-01-17') ?? []).some((i) => i.kind === 'checkpoint' && i.title === '3-month goal: 197 lb · Modules 1–6'));
+  assert.ok((items.get('2026-11-01') ?? []).some((i) => i.kind === 'checkpoint' && i.title === 'Week goal: Module 2 quiz'));
 });
 
 test('a one-off added on Today can be linked to a goal later, without a second copy', async () => {

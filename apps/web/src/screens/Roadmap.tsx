@@ -13,7 +13,7 @@ import { CHECKPOINT_NAME, checkpointsOf, opsRestoreMilestone, opsUpdateMilestone
 /**
  * The roadmap: every goal of a season on one timeline, from its start to its finish, grouped the
  * way you grouped them. A group's row shows each of its goals' finishes as a
- * milestone (◆); "starts after" shows as an arrow. Dates change right here: drag a bar's ends (or
+ * milestone (◆). Dates change right here: drag a bar's ends (or
  * the whole bar), or tap it for exact dates. Changes are the goals' own dates, so the goal pages,
  * pace and reviews follow.
  *

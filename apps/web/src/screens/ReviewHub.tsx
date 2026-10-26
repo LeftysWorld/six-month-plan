@@ -63,9 +63,9 @@ const batchName = (s: PeriodReviewSlot, manyWindows: boolean) => (manyWindows ? 
 
 const KIND_TITLE: Record<Review['kind'], string> = { weekly: 'Week', block: 'Month', quarter: '3-month', retro: 'Retrospective' };
 const SLOT_COPY: Record<PeriodReviewSlot['kind'], { tag: string; name: (s: PeriodReviewSlot, manyWindows: boolean) => string; detail: string; minutes: number; color: string; ink: string }> = {
-  block: { tag: 'M', name: (s, many) => `${batchName(s, many)}${s.title} review`, detail: "How the month went, then set next month's goals", minutes: 15, color: 'var(--accent-soft)', ink: 'var(--accent-ink)' },
-  quarter: { tag: '3M', name: (s, many) => `${batchName(s, many)}3-month checkpoint`, detail: 'Keep, adjust or drop each goal, then set the next 3 months', minutes: 25, color: 'var(--blue-soft)', ink: 'var(--blue-ink)' },
-  retro: { tag: '6M', name: (s) => `${s.plan.name}: retrospective`, detail: 'What worked, what carries over, and your next plan', minutes: 30, color: 'var(--gold-soft)', ink: 'var(--gold-ink)' },
+  block: { tag: 'M', name: (s, many) => `${batchName(s, many)}${s.title} review`, detail: 'How each goal is pacing, the dates you hit, one change for next month', minutes: 5, color: 'var(--accent-soft)', ink: 'var(--accent-ink)' },
+  quarter: { tag: '3M', name: (s, many) => `${batchName(s, many)}3-month checkpoint`, detail: 'Keep, adjust or drop each goal, one change for the next 3 months', minutes: 10, color: 'var(--blue-soft)', ink: 'var(--blue-ink)' },
+  retro: { tag: '6M', name: (s) => `${s.plan.name}: retrospective`, detail: 'Then vs now, what worked, what carries over, and your next season', minutes: 20, color: 'var(--gold-soft)', ink: 'var(--gold-ink)' },
 };
 
 export function slotHref(s: PeriodReviewSlot): string {
@@ -208,7 +208,8 @@ function WeeklyCard({ target }: { target: ReturnType<typeof weekToReview> }) {
   }
 
   const suggestions = reviewSuggestions(data.actions, data.schedules, data.sessions, target.monday, { availableMinutes: data.profile.available_minutes, today });
-  const minutes = reviewMinutes({ goals: goals.length, measurements: due.length, suggestions: suggestions.length, planning: true });
+  // The two-minute review: hit / partly / missed, readings, one change. Planning in detail is optional.
+  const minutes = Math.max(2, Math.min(5, reviewMinutes({ goals: goals.length, measurements: due.length, suggestions: 0, planning: false })));
   return (
     <div className="card dark stack">
       <div className="row-between" style={{ alignItems: 'baseline', gap: 8 }}>
@@ -218,9 +219,9 @@ function WeeklyCard({ target }: { target: ReturnType<typeof weekToReview> }) {
         </span>
       </div>
       <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink-2)' }}>
-        {shortDate(target.monday)} – {shortDate(end)}. Rate {goals.length} week goal{goals.length === 1 ? '' : 's'}
-        {due.length ? `, log ${due.length} measurement${due.length === 1 ? '' : 's'}` : ''}
-        {suggestions.length ? `, decide on ${suggestions.length} suggestion${suggestions.length === 1 ? '' : 's'}` : ''}, then plan next week.
+        {shortDate(target.monday)} – {shortDate(end)}. Hit, partly or missed for {goals.length} goal{goals.length === 1 ? '' : 's'}
+        {due.length ? `, ${due.length} reading${due.length === 1 ? '' : 's'}` : ''}, one change for next week. Done.
+        {suggestions.length ? ` ${suggestions.length} suggestion${suggestions.length === 1 ? '' : 's'} waiting if you want to plan in detail.` : ''}
       </p>
       {count && count.weeks > 0 && <ReviewCount done={count.done} weeks={count.weeks} />}
       <a className="btn primary" href={href(`/review/run?kind=weekly&week=${target.monday}`)}>

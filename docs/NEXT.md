@@ -1,72 +1,54 @@
-# What's next: the cuts that need a decision
+# The model, after the October 2026 review
 
-The `review/fix-everything` branch fixes every bug found in the October 2026 review, removes the
-stranded code, restructures Today around the list, and adds the missing *Then vs now* page. It does
-**not** change the data model, because the changes below delete concepts you have data in. They are
-the right next step; they need you to say yes first.
+The `review/fix-everything` branch did two things: it fixed every bug found in the review, and then
+it cut the model down to what one person needs. This is what the app is now, and what is still open.
 
-## 1. One way to say when a goal runs
+## What a goal is now
 
-Today a goal's dates come from four places: its season (`plans` with `solo=false`), its own clock
-(`plans` with `solo=true`), its own `start_date` / `target_date`, and `after_goal_id`. Most of the
-review-model bugs (shared reviews across own clocks, stale checkpoints after a move, pace judged
-from the wrong start) came from here.
+- A **goal** has a name, why it matters, what done looks like (a target and date for a number, dates
+  to hit for something to finish), its own **start** and **finish**, and belongs to one **season**.
+- A **season** is the review calendar: month reviews, a 3-month checkpoint, a retrospective. Every
+  goal shares it; each goal keeps its own dates inside it. There are no own clocks, no batches, no
+  "starts after": a goal that follows another just starts later.
+- A goal is broken down two ways only: **dates to hit** (milestones) and **this week's goal**.
+  Month and 3-month notes are gone from the app (rows from before stay in the database as history).
+- **Groups** hold goals that work together and share tasks; a group with two or more goals shows one
+  bar. Group outcomes are gone.
+- The **backlog** is one ordered list. **Make it a goal** opens one page: goal, when, this week,
+  first task. No selected column, no limit, no readiness rule, no prepare-then-commit.
+- The **weekly review** is two minutes: did last week's change happen, hit / partly / missed per
+  goal, readings due, one change. "Plan next week in detail" is folded underneath.
 
-Proposal: a goal has a `start` and an `end`, full stop. The **season** is just the review calendar
-(month, 3-month, retrospective) and every goal is reviewed on it. Delete `plans.solo`, the
-`plan_goals` join, `after_goal_id`, and the Move-to sheet. "Starts after X" becomes a one-time
-helper that sets `start = X.end + 1`.
+## Migrations
 
-Migration: for each own clock, copy its start/end onto its goal, link the goal to the season that
-contains most of it, archive the clock. Roughly 400 lines removed (`move.ts`, `MoveSheet`, half of
-`season.ts`, batch menus on the Goals page).
+Run in order; each is safe to run twice:
 
-## 2. One decomposition vocabulary
+- `20261107000000_review_fixes.sql` — reviews carry their window, one reading per day,
+  `goals.reflection` for Then vs now.
+- `20261108000000_one_window_per_goal.sql` — folds own clocks and "starts after" into each goal's
+  start/finish and archives the clocks; flattens the backlog (selected → backlog, drops `prep`);
+  drops `goal_groups.outcome`. **This one drops columns.** Take a backup (Settings → Export) first.
 
-Week / month / 3-month `plan_steps`, `milestones` ("dates to hit"), group `outcome`, and the
-`goal_ideas.prep` copy of the first three all describe "what should be true by when".
-
-Proposal: keep **this week's goal** (one line, set in the weekly review) and **milestones**. Drop
-month and 3-month notes (they are rarely set, the app nags about them, and a move drops them),
-group outcomes, and Prepare's copy. Month and 3-month reviews then ask "are the milestones on
-pace?" instead of "did you write a month goal?".
-
-## 3. A plain backlog
-
-Four columns, a WIP limit of 3, a readiness rule, rank math and a Prepare → Commit ceremony for a
-person who will commit about six goals in six months.
-
-Proposal: one ordered list. "Make it a goal" opens goal creation directly. `goal_ideas` keeps
-`title`, `note`, `done_means`, `rank`, `status in (idea, started, discarded)`.
-
-## 4. A two-minute weekly review
-
-The weekly review is three steps, suggestions, a time-fit and placements. Proposal: hit / partly /
-missed per goal, one change for next week, Done. Suggestions and the next-week planner move behind
-"Plan next week in detail".
-
-## 5. Smaller things worth doing
+## Still open
 
 - `week_plans` is written and never read: drop the table and the RPC branch.
-- `plans.block_days` is always 28 and contradicts the cascade months: drop it and spread path points
-  on month ends.
-- Reviews snapshot `actions_planned` on Saturday excluding Sat/Sun (`core/review.ts:55`); the
-  scorecard recomputes live and disagrees with the stored row. Snapshot the full week.
+- `plans.block_days` is always 28: drop it and spread path points on month ends.
+- Reviews snapshot `actions_planned` on Saturday without Sat/Sun (`core/review.ts`); the scorecard
+  recomputes live and disagrees with the stored row.
 - `pace.ts inPeriod` and `review.ts sessionsInPeriod` count a straddling week's tray differently.
-- Morning/evening dismissals, review drafts and the midweek check are per device
-  (`localStorage`). A `device_state` jsonb column on `profiles` would sync them.
-- Multi-tab: two tabs with pending changes overwrite each other's outbox. Use `BroadcastChannel`
-  or a tab id in the key.
+- Morning/evening dismissals, review drafts and the midweek check are per device (`localStorage`).
+  A `device_state` jsonb column on `profiles` would sync them.
+- Multi-tab: two tabs with pending changes overwrite each other's outbox.
+- `plan_steps` month/quarter rows and `plans.solo` could be dropped in a later migration once you're
+  sure you won't want to look at them.
 
-## Verification notes for this branch
+## How this branch was verified
 
-The branch was built in a container that could not reach npm, so `npm run dev` / `vite build`
-were not run. Instead:
+Built in a container that could not reach npm, so `npm run dev` / `vite build` were not run here:
 
-- `tsc --strict` was run against the whole web app with typed stubs for React, react-dom and
-  supabase-js in place of `node_modules`: **0 errors**, including `--noUnusedLocals`.
-- `packages/core` tests: **36/36**. `apps/web` tests: **45/45**, run with Node's own TypeScript
-  support (the data layer no longer imports React, which is what made that possible).
-- The SQL migration was read, not executed. Run it on a copy first if you can:
-  `supabase/migrations/20261107000000_review_fixes.sql` dedupes readings and adds a unique index.
-- Everything visual (Today's new order, the ritual fold, Then vs now) needs your eyes in a browser.
+- `tsc --strict --noUnusedLocals` over the whole web app with typed stubs for React, react-dom and
+  supabase-js in place of `node_modules`: **0 errors**.
+- `packages/core` tests **34/34**; `apps/web` tests **47/47**, run with Node's own TypeScript support.
+- SQL migrations were read, not executed. Run them on a copy if you can.
+- Everything visual needs your eyes in a browser: Today's order, the flat backlog, Make a goal, the
+  one-page reviews, Then vs now.

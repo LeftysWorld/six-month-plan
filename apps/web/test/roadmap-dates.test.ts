@@ -12,7 +12,7 @@ const goal = (id: string, extra: Partial<Goal> = {}): Goal => ({ id, title: id, 
 function base(): AppData {
   const d = emptyData();
   d.plans = [{ id: 'plan', name: 'Season', start_date: '2026-11-01', end_date: '2027-04-30', block_days: 28, archived_at: null }];
-  d.goals = [goal('jhu', { start_date: '2026-11-14' }), goal('aigp', { target_date: '2027-01-15' }), goal('iso', { after_goal_id: 'aigp' }), goal('weight', { type: 'number', target_date: '2027-04-30' })];
+  d.goals = [goal('jhu', { start_date: '2026-11-14' }), goal('aigp', { target_date: '2027-01-15' }), goal('iso', { start_date: '2027-01-16' }), goal('weight', { type: 'number', target_date: '2027-04-30' })];
   d.planGoals = d.goals.map((g) => ({ id: `pg-${g.id}`, plan_id: 'plan', goal_id: g.id }));
   return d;
 }
@@ -27,10 +27,10 @@ test('a goal with its own start date starts then, and says so before it does', (
   assert.equal(t.status, 'Starts Nov 14');
 });
 
-test('a waiting goal is planned from the day after the one it waits on is due to end', () => {
+test('a goal with its own start is planned from that start, inside the season', () => {
   const v = new View(base(), '2026-11-05', 0.5);
-  assert.deepEqual(v.plannedWindow(v.goal('iso')!, plan(v)), { start: '2027-01-16', end: '2027-04-30', waitsFrom: '2027-01-16' });
-  assert.equal(dateLimits(v, v.goal('iso')!, plan(v)).minStart, '2027-01-16');
+  assert.deepEqual(v.plannedWindow(v.goal('iso')!, plan(v)), { start: '2027-01-16', end: '2027-04-30' });
+  assert.equal(dateLimits(v, v.goal('iso')!, plan(v)).minStart, '2026-11-01');
 });
 
 test('saving dates clamps to the window, stores only what differs from the defaults, and logs it', () => {
@@ -44,10 +44,8 @@ test('saving dates clamps to the window, stores only what differs from the defau
   assert.equal(aigp.target_date, '2027-02-01');
   assert.equal(aigp.start_date ?? null, null, 'starting with the window stores nothing');
   assert.match(d.changeLog.at(-1)!.summary, /Dates: Nov 1 – Jan 15 → Nov 1 – Feb 1/);
-  // The goal waiting on it moves with it.
-  v = new View(d, '2026-11-05', 0.5);
-  assert.equal(v.plannedWindow(v.goal('iso')!, plan(v)).start, '2027-02-02');
   // Same dates again: nothing to save.
+  v = new View(d, '2026-11-05', 0.5);
   assert.deepEqual(opsSetGoalDates(v, v.goal('aigp')!, plan(v), { start: '2026-11-01', end: '2027-02-01' }, '2026-11-05').ops, []);
 });
 

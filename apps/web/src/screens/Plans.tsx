@@ -219,7 +219,14 @@ export function Plans() {
         </div>
       )}
 
-      <IdeaAdd placeholder="Add a goal idea (it starts in your backlog)" after={(t) => toast(`${t} added to your backlog`)} />
+      <div className="row-start" style={{ gap: 8, alignItems: 'stretch' }}>
+        <div className="grow">
+          <IdeaAdd placeholder="Add a goal idea (it starts in your backlog)" after={(t) => toast(`${t} added to your backlog`)} />
+        </div>
+        <a className="btn" href={href('/goals/new')} style={{ flex: 'none' }}>
+          Make a goal
+        </a>
+      </div>
 
       {creating && (
         <Sheet title="New season" onClose={() => setCreating(false)}>
