@@ -87,10 +87,10 @@ function StartOver({ onClose }: { onClose: () => void }) {
 }
 
 /** Adds goal ideas from a JSON file to the end of the backlog. Nothing else changes. */
-function AddIdeas({ onClose }: { onClose: () => void }) {
+function AddIdeas({ onClose, initial = null }: { onClose: () => void; initial?: { name: string; items: IdeaFileItem[] } | null }) {
   const { data, commit } = useStore();
   const toast = useToast();
-  const [file, setFile] = useState<{ name: string; items: IdeaFileItem[] } | null>(null);
+  const [file, setFile] = useState<{ name: string; items: IdeaFileItem[] } | null>(initial);
   const [error, setError] = useState<string | null>(null);
 
   async function pick(f: File | undefined) {
@@ -118,6 +118,7 @@ function AddIdeas({ onClose }: { onClose: () => void }) {
       <p className="small" style={{ margin: 0 }}>
         The ideas join the end of your backlog. Nothing you already have changes, and an idea with the same name as a goal or idea you have is skipped.
       </p>
+      {file && <div className="small">{file.name}</div>}
       <label className="field">
         Choose a .json file
         <input type="file" accept="application/json,.json" onChange={(e) => void pick(e.target.files?.[0])} />
@@ -137,7 +138,7 @@ function AddIdeas({ onClose }: { onClose: () => void }) {
 }
 
 /** Replaces everything in the app with a JSON file (from Export everything, or one made for you). */
-function ImportData({ onClose }: { onClose: () => void }) {
+function ImportData({ onClose, onIdeasFile }: { onClose: () => void; onIdeasFile: (file: { name: string; items: IdeaFileItem[] }) => void }) {
   const { db } = useStore();
   const [file, setFile] = useState<{ name: string; data: AppData } | null>(null);
   const [typed, setTyped] = useState('');
@@ -149,7 +150,13 @@ function ImportData({ onClose }: { onClose: () => void }) {
     setFile(null);
     if (!f) return;
     try {
-      const parsed = JSON.parse(await f.text()) as Partial<AppData>;
+      const text = await f.text();
+      const parsed = JSON.parse(text) as Partial<AppData>;
+      // A file of goal ideas only (no goals or tasks) is added to the backlog, never used to replace everything.
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed.goals) && !Array.isArray(parsed.actions) && Array.isArray(parsed.ideas)) {
+        onIdeasFile({ name: f.name, items: parseIdeaFile(text) });
+        return;
+      }
       if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.goals) || !Array.isArray(parsed.actions)) {
         throw new Error("This doesn't look like a Six Months file.");
       }
@@ -211,7 +218,7 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
   const [name, setName] = useState(p.display_name);
   const [startOver, setStartOver] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [addingIdeas, setAddingIdeas] = useState(false);
+  const [addingIdeas, setAddingIdeas] = useState<false | { initial: { name: string; items: IdeaFileItem[] } | null }>(false);
   const [theme, setThemeState] = useState<Theme>(getTheme);
   const zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [p.timezone];
 
@@ -325,15 +332,23 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
             Measurements CSV
           </button>
         </div>
-        <button className="btn" onClick={() => setAddingIdeas(true)}>
+        <button className="btn" onClick={() => setAddingIdeas({ initial: null })}>
           Add ideas from a file…
         </button>
         <button className="btn" onClick={() => setImporting(true)}>
           Import from a file…
         </button>
       </div>
-      {addingIdeas && <AddIdeas onClose={() => setAddingIdeas(false)} />}
-      {importing && <ImportData onClose={() => setImporting(false)} />}
+      {addingIdeas && <AddIdeas initial={addingIdeas.initial} onClose={() => setAddingIdeas(false)} />}
+      {importing && (
+        <ImportData
+          onClose={() => setImporting(false)}
+          onIdeasFile={(file) => {
+            setImporting(false);
+            setAddingIdeas({ initial: file });
+          }}
+        />
+      )}
 
       {demo && (
         <>
