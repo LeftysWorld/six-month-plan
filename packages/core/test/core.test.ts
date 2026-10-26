@@ -527,3 +527,35 @@ test('prepare and commit: what a selected idea needs, stale notes, own clock, dr
   assert.deepEqual(place('b', 'selected', 0), ['b', 's']);
   assert.deepEqual(place('b', 'selected', 1), ['s', 'b']);
 });
+
+test('a schedule replaced on a Monday never collides with the sessions the old one made', () => {
+  const actions = [action()];
+  const monday = '2026-10-12';
+  // The old schedule (Mon/Wed/Fri) already made this week; Monday was logged.
+  const old = schedule({ id: 'old', effective_to: '2026-10-11' });
+  const made = missingSessionsForWeek(actions, [old], [], monday, makeId);
+  const existing = made.map((s) => (s.date === monday ? { ...s, status: 'done' as const } : s));
+  // The new schedule starts on that Monday: Tue/Thu/Sat. Its slots 0..2 would have collided.
+  const fresh = schedule({ id: 'new', days: [2, 4, 6], effective_from: monday });
+  const added = missingSessionsForWeek(actions, [old, fresh], existing, monday, makeId);
+  assert.deepEqual(added.map((s) => s.date).sort(), ['2026-10-13', '2026-10-15', '2026-10-17']);
+  const slots = new Set([...existing, ...added].map((s) => s.slot));
+  assert.equal(slots.size, existing.length + added.length, 'every session keeps its own slot number');
+  // Running it again adds nothing.
+  assert.equal(missingSessionsForWeek(actions, [old, fresh], [...existing, ...added], monday, makeId).length, 0);
+});
+
+test('month and retro reviews belong to their own window', async () => {
+  const { periodReviewSlots, retroSlot, planMonths } = await import('../src/index.ts');
+  const other = { ...plan, id: 'other-clock' };
+  const m1 = planMonths(plan)[0]!;
+  const doneForOther = [{ id: 'r', kind: 'block' as const, plan_id: other.id, period_start: m1.start, period_end: m1.end, status: 'done' as const, went_well: '', got_in_way: '', change_next: '', obstacles: [], actions_done: 0, actions_planned: 0, completed_at: null }];
+  // The other clock's month review being done leaves this plan's open.
+  const mine = periodReviewSlots(plan, doneForOther, addDays(m1.end, 1)).filter((s) => s.kind === 'block' && s.state !== 'upcoming');
+  assert.equal(mine.length, 1);
+  assert.equal(periodReviewSlots(other, doneForOther, addDays(m1.end, 1)).filter((s) => s.kind === 'block' && s.state !== 'upcoming').length, 0);
+  // A review saved before plan_id existed still counts for any window with that period.
+  const legacy = [{ ...doneForOther[0]!, plan_id: undefined }];
+  assert.equal(periodReviewSlots(plan, legacy, addDays(m1.end, 1)).filter((s) => s.kind === 'block' && s.state !== 'upcoming').length, 0);
+  assert.equal(retroSlot(plan, [{ ...doneForOther[0]!, kind: 'retro', period_start: plan.start_date, period_end: plan.end_date }], '2027-04-10')?.state, 'overdue', "the other clock's retro is not ours");
+});
