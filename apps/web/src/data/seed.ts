@@ -92,15 +92,19 @@ export function buildDemoData(): AppData {
   const splits = goal({ title: 'Near full splits', type: 'practice', color: '#E8559B', why: 'Move without stiffness.', done_means: 'Under 3 in from the floor' });
   const career = goal({ title: 'Land a product role', type: 'practice', color: '#8B6CF6', why: 'Work on AI products I care about.', done_means: 'Signed offer' });
   const jhu = goal({ title: 'JHU AI certificate', type: 'finish', color: '#3FB6C9', why: 'Credibility for AI product roles.', done_means: 'All modules passed' });
-  const aigp = goal({ title: 'Pass the AIGP exam', type: 'finish', color: '#3FB6C9', why: 'AI governance credibility.', done_means: 'Exam passed' });
+  // Three goals that add up to one outcome: a group with an outcome line. The AIGP finishes before
+  // the season ends, and ISO 42001 starts after it ("Up next" until then).
+  const credentials = { id: id(), name: 'Credentials', created_at: `${start}T12:00:00.000Z`, outcome: 'Qualified for AI product and governance work' };
+  data.groups = [credentials];
+  jhu.group_id = credentials.id;
+  const aigp = goal({ title: 'Pass the AIGP exam', type: 'finish', color: '#3FB6C9', why: 'AI governance credibility.', done_means: 'Exam passed', target_date: addDays(start, 70), group_id: credentials.id });
+  const iso = goal({ title: 'ISO 42001 Lead Implementer', type: 'finish', color: '#3FB6C9', why: 'Sell one narrow ISO 42001 implementation workstream.', done_means: 'Foundation, then Lead Implementer passed', group_id: credentials.id, after_goal_id: aigp.id });
   // A goal already finished early in the plan, so Completed has something to show.
   const finishedAt = `${addDays(today, -2)}T18:00:00.000Z`;
   const course = goal({ title: 'Finish the agents course', type: 'finish', color: '#94A3B8', why: 'Hands-on with agents and evals.', done_means: 'All lessons and the capstone done', completed_at: finishedAt, completion_note: 'Done two weeks early. Short evening sessions worked better than weekend marathons.' });
-  data.goals = [weight, strength, guitar, splits, career, jhu, aigp, course];
+  data.goals = [weight, strength, guitar, splits, career, jhu, aigp, iso, course];
   data.planGoals = [
-    ...[weight, strength, guitar, splits, career, jhu, course].map((g) => ({ id: id(), plan_id: plan.id, goal_id: g.id })),
-    // A second batch starting later; a goal lives in one batch at a time.
-    { id: id(), plan_id: plan2.id, goal_id: aigp.id },
+    ...[weight, strength, guitar, splits, career, jhu, aigp, iso, course].map((g) => ({ id: id(), plan_id: plan.id, goal_id: g.id })),
   ];
   data.goalTargets = suggestPath(212.2, 182, start, end, 28).map((p) => ({
     id: id(),
@@ -119,7 +123,14 @@ export function buildDemoData(): AppData {
       completed_at: n === 1 ? new Date().toISOString() : null,
     })),
     { id: id(), goal_id: guitar.id, title: 'Record song 1 start to finish', due_date: addDays(start, 42), completed_at: null },
-    { id: id(), goal_id: aigp.id, title: 'Book the exam', due_date: addDays(plan2Start, 30), completed_at: null },
+    ...['Domain I', 'Domain II', 'Book the exam', 'Domain III', 'Domain IV', 'Practice exam at 80%+'].map((title, i) => ({
+      id: id(),
+      goal_id: aigp.id,
+      title,
+      due_date: addDays(start, 10 + i * 12),
+      completed_at: i === 0 ? `${addDays(start, 9)}T20:00:00.000Z` : null,
+    })),
+    ...['Foundation exam', 'Lead Implementer course', 'Lead Implementer exam'].map((title, i) => ({ id: id(), goal_id: iso.id, title, due_date: addDays(start, 100 + i * 25), completed_at: null })),
   ];
 
   // ---- Measurements ----
@@ -293,7 +304,7 @@ export function buildDemoData(): AppData {
   for (const [g, quarter, month, week] of chainNotes) {
     Object.assign(data, withOps(data, opsStartChain(data, g, plan, today, { quarter, month, week })));
   }
-  Object.assign(data, withOps(data, opsStartChain(data, aigp, plan2, plan2.start_date, { quarter: 'Pass the AIGP exam', month: 'Read the body of knowledge, domains I–II', week: '' })));
+  Object.assign(data, withOps(data, opsStartChain(data, aigp, plan, today, { quarter: 'Pass the AIGP exam', month: 'Domains I–II read, exam booked', week: 'Domain II, first half' })));
   const weekOf = (g: Goal) => chainFor(data, g, plan, today).week.step!;
   const guitarWeek = weekOf(guitar);
   const within = (d: string, w: { end_date: string }) => (d > w.end_date ? w.end_date : d);
@@ -301,6 +312,7 @@ export function buildDemoData(): AppData {
     [guitar, { title: 'Record a baseline video', kind: 'check', minutes: 15, when: 'once', date: within(addDays(today, 2), guitarWeek), cue: 'After dinner, in the music corner' }],
     [weight, { title: 'Meal prep for the week', kind: 'minutes', minutes: 60, when: 'days', days: [7], through: chainFor(data, weight, plan, today).quarter.node.end }],
     [career, { title: 'Coffee chat with a product manager', kind: 'check', minutes: 30, when: 'once', date: within(addDays(today, 3), weekOf(career)) }],
+    [aigp, { title: 'AIGP study block', kind: 'minutes', minutes: 30, when: 'days', days: [1, 3, 5], through: aigp.target_date!, cue: 'Before any job applications' }],
   ];
   for (const [g, patch] of demoTasks) {
     const week = weekOf(g);

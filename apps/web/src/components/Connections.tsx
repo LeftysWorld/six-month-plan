@@ -3,7 +3,7 @@ import { describeSchedule, shortDate, type Action, type Goal, type GoalGroup } f
 import { useStore } from '../data/store.tsx';
 import { useView, type View } from '../data/derive.ts';
 import { opsShareTask, runningSchedule, shareCandidates, type ShareGroup } from '../data/connect.ts';
-import { groupMembers, groupOf, opsAddToGroup, opsCreateGroup, opsRemoveFromGroup, opsRenameGroup, opsUngroup, suggestGroupNames } from '../data/groups.ts';
+import { groupMembers, groupOf, opsAddToGroup, opsCreateGroup, opsRemoveFromGroup, opsRenameGroup, opsSetGroupOutcome, opsUngroup, suggestGroupNames } from '../data/groups.ts';
 import { applyOp, type AppData, type Op } from '../data/model.ts';
 import { href } from '../router.ts';
 import { PacePill, Sheet, useToast } from './ui.tsx';
@@ -60,11 +60,13 @@ export function GroupNameSheet({ goals, onClose, onCreated }: { goals: Goal[]; o
   const toast = useToast();
   const suggestions = suggestGroupNames(goals);
   const [name, setName] = useState(suggestions[0] ?? '');
+  const [outcome, setOutcome] = useState('');
   const options = shareableAcross(view, goals, today);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const moving = goals.filter((g) => g.group_id);
   function create() {
     const { ops, groupId } = opsCreateGroup(data, name, goals.map((g) => g.id));
+    if (outcome.trim()) ops.push({ kind: 'update', collection: 'groups', id: groupId, patch: { outcome: outcome.trim() } });
     const after = ops.reduce(applyOp, data);
     const share = opsShareAcross(after, options.filter((o) => picked.has(o.action.id)));
     commit([...ops, ...share]);
@@ -102,6 +104,13 @@ export function GroupNameSheet({ goals, onClose, onCreated }: { goals: Goal[]; o
             </button>
           ))}
         </div>
+        <label className="field">
+          What do they add up to? <span style={{ fontWeight: 400 }}>(optional)</span>
+          <input value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="e.g. Qualified for AI product and governance work" />
+          <span className="xsmall muted" style={{ fontWeight: 400 }}>
+            The group then shows this with one progress bar for all its goals.
+          </span>
+        </label>
         {options.length > 0 && (
           <div className="stack-sm">
             <span className="small strong">
@@ -152,6 +161,7 @@ export function GroupSheet({ group, onClose }: { group: GoalGroup; onClose: () =
   const view = useView();
   const toast = useToast();
   const [name, setName] = useState(group.name);
+  const [outcome, setOutcome] = useState(group.outcome ?? '');
   const [sharing, setSharing] = useState(false);
   const members = groupMembers(data, group.id);
   const shared = sharedTasksOf(view, members);
@@ -176,6 +186,28 @@ export function GroupSheet({ group, onClose }: { group: GoalGroup; onClose: () =
         <button className="btn small" type="submit" style={{ minHeight: 44, flex: 'none' }} disabled={!name.trim() || name.trim() === live.name}>
           Rename
         </button>
+      </form>
+      <form
+        className="stack-sm"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const ops = opsSetGroupOutcome(live, outcome);
+          if (ops.length) {
+            commit(ops);
+            toast(outcome.trim() ? 'Outcome saved' : 'Outcome cleared');
+          }
+        }}
+      >
+        <label className="field">
+          What these goals add up to
+          <div className="row-start" style={{ flexWrap: 'nowrap' }}>
+            <input className="input" value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="e.g. Qualified for AI product and governance work" />
+            <button className="btn small" type="submit" style={{ minHeight: 44, flex: 'none' }} disabled={outcome.trim() === (live.outcome ?? '')}>
+              Save
+            </button>
+          </div>
+        </label>
+        <span className="xsmall muted">Shown on the group with one progress bar for all its goals, and as one line in “By … you’ll have”.</span>
       </form>
       <div className="stack-sm">
         <span className="label">Goals</span>

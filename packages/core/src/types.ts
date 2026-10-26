@@ -63,6 +63,8 @@ export interface Goal {
   completion_note?: string;
   /** The group it's in (a goal is in one group at most). Missing on older databases. */
   group_id?: string | null;
+  /** Starts after this goal is complete ("Up next" until then). Missing on older databases. */
+  after_goal_id?: string | null;
 }
 
 /** A named group of goals that work together, made by dragging one goal onto another (like a phone folder). */
@@ -70,6 +72,8 @@ export interface GoalGroup {
   id: string;
   name: string;
   created_at: string;
+  /** What the goals add up to, in a line (e.g. "Qualified for AI product and governance work"). Missing on older databases. */
+  outcome?: string | null;
 }
 
 export interface PlanGoal {

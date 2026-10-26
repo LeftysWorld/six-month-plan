@@ -18,6 +18,7 @@ import {
   type PlanStep,
   type Session,
   parseWorkoutPlan,
+  forecastFinish,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, useView } from '../data/derive.ts';
@@ -186,9 +187,50 @@ export function ChainSheet({ goal, plan, chain, level, onClose }: { goal: Goal; 
 }
 
 /** Edit the 6-month goal itself. A new target for a number goal redraws its path straight to the new value. */
+/** "At this pace: done Jan 4": when a finish goal will likely be done, from how fast its milestones get done. */
+function ForecastLine({ goal, plan, by }: { goal: Goal; plan: Plan; by: ISODate }) {
+  const { today } = useStore();
+  const view = useView();
+  const milestones = view.data.milestones.filter((m) => m.goal_id === goal.id);
+  if (!milestones.length) return null;
+  const f = forecastFinish(milestones, view.startFor(goal, plan), today);
+  if (f.reason === 'done') return null;
+  const late = !!f.date && f.date > by;
+  const text =
+    f.reason === 'pace'
+      ? `At this pace: done ${shortDate(f.date!)}${late ? `, after ${shortDate(by)}` : ''}`
+      : f.reason === 'too_slow'
+        ? `At this pace it won’t be done by ${shortDate(by)}`
+        : 'At this pace: shows after the first week and the first milestone';
+  return (
+    <span className="xsmall" style={{ color: late || f.reason === 'too_slow' ? 'var(--amber-ink)' : 'var(--muted)' }}>
+      {text}
+    </span>
+  );
+}
+
+/** Goals this one could start after: others in its window that don't (directly or not) wait on it. */
+function afterChoices(goals: Goal[], goal: Goal): Goal[] {
+  const waitsOnMe = (g: Goal): boolean => {
+    const seen = new Set<string>();
+    let cur: Goal | undefined = g;
+    while (cur?.after_goal_id && !seen.has(cur.id)) {
+      if (cur.after_goal_id === goal.id) return true;
+      seen.add(cur.id);
+      cur = goals.find((x) => x.id === cur!.after_goal_id);
+    }
+    return false;
+  };
+  return goals.filter((g) => g.id !== goal.id && !waitsOnMe(g));
+}
+
 function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: () => void }) {
   const { data, commit } = useStore();
+  const view = useView();
   const toast = useToast();
+  const [finishBy, setFinishBy] = useState(goal.target_date ?? '');
+  const [after, setAfter] = useState(goal.after_goal_id ?? '');
+  const choices = afterChoices(view.goalsForPlan(plan.id), goal);
   const [title, setTitle] = useState(goal.title);
   const [why, setWhy] = useState(goal.why);
   const [done, setDone] = useState(goal.done_means);
@@ -213,10 +255,39 @@ function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: (
         Done means
         <input value={done} onChange={(e) => setDone(e.target.value)} placeholder="How you'll know it's done" />
       </label>
+      {goal.type !== 'number' && (
+        <label className="field">
+          Finish by <span style={{ fontWeight: 400 }}>(optional)</span>
+          <input type="date" value={finishBy} min={plan.start_date} max={plan.end_date} onChange={(e) => setFinishBy(e.target.value)} />
+          <span className="xsmall muted" style={{ fontWeight: 400 }}>
+            Empty means the end of {plan.solo ? 'its clock' : 'the season'} ({shortDate(plan.end_date)}). Earlier for a course or an exam that ends sooner.
+          </span>
+        </label>
+      )}
+      {choices.length > 0 && (
+        <label className="field">
+          Starts after <span style={{ fontWeight: 400 }}>(optional)</span>
+          <select value={after} onChange={(e) => setAfter(e.target.value)}>
+            <option value="">Nothing, it runs now</option>
+            {choices.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.title}
+              </option>
+            ))}
+          </select>
+          <span className="xsmall muted" style={{ fontWeight: 400 }}>
+            Until that goal is complete, this one shows as “Up next” and isn’t counted as behind.
+          </span>
+        </label>
+      )}
       <button
         className="btn primary"
         onClick={() => {
-          let ops = opsUpdateGoal(goal, { title: title.trim() || goal.title, why: why.trim(), done_means: done.trim(), ...(goal.type === 'number' ? { target_value: target } : {}) });
+          // Dates and "starts after" are only sent when they change (a database without the update still saves the rest).
+          const extra: Partial<Goal> = {};
+          if (goal.type !== 'number' && (finishBy || null) !== (goal.target_date ?? null)) extra.target_date = finishBy || null;
+          if ((after || null) !== (goal.after_goal_id ?? null)) extra.after_goal_id = after || null;
+          let ops = opsUpdateGoal(goal, { title: title.trim() || goal.title, why: why.trim(), done_means: done.trim(), ...(goal.type === 'number' ? { target_value: target } : {}), ...extra });
           if (goal.type === 'number' && target !== goal.target_value) {
             const now = new Date().toISOString();
             ops = [...ops, ...currentTargets(data.goalTargets, goal.id).map((t) => ({ kind: 'update', collection: 'goalTargets', id: t.id, patch: { superseded_at: now } }) as const)];
@@ -724,7 +795,7 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
       <section className="card stack-sm progress-card">
         <div className="progress-top">
           <div className="stack-sm" style={{ gap: 4, minWidth: 0 }}>
-            <span className="mono">STARTS {shortDate(plan.start_date).toUpperCase()}</span>
+            <span className="mono">{t.waiting ? `UP NEXT · AFTER ${t.waiting.toUpperCase()}` : `STARTS ${shortDate(plan.start_date).toUpperCase()}`}</span>
             <span style={{ fontSize: 17, fontWeight: 600 }}>
               {t.target} by {shortDate(t.by)}
             </span>
@@ -758,11 +829,12 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
         <span className="season-tick" style={{ left: `${t.exp}%` }} />
       </span>
       <span className="row-between xsmall muted">
-        <span>Start {shortDate(plan.start_date)}</span>
+        <span>Start {shortDate(view.startFor(goal, plan))}</span>
         <span>Tick: even pace</span>
         <span>{shortDate(t.by)}</span>
       </span>
       {fix && !fix.extra && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>{fix.text}</span>}
+      {goal.type === 'finish' && <ForecastLine goal={goal} plan={plan} by={t.by} />}
       {chart}
     </section>
   );

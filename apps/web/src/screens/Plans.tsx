@@ -248,7 +248,8 @@ export function Plans() {
 function setupSteps(view: View, data: AppData, today: ISODate): { title: string; detail: string; action: string; to: string } | null {
   const goals = view.activeGoals;
   if (goals.length === 0) return null; // The empty state already says this.
-  const noTasks = goals.find((g) => g.type !== 'number' && view.actionsForGoal(g.id).length === 0);
+  // A goal waiting on another gets its tasks when it starts.
+  const noTasks = goals.find((g) => g.type !== 'number' && !view.waitingOn(g) && view.actionsForGoal(g.id).length === 0);
   if (noTasks) return { title: `Add daily tasks for ${noTasks.title}`, detail: 'Daily tasks on the goal page land on your Today list.', action: 'Add tasks', to: `/goals/${noTasks.id}` };
   const actionIds = new Set(goals.flatMap((g) => view.actionsForGoal(g.id, true).map((a) => a.id)));
   const checkedIn = data.sessions.some((x) => x.action_id && actionIds.has(x.action_id) && x.status !== 'planned' && x.status !== 'moved');

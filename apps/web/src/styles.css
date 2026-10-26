@@ -1214,3 +1214,17 @@ button.week-day:active { transform: scale(0.9); }
 .plan-ex-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .plan-ex-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .plan-ex-grid .field input { padding-left: 8px; padding-right: 8px; }
+
+/* A group's outcome: one line and one bar for what its goals add up to. */
+.group-rollup { display: flex; flex-direction: column; gap: 7px; padding: 4px 16px 14px 38px; border-bottom: 1px solid var(--line); }
+.group-rollup.big { padding: 16px 18px; border-bottom: 0; }
+.group-rollup.big .group-outcome-text { font-size: 17px; }
+.group-outcome { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.group-outcome-text { font-size: 14px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+.group-outcome-add { align-self: flex-start; margin: -2px 16px 10px 38px; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--accent-ink); cursor: pointer; min-height: 32px; }
+.group-outcome-add:hover { color: var(--ink); }
+.season-row.waiting .season-row-title { color: var(--ink-2); }
+.season-row.waiting .season-row-status { color: var(--muted); }
+.season-row.waiting .dot { opacity: 0.45; }
+.outcome-mark.group { border-color: var(--accent); }
+.outcome-mark.group > span { background: var(--gradient); }

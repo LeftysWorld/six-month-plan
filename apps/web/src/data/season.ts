@@ -1,4 +1,4 @@
-import { addDays, daysBetween, isoWeekday, progressFor, quarterRange, shortDate, type Goal, type ISODate, type PaceLabel, type Plan } from '@six/core';
+import { addDays, daysBetween, isoWeekday, paceLabel, progressFor, quarterRange, shortDate, type Goal, type ISODate, type PaceLabel, type Plan } from '@six/core';
 import { fmt, type View } from './derive.ts';
 
 /**
@@ -60,6 +60,8 @@ export interface Track {
   /** One short status word or phrase for the row. */
   status: string;
   started: boolean;
+  /** The goal it waits on, while it waits. */
+  waiting?: string;
 }
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
@@ -68,13 +70,19 @@ const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 export function goalTrack(view: View, goal: Goal, plan: Plan): Track {
   const today = view.today;
   const by = goal.target_date && goal.target_date <= plan.end_date ? goal.target_date : plan.end_date;
-  const started = plan.start_date <= today;
-  const span = Math.max(1, daysBetween(plan.start_date, by));
-  const timeShare = started ? clamp((daysBetween(plan.start_date, today) / span) * 100) : 0;
+  // A goal that starts after another runs from the day that one was completed.
+  const from = view.startFor(goal, plan);
+  const waiting = view.waitingOn(goal);
+  const started = from <= today && !waiting;
+  const span = Math.max(1, daysBetween(from, by));
+  const timeShare = started ? clamp((daysBetween(from, today) / span) * 100) : 0;
   const pace = started ? view.goalPace(goal, plan) : null;
   const label: PaceLabel = pace?.label ?? 'none';
   const target = goal.type === 'number' && goal.target_value != null ? `${fmt(goal.target_value)} ${goal.unit ?? ''}`.trim() : goal.done_means.trim() || goal.title;
   const word = (fallback: string) => (!started ? 'Planned' : label === 'ahead' ? 'Ahead' : label === 'behind' ? 'Behind' : label === 'on_track' ? 'On pace' : fallback);
+  if (waiting) {
+    return { prog: 0, exp: 0, now: 'Not started', target, by, label: 'none', status: 'Up next', started: false, waiting: waiting.title };
+  }
 
   if (goal.type === 'number') {
     const n = pace?.number;
@@ -97,7 +105,7 @@ export function goalTrack(view: View, goal: Goal, plan: Plan): Track {
   }
   // Task-based goals: sessions done against everything planned in the window (weeks not generated
   // yet are projected from the schedules).
-  const range = { start: plan.start_date, end: by };
+  const range = { start: from, end: by };
   const actionIds = new Set(view.data.actionGoals.filter((ag) => ag.goal_id === goal.id).map((ag) => ag.action_id));
   const sessions = view.projectedSessions(range).filter((s) => s.action_id && actionIds.has(s.action_id));
   const p = progressFor(sessions, range, { today, dayFraction: 0 });
@@ -117,3 +125,48 @@ export function goalTrack(view: View, goal: Goal, plan: Plan): Track {
 }
 
 export const dateWord = (d: ISODate) => shortDate(d);
+
+export interface GroupTrack {
+  /** Goals in the group (not archived), finished ones included. */
+  count: number;
+  done: number;
+  /** Average share done across the group's goals, 0..100 (finished goals count as 100). */
+  prog: number;
+  /** Average share an even pace would have by now, 0..100. */
+  exp: number;
+  label: PaceLabel;
+  /** The latest date any of its goals is due. */
+  by: ISODate | null;
+}
+
+/**
+ * A group's roll-up: one bar for everything its goals add up to. Each goal counts equally;
+ * a finished goal counts as all of it, and a goal waiting on another counts as not started.
+ */
+export function groupTrack(view: View, groupId: string): GroupTrack {
+  const goals = view.data.goals.filter((g) => g.group_id === groupId && !g.archived_at);
+  let prog = 0;
+  let exp = 0;
+  let done = 0;
+  let by: ISODate | null = null;
+  let anyStarted = false;
+  for (const g of goals) {
+    if (g.completed_at) {
+      done += 1;
+      prog += 100;
+      exp += 100;
+      continue;
+    }
+    const plan = view.planForGoal(g);
+    if (!plan) continue;
+    const t = goalTrack(view, g, plan);
+    prog += t.prog;
+    exp += t.exp;
+    if (t.started) anyStarted = true;
+    if (!by || t.by > by) by = t.by;
+  }
+  const n = goals.length || 1;
+  const avgProg = clamp(prog / n);
+  const avgExp = clamp(exp / n);
+  return { count: goals.length, done, prog: avgProg, exp: avgExp, label: anyStarted ? paceLabel(avgProg, avgExp) : 'none', by };
+}

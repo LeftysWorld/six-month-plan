@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { shortDate, type Goal, type MeasurementType, type Plan } from '@six/core';
+import { evenSteps, shortDate, type Goal, type MeasurementType, type Plan } from '@six/core';
 import { findMeasure, measureLabel, measureOnToday } from '../data/connect.ts';
 import { daysText, opsAddPhotoTracker, opsStopPhotoTracker, photoTrackers } from '../data/tracking.ts';
 import { useStore } from '../data/store.tsx';
@@ -212,6 +212,12 @@ export function GoalRecord({ goal }: { goal: Goal }) {
   const toast = useToast();
   const [msTitle, setMsTitle] = useState('');
   const [msDate, setMsDate] = useState(today);
+  const [splitting, setSplitting] = useState(false);
+  const [stepName, setStepName] = useState('');
+  const [stepCount, setStepCount] = useState(4);
+  const plan = view.planForGoal(goal);
+  const stepFrom = plan ? (view.startFor(goal, plan) > today ? view.startFor(goal, plan) : today) : today;
+  const stepTo = goal.target_date ?? plan?.end_date ?? today;
   const actions = view.actionsForGoal(goal.id, true);
   const actionIds = new Set(actions.map((a) => a.id));
   const milestones = data.milestones.filter((m) => m.goal_id === goal.id).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
@@ -220,8 +226,38 @@ export function GoalRecord({ goal }: { goal: Goal }) {
     <>
       {(goal.type === 'finish' || milestones.length > 0) && (
         <div className="card stack-sm">
-          <span className="label">Milestones</span>
-          {milestones.length === 0 && <span className="small muted">No milestones yet.</span>}
+          <div className="row-between">
+            <span className="label">Milestones</span>
+            <button className="link-btn small" onClick={() => setSplitting(!splitting)}>
+              {splitting ? 'Cancel' : '+ Split into steps'}
+            </button>
+          </div>
+          {splitting && (
+            <form
+              className="stack-sm"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (stepCount < 1 || stepTo < stepFrom) return;
+                const rows = evenSteps(stepName || 'Step', stepCount, stepFrom, stepTo).map((m) => ({ id: crypto.randomUUID(), goal_id: goal.id, title: m.title, due_date: m.due_date, completed_at: null }));
+                commit([{ kind: 'insert', collection: 'milestones', rows }]);
+                toast(`Added ${rows.length} milestones`);
+                setSplitting(false);
+              }}
+            >
+              <span className="xsmall muted">
+                Evenly spaced from {shortDate(stepFrom)} to {shortDate(stepTo)}
+                {goal.target_date ? '' : ' (set “Finish by” on the goal for an earlier end)'}
+              </span>
+              <div className="row-start" style={{ flexWrap: 'nowrap' }}>
+                <input className="input" aria-label="Step name" placeholder="e.g. Module, Week, Domain" value={stepName} onChange={(e) => setStepName(e.target.value)} />
+                <input className="input" aria-label="How many steps" type="number" min={1} max={60} value={stepCount} onChange={(e) => setStepCount(Number(e.target.value))} style={{ width: 76, flex: 'none' }} />
+                <button className="btn small" type="submit" style={{ flex: 'none', minHeight: 44 }}>
+                  Add
+                </button>
+              </div>
+            </form>
+          )}
+          {milestones.length === 0 && !splitting && <span className="small muted">No milestones yet. Split it into steps (modules, chapters, domains) or add them one by one.</span>}
           {milestones.map((m) => (
             <div key={m.id} className="list-row">
               <button
@@ -338,6 +374,7 @@ export function GoalManage({ goal }: { goal: Goal }) {
 /** Finish the goal (it moves to Completed with a note on how it ended), or reopen a finished one. */
 function CompleteGoal({ goal }: { goal: Goal }) {
   const { data, today, commit } = useStore();
+  const view = useView();
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
@@ -374,7 +411,8 @@ function CompleteGoal({ goal }: { goal: Goal }) {
       onSubmit={(e) => {
         e.preventDefault();
         commit(opsCompleteGoal(data, goal, note, today));
-        toast(`${goal.title} completed`);
+        const next = view.followersOf(goal.id);
+        toast(next.length ? `${goal.title} completed. ${next.map((g) => g.title).join(' and ')} can start now.` : `${goal.title} completed`);
         navigate('/goals/completed');
       }}
     >

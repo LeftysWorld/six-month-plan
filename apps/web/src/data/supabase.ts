@@ -10,6 +10,12 @@ export const supabaseConfigured = Boolean(url && anonKey);
 
 const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql, 20261025000000_review_overhaul.sql, 20261026000000_goal_backlog.sql, 20261027000000_completed_goals_and_readiness.sql, 20261028000000_idea_prep.sql, 20261029000000_batches_and_own_clocks.sql, 20261030000000_attachments.sql, 20261031000000_connected_goals.sql and 20261101000000_goal_groups.sql';
 const BACKLOG_MIGRATION = 'supabase/migrations/20261026000000_goal_backlog.sql';
+const OUTCOMES_MIGRATION = 'supabase/migrations/20261105000000_group_outcomes.sql';
+
+/** Columns added by the group-outcomes migration. */
+function isMissingOutcomes(message: string): boolean {
+  return /after_goal_id|'outcome'|goal_groups\.outcome|\boutcome\b/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+}
 
 /** Set when the database is missing a newer migration; the app shows it as a banner. */
 export let schemaWarning: string | null = null;
@@ -68,6 +74,9 @@ const NUMERIC_FIELDS: Record<string, string[]> = {
 /** A network failure is worth retrying; a database refusal is not. */
 function toSaveError(error: { message: string; code?: string } | null): SaveError | null {
   if (!error) return null;
+  if (isMissingOutcomes(error.message)) {
+    return new SaveError(`${error.message}. Run ${OUTCOMES_MIGRATION} in the Supabase SQL Editor, then reload.`, false);
+  }
   if (isMissingBreakdown(error.message)) {
     return new SaveError(`${error.message}. Run ${BREAKDOWN_MIGRATION} in the Supabase SQL Editor, then reload.`, false);
   }
@@ -183,6 +192,12 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
           schemaWarning = `Your database needs the batches update. In Supabase → SQL Editor, run supabase/migrations/20261029000000_batches_and_own_clocks.sql, then reload.`;
         }
       }
+      if (!schemaWarning) {
+        const probe = await sb.from('goals').select('after_goal_id').limit(1);
+        if (probe.error && isMissingOutcomes(probe.error.message)) {
+          schemaWarning = `Your database needs the group outcomes update. In Supabase → SQL Editor, run ${OUTCOMES_MIGRATION}, then reload.`;
+        }
+      }
       const { data: profile, error } = await sb.from('profiles').select('*').eq('user_id', userId).maybeSingle();
       if (error) throw new Error(`profiles: ${error.message}`);
       if (profile) {
@@ -239,7 +254,13 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       await insert('plans', incoming.plans ?? []);
       await insert('goal_groups', incoming.groups ?? []);
       // Goals and their measurements point at each other: goals first without it, then the link.
-      await insert('goals', (incoming.goals ?? []).map((g) => ({ ...g, measurement_type_id: null })));
+      await insert('goals', (incoming.goals ?? []).map((g) => ({ ...g, measurement_type_id: null, ...(g.after_goal_id ? { after_goal_id: null } : {}) })));
+      // "Starts after" points at another goal: linked once every goal exists.
+      for (const g of incoming.goals ?? []) {
+        if (!g.after_goal_id) continue;
+        const { error } = await sb.from('goals').update({ after_goal_id: g.after_goal_id }).eq('id', g.id);
+        if (error) throw new Error(`goals: ${error.message}`);
+      }
       await insert('measurement_types', incoming.measurementTypes ?? []);
       for (const g of incoming.goals ?? []) {
         if (!g.measurement_type_id) continue;

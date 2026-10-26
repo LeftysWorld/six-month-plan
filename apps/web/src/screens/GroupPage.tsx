@@ -10,7 +10,7 @@ import { GroupSheet, sharedTasksOf } from '../components/Connections.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { navigate } from '../router.ts';
 import { BackLink, Empty, useToast } from '../components/ui.tsx';
-import { GoalRow, WeekStrip, placeGoals } from './Season.tsx';
+import { GoalRow, GroupRollup, WeekStrip, placeGoals } from './Season.tsx';
 
 /**
  * A group's own page, like an open folder: its goals this season and next as rows, the tasks they
@@ -51,6 +51,9 @@ export function GroupPage({ id }: { id: string }) {
           {now.length} goal{now.length === 1 ? '' : 's'} this season{later.length ? ` · ${later.length} next season` : ''}
         </span>
       </div>
+      <section className="card" style={{ padding: 0 }}>
+        <GroupRollup group={group} big />
+      </section>
       <div className="season-layout">
         <div className="season-main">
           {now.length > 0 && card(seasons.current ? `THIS SEASON · BY ${shortDate(seasons.current.end_date).toUpperCase()}` : 'NOW', now)}

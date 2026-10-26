@@ -113,6 +113,28 @@ export class View {
     return this.data.goals.filter((g) => ids.has(g.id) && (includeArchived || (!g.archived_at && !g.completed_at)));
   }
 
+  /**
+   * The goal this one waits on, while that one isn't complete ("Up next"). A waiting goal isn't
+   * judged on pace. Once the other goal is complete (or archived), it's simply running.
+   */
+  waitingOn(goal: Goal): Goal | null {
+    if (!goal.after_goal_id || goal.completed_at) return null;
+    const before = this.goal(goal.after_goal_id);
+    return before && !before.completed_at && !before.archived_at ? before : null;
+  }
+
+  /** Goals that start after this one. */
+  followersOf(goalId: string): Goal[] {
+    return this.data.goals.filter((g) => g.after_goal_id === goalId && !g.archived_at && !g.completed_at);
+  }
+
+  /** Where a goal's own run starts: its window's start, or the day the goal it waited on was completed. */
+  startFor(goal: Goal, plan: Plan): ISODate {
+    const before = goal.after_goal_id ? this.goal(goal.after_goal_id) : undefined;
+    const done = before?.completed_at?.slice(0, 10);
+    return done && done > plan.start_date ? done : plan.start_date;
+  }
+
   plansForGoal(goalId: string): Plan[] {
     const ids = new Set(this.data.planGoals.filter((pg) => pg.goal_id === goalId).map((pg) => pg.plan_id));
     return this.data.plans.filter((p) => ids.has(p.id));
@@ -246,6 +268,8 @@ export class View {
   /** Pace for one goal over a period (practice goals) or overall (number and finish goals). */
   goalPace(goal: Goal, plan: Plan | null, range?: DateRange): GoalPace {
     const early = this.tooEarly(plan);
+    const waiting = this.waitingOn(goal);
+    if (waiting) return { goal, label: 'none', summary: `Up next · after ${waiting.title}`, progress: null, number: null };
     const fallbackStart = plan?.start_date ?? this.today;
     if (goal.type === 'number') {
       const status = numberGoalStatus(goal, this.pathFor(goal), this.measurementsFor(goal.measurement_type_id), this.today, fallbackStart, early);
