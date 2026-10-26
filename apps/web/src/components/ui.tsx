@@ -27,6 +27,13 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   sparkle: <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />,
+  gift: (
+    <>
+      <path d="M4 12h16v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
+      <path d="M3 8h18v4H3zM12 8v13" />
+      <path d="M12 8c-1.5-3-3.5-4-5-3s-.5 3 5 3M12 8c1.5-3 3.5-4 5-3s.5 3-5 3" />
+    </>
+  ),
   edit: <path d="M4 20h4L19 9l-4-4L4 16z" />,
   camera: (
     <>

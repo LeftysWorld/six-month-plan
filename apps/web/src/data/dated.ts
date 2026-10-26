@@ -45,11 +45,14 @@ export function checkpointsOf(data: AppData, goal: Goal, weeksFrom: ISODate | nu
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
-export function opsUpdateMilestone(m: Milestone, patch: Partial<Pick<Milestone, 'title' | 'due_date' | 'completed_at'>>): Op[] {
+export function opsUpdateMilestone(m: Milestone, patch: Partial<Pick<Milestone, 'title' | 'due_date' | 'completed_at' | 'value' | 'prize' | 'prize_claimed_at'>>): Op[] {
   const clean: Record<string, unknown> = {};
   if (patch.title !== undefined && patch.title.trim() && patch.title.trim() !== m.title) clean.title = patch.title.trim();
   if (patch.due_date !== undefined && patch.due_date && patch.due_date !== m.due_date) clean.due_date = patch.due_date;
   if (patch.completed_at !== undefined && (patch.completed_at ?? null) !== (m.completed_at ?? null)) clean.completed_at = patch.completed_at ?? null;
+  if (patch.value !== undefined && (patch.value ?? null) !== (m.value ?? null)) clean.value = patch.value ?? null;
+  if (patch.prize !== undefined && patch.prize.trim() !== (m.prize ?? '')) clean.prize = patch.prize.trim();
+  if (patch.prize_claimed_at !== undefined && (patch.prize_claimed_at ?? null) !== (m.prize_claimed_at ?? null)) clean.prize_claimed_at = patch.prize_claimed_at ?? null;
   return Object.keys(clean).length ? [{ kind: 'update', collection: 'milestones', id: m.id, patch: clean }] : [];
 }
 
@@ -60,6 +63,6 @@ export function opsDeleteMilestone(m: Milestone): Op[] {
 /** Undo for a delete or an edit: put the milestone back as it was. */
 export function opsRestoreMilestone(data: AppData, m: Milestone): Op[] {
   return data.milestones.some((x) => x.id === m.id)
-    ? [{ kind: 'update', collection: 'milestones', id: m.id, patch: { title: m.title, due_date: m.due_date, completed_at: m.completed_at } }]
+    ? [{ kind: 'update', collection: 'milestones', id: m.id, patch: { title: m.title, due_date: m.due_date, completed_at: m.completed_at, value: m.value ?? null, prize: m.prize ?? '', prize_claimed_at: m.prize_claimed_at ?? null } }]
     : [{ kind: 'insert', collection: 'milestones', rows: [m as unknown as { id: string } & Record<string, unknown>] }];
 }

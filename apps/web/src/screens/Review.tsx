@@ -32,6 +32,9 @@ import {
 import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, type View } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
+import { allPrizes } from '../data/prizes.ts';
+import { PrizeRow } from '../components/Prize.tsx';
+import { groupScoreText } from '@six/core';
 import type { AppData, Op, ReviewPayload } from '../data/model.ts';
 import { opsArchiveAction, opsArchiveGoal, opsCompleteGoal, opsCompleteReview, opsCreatePlan, opsLinkGoalToPlan, opsReplacePath, opsUpdateGoal } from '../data/ops.ts';
 import { catchUp, catchUpPlan, chainFor, isSet, opsSetLevel } from '../data/chain.ts';
@@ -528,6 +531,7 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
 
       {kind === 'quarter' && plan && <Decide goals={goals} draft={draft} set={set} view={view} plan={plan} nextMonday={nextMonday} />}
       {(kind === 'quarter' || kind === 'retro') && <PathsCheck kind={kind} draft={draft} set={set} />}
+      {(kind === 'block' || kind === 'quarter' || kind === 'retro') && <PrizesCheck period={period} />}
 
       {/* The one thing to change (or, for the retrospective, what carries over). */}
       {kind === 'retro' ? (
@@ -790,6 +794,36 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
  * Your Odyssey paths at a checkpoint: re-rate the four gauges (3-month), or write down what the
  * season taught you about each path (retrospective). Shown only when you have paths.
  */
+/**
+ * Prizes this period: what was earned (claim it here if you haven't), what's still unclaimed from
+ * before, and how each group prize stands. Rewards you don't take stop working.
+ */
+function PrizesCheck({ period }: { period: DateRange }) {
+  const { data, today } = useStore();
+  const view = useView();
+  const all = allPrizes(data, view, today);
+  const inPeriod = all.filter((p) => p.doneDay && p.doneDay >= period.start && p.doneDay <= period.end && !p.lost);
+  const unclaimed = all.filter((p) => (p.status === 'earned' || p.status === 'late') && !p.lost && !p.claimedAt && !inPeriod.includes(p));
+  const lost = all.filter((p) => p.lost && p.dueDate && p.dueDate >= period.start && p.dueDate <= period.end);
+  const groups = all.filter((p) => p.kind === 'group' && !p.claimedAt);
+  if (inPeriod.length === 0 && unclaimed.length === 0 && lost.length === 0 && groups.length === 0) return null;
+  return (
+    <div className="card stack-sm">
+      <span className="label">Prizes</span>
+      {inPeriod.length > 0 && <span className="small muted">Earned this period:</span>}
+      {inPeriod.map((p) => (
+        <PrizeRow key={p.key} p={p} showGoal />
+      ))}
+      {unclaimed.length > 0 && <span className="small muted">Still not taken:</span>}
+      {unclaimed.map((p) => (
+        <PrizeRow key={p.key} p={p} showGoal />
+      ))}
+      {lost.length > 0 && <span className="small muted">Bonus missed this period: {lost.map((p) => `${p.title} (${p.goal?.title ?? ''})`).join(' · ')}. The finish prize is still on.</span>}
+      {groups.length > 0 && <span className="small muted">Group prizes: {groups.map((p) => `${p.group!.name} ${groupScoreText(p.score!)}`).join(' · ')}.</span>}
+    </div>
+  );
+}
+
 function PathsCheck({ kind, draft, set }: { kind: ReviewKind; draft: Draft; set: (p: Partial<Draft>) => void }) {
   const { data } = useStore();
   const view = useView();

@@ -22,6 +22,7 @@ import { StreakCard, StreakChip } from './today/Streak.tsx';
 import { EveningWrap, MorningPlan } from './today/Rituals.tsx';
 import { TaskCard } from './today/TaskCard.tsx';
 import { TodayNumbers } from './today/TodayNumbers.tsx';
+import { PrizeCelebration } from '../components/Prize.tsx';
 import { AddTaskOnDay } from './today/AddTaskOnDay.tsx';
 
 
@@ -343,6 +344,8 @@ export function Today({ date }: { date?: ISODate } = {}) {
         <div className="only-narrow" style={{ marginTop: 2 }}>
           {weekStrip}
         </div>
+
+        {isToday && <PrizeCelebration />}
 
         {summary}
         {segs.length > 0 && (

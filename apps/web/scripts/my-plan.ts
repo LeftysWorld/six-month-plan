@@ -19,6 +19,7 @@ import { blankPath, opsCreatePath } from '../src/data/paths.ts';
 import { opsAddIdea } from '../src/data/backlog.ts';
 import { opsAddPhotoTracker } from '../src/data/tracking.ts';
 import { blankHabit, opsCreateHabit } from '../src/data/habits.ts';
+import { opsSetGroupPrize } from '../src/data/prizes.ts';
 // Goal colours (the same set as components/ui.tsx).
 const GOAL_COLORS = ['#5B8CFF', '#22B07D', '#FF7A45', '#E8559B', '#8B6CF6', '#3FB6C9'];
 
@@ -81,6 +82,8 @@ const pathDoc = { ...blankPath(data, TODAY), name: 'Documentarian: Adventure Mus
     { id: crypto.randomUUID(), text: 'Can I work through a fixer and get written consent in Spanish?', answer: '', answered_at: null },
   ] };
 run([...opsCreatePath(pathAI), ...opsCreatePath(pathDoc)]);
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /** Make a goal with sensible defaults; returns its id. */
 function goal(input: Partial<NewGoalInput> & Pick<NewGoalInput, 'title' | 'type' | 'doneMeans'>, color: string): string {
@@ -196,6 +199,8 @@ const job = goal(
     why: 'Income, and the seat where the AI work actually happens.',
     doneMeans: 'Offer accepted for an AI product owner or product manager role by the end of January',
     finish: JOB_BY,
+    // "?" marks a suggestion to swap for your own on the goal page (Prizes → Change).
+    prize: 'A proper celebration dinner out?',
     pathId: pathAI.id,
     weekGoal: 'Resume and LinkedIn rewritten for AI product roles; 125 applications out',
     task: { title: 'Applications sent', days: [1, 2, 3, 4, 5], minutes: 150 },
@@ -217,7 +222,12 @@ const job = goal(
 }
 tasks(job, [{ title: 'One networking message or coffee chat', kind: 'check', minutes: 20, days: [2, 4], through: JOB_BY, cue: 'After applications' }]);
 
-run(opsCreateGroup(data, 'AI', [jhu, aigp, iso, job]).ops);
+{
+  const grp = opsCreateGroup(data, 'AI', [jhu, aigp, iso, job]);
+  run(grp.ops);
+  // All four AI goals finished: buy the land for the glamping site.
+  run(opsSetGroupPrize(data.groups.find((g) => g.id === grp.groupId)!, 'Buy land for the glamping site', 1));
+}
 
 // ---------- The workouts (5-Day Upper Body Plan, Mon–Fri, weights only, knee-safe) ----------
 
@@ -282,6 +292,14 @@ const weight = goal(
     baseline: WEIGHT_NOW,
     target: WEIGHT_GOAL,
     targetDate: plan.end_date,
+    // Four steps down, a treat on each; the first reading at or below the number ticks it off.
+    // Dates follow the 1.5 lb/week path. "?" marks a suggestion to swap for your own.
+    milestones: [
+      { title: '10 lb down', due_date: '2026-12-13', value: round1(WEIGHT_NOW - 10), prize: 'A sports massage?' },
+      { title: '20 lb down', due_date: '2027-01-31', value: round1(WEIGHT_NOW - 20), prize: 'A nice burr grinder' },
+      { title: '30 lb down', due_date: '2027-03-14', value: round1(WEIGHT_NOW - 30), prize: 'A tailored shirt in the new size?' },
+    ],
+    prize: 'A long weekend somewhere new?',
     weekGoal: 'All five workouts (week 4 of the plan); weight and a photo every morning; no alcohol, keto every day',
     task: null,
   },
@@ -305,22 +323,27 @@ run(opsCreateHabit(data, { ...blankHabit(TODAY), title: 'Keto / carnivore eating
 
 const splits = goal(
   {
-    title: 'Front splits',
+    title: 'Front and side splits',
     type: 'practice',
     why: 'Mobility I will keep for decades. If I get there, hurray; if not, I will be closer.',
-    doneMeans: 'Front splits flat on the floor, or as close as six months of daily stretching gets me',
+    doneMeans: 'Front splits and side splits flat on the floor, or as close as six months of daily stretching gets me',
     weekGoal: 'Stretch every day; measure the gap on Sunday',
     task: { title: 'Stretch', days: [1, 2, 3, 4, 5, 6, 7], minutes: 25 },
     milestones: [
       { title: 'Baseline gap measured', due_date: addDays(TODAY, 6) },
       { title: 'Gap halved', due_date: '2027-01-24' },
-      { title: 'Splits day: as low as it goes', due_date: plan.end_date },
+      { title: 'Splits day: front and side, as low as they go', due_date: plan.end_date },
     ],
   },
   GOAL_COLORS[3]!,
 );
 tasks(splits, [{ title: 'Measure the splits gap', kind: 'measure', minutes: 5, days: [7], newMeasure: { name: 'Splits gap', unit: 'in' } }]);
-run(opsCreateGroup(data, 'Body', [weight, splits]).ops);
+{
+  const grp = opsCreateGroup(data, 'Body', [weight, splits]);
+  run(grp.ops);
+  // 155 lb and both splits: the big one.
+  run(opsSetGroupPrize(data.groups.find((g) => g.id === grp.groupId)!, 'A scouting trip to Japan or Taiwan?', 1));
+}
 
 // ---------- Group: Documentarian (Plan B) ----------
 

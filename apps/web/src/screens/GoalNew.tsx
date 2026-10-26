@@ -48,7 +48,9 @@ export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: 
   const [target, setTarget] = useState<number | null>(null);
   const [targetDate, setTargetDate] = useState('');
   const [edits, setEdits] = useState<Record<string, number>>({});
-  const [milestones, setMilestones] = useState([{ title: '', due_date: addDays(from, 28) }]);
+  const [milestones, setMilestones] = useState<{ title: string; due_date: string; value?: number | null; prize?: string }[]>([{ title: '', due_date: addDays(from, 28) }]);
+  const [prize, setPrize] = useState('');
+  const [prizeOnTime, setPrizeOnTime] = useState('');
   const [weekGoal, setWeekGoal] = useState('');
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDays, setTaskDays] = useState<number[]>([1, 3, 5]);
@@ -79,6 +81,8 @@ export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: 
     targetDate,
     pathEdits: edits,
     milestones,
+    prize,
+    prizeOnTime,
     weekGoal,
     task: taskTitle.trim() ? { title: taskTitle, days: taskDays, minutes: taskMinutes } : null,
     shareActionIds: share,
@@ -185,13 +189,21 @@ export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: 
             )}
           </>
         )}
-        {type === 'finish' && (
+        {(type === 'finish' || type === 'number') && (
           <div className="stack-sm">
-            <span className="label">Dates to hit (modules, exam booking, exam day)</span>
+            <span className="label">{type === 'number' ? 'Dates to hit (10 lb down by Dec 13…)' : 'Dates to hit (modules, exam booking, exam day)'}</span>
             {milestones.map((m, i) => (
-              <div key={i} className="grid-2">
-                <input className="input" aria-label={`Date ${i + 1}`} placeholder={`e.g. ${i === 0 ? 'Module 1 done' : 'Exam booked'}`} value={m.title} onChange={(e) => setMilestones(milestones.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
-                <input className="input" type="date" aria-label={`Date ${i + 1}`} value={m.due_date} min={from} max={end} onChange={(e) => e.target.value && setMilestones(milestones.map((x, j) => (j === i ? { ...x, due_date: e.target.value } : x)))} />
+              <div key={i} className="stack-sm" style={{ gap: 6 }}>
+                <div className="grid-2">
+                  <input className="input" aria-label={`Date ${i + 1}`} placeholder={type === 'number' ? `e.g. ${i === 0 ? '10 lb down' : '20 lb down'}` : `e.g. ${i === 0 ? 'Module 1 done' : 'Exam booked'}`} value={m.title} onChange={(e) => setMilestones(milestones.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
+                  <input className="input" type="date" aria-label={`Date ${i + 1}`} value={m.due_date} min={from} max={end} onChange={(e) => e.target.value && setMilestones(milestones.map((x, j) => (j === i ? { ...x, due_date: e.target.value } : x)))} />
+                </div>
+                <div className="grid-2">
+                  {type === 'number' && (
+                    <input className="input" type="number" step="any" inputMode="decimal" aria-label={`Number that marks date ${i + 1} hit`} placeholder={`the ${unit || 'number'} that marks it hit`} value={m.value ?? ''} onChange={(e) => setMilestones(milestones.map((x, j) => (j === i ? { ...x, value: e.target.value === '' ? null : Number(e.target.value) } : x)))} />
+                  )}
+                  <input className="input" aria-label={`Prize for date ${i + 1}`} placeholder="prize for hitting it (optional)" value={m.prize ?? ''} onChange={(e) => setMilestones(milestones.map((x, j) => (j === i ? { ...x, prize: e.target.value } : x)))} />
+                </div>
               </div>
             ))}
             <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setMilestones([...milestones, { title: '', due_date: addDays(milestones.at(-1)?.due_date ?? from, 14) }])}>
@@ -247,6 +259,21 @@ export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: 
         </div>
         <span className="xsmall muted">About {Math.max(1, Math.round(horizon / 7))} weeks{horizon < 170 ? ', less than six months, and that’s fine' : ''}.</span>
         {existing.length >= 3 && <div className="banner warn">{season.name} already has {existing.length} goals. Most people stick with 3–4 at a time.</div>}
+      </div>
+
+      <div className="card stack">
+        <span className="label">Prizes <span style={{ fontWeight: 400 }}>(optional)</span></span>
+        <div className="grid-2">
+          <label className="field">
+            When it’s finished
+            <input value={prize} onChange={(e) => setPrize(e.target.value)} placeholder="e.g. a weekend away" />
+          </label>
+          <label className="field">
+            And if it’s finished by {shortDate(end)}
+            <input value={prizeOnTime} onChange={(e) => setPrizeOnTime(e.target.value)} placeholder="e.g. …plus the good one" />
+          </label>
+        </div>
+        <span className="xsmall muted">Something you wouldn’t buy or do for yourself otherwise. The bonus is judged against the finish date as it stands now; moving the date later won’t move it.</span>
       </div>
 
       <div className="card stack">

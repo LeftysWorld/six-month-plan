@@ -1,4 +1,4 @@
-import { type Action, type ActionSchedule, type Goal, type ISODate, type Session } from '@six/core';
+import { milestoneReached, type Action, type ActionSchedule, type Goal, type ISODate, type Milestone, type Session } from '@six/core';
 import type { View } from './derive.ts';
 import type { AppData, Op } from './model.ts';
 import { opsLogSession } from './ops.ts';
@@ -64,7 +64,22 @@ export function opsRecordReading(data: AppData, typeId: string | null | undefine
     ops.push({ kind: 'insert', collection: 'measurements', rows: [{ id, type_id: typeId, value, measured_on: date, source: 'task', note: '' }] });
     undo.push({ kind: 'delete', collection: 'measurements', id });
   }
+  // A reading that reaches a dated number on the goal (184.2 by Dec 13) ticks that date off by itself.
+  for (const m of milestonesReachedBy(data, typeId, value)) {
+    ops.push({ kind: 'update', collection: 'milestones', id: m.id, patch: { completed_at: `${date}T12:00:00.000Z` } });
+    undo.push({ kind: 'update', collection: 'milestones', id: m.id, patch: { completed_at: null } });
+  }
   return { ops, undo };
+}
+
+/** Open milestones with a value, on goals measured by this type, that a reading reaches. */
+export function milestonesReachedBy(data: AppData, typeId: string, value: number): Milestone[] {
+  const goals = data.goals.filter((g) => g.measurement_type_id === typeId && !g.archived_at);
+  return data.milestones.filter((m) => {
+    if (m.completed_at || m.value == null) return false;
+    const goal = goals.find((g) => g.id === m.goal_id);
+    return !!goal && milestoneReached(goal, m, value);
+  });
 }
 
 /** The reading a measure task saved on a day, if any. */

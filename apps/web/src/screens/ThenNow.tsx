@@ -3,6 +3,7 @@ import { daysBetween, minutesDone, sessionCredit, shortDate, type Attachment, ty
 import { useStore } from '../data/store.tsx';
 import { fmt, minutesText } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
+import { goalPrizes } from '../data/prizes.ts';
 import { opsUpdateGoal } from '../data/ops.ts';
 import { actionLookup } from '../data/insights.ts';
 import { goalTrack } from '../data/season.ts';
@@ -90,6 +91,7 @@ function GoalThenNow({ goal, plan }: { goal: Goal; plan: Plan }) {
   const msDone = milestones.filter((m) => m.completed_at).length;
   const photos = photoPair(data, goal.id);
   const finished = !!goal.completed_at;
+  const prizes = goalPrizes(view, goal, today, plan);
 
   function save() {
     const before = goal.reflection ?? '';
@@ -147,6 +149,14 @@ function GoalThenNow({ goal, plan }: { goal: Goal; plan: Plan }) {
             : ''}
         {done > 0 ? `${done} task${done === 1 ? '' : 's'} on ${days} day${days === 1 ? '' : 's'}${minutes ? `, ${minutesText(minutes)}` : ''}.` : 'Nothing logged yet.'}
       </span>
+      {prizes.length > 0 && (
+        <span className="small muted">
+          What it earned:{' '}
+          {prizes
+            .map((p) => `${p.title} (${p.lost ? 'missed' : p.status === 'earned' ? 'earned' : p.status === 'late' ? 'earned late' : 'open'}${p.claimedAt ? ', claimed' : ''})`)
+            .join(' · ')}
+        </span>
+      )}
       <label className="field">
         In your own words: who were you then, who are you now?
         <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder={finished ? 'What it took, what changed, what you’d tell yourself in week 1' : 'What’s different so far, what isn’t yet'} />

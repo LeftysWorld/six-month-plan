@@ -9,3 +9,4 @@ export * from './backlog.ts';
 export * from './workout.ts';
 export * from './steps.ts';
 export * from './habits.ts';
+export * from './prizes.ts';

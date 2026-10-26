@@ -258,7 +258,7 @@ export function Roadmap() {
           type="button"
           className={`rm-ms${m.completed_at ? ' done' : ''}${moving ? ' moving' : ''}`}
           style={{ left: `${pct(date)}%`, ['--c' as string]: goal.color }}
-          title={`${m.title} · ${m.completed_at ? 'done · ' : ''}${shortDate(date)}`}
+          title={`${m.title} · ${m.completed_at ? 'done · ' : ''}${shortDate(date)}${m.prize?.trim() ? ` · prize: ${m.prize.trim()}` : ''}`}
           aria-label={`${m.title}, ${goal.title}, ${m.completed_at ? 'done, ' : ''}${shortDate(date)}. Drag or use arrow keys to move, Enter to change`}
           onPointerDown={(e) => msDown(e, m)}
           onPointerMove={(e) => msMove(e, m)}
@@ -567,7 +567,7 @@ function ListRow({ r, onEdit, onDate, onCheckpoint }: { r: GoalRow; onEdit: () =
   const days = daysBetween(r.start, r.end) + 1;
   // Every date inside the goal, in order: yours and its 3-month, month and week goals.
   const dated = [
-    ...view.milestonesOf(r.goal.id).map((m) => ({ key: m.id, date: m.due_date, label: m.title, done: !!m.completed_at, open: () => onDate(m), cp: false })),
+    ...view.milestonesOf(r.goal.id).map((m) => ({ key: m.id, date: m.due_date, label: `${m.title}${m.value != null ? ` · ${m.value}${r.goal.unit ? ` ${r.goal.unit}` : ''}` : ''}${m.prize?.trim() ? ` · 🎁 ${m.prize.trim()}` : ''}`, done: !!m.completed_at, open: () => onDate(m), cp: false })),
     ...checkpointsOf(data, r.goal, weekStart(today), r.plan.id).map((cp) => ({ key: cp.id, date: cp.date, label: `${CHECKPOINT_NAME[cp.level]}: ${cp.text}`, done: cp.done, open: () => onCheckpoint(cp), cp: true })),
   ].sort((a, b) => (a.date < b.date ? -1 : 1));
   return (

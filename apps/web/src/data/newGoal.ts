@@ -34,7 +34,10 @@ export interface NewGoalInput {
   /** The path's checkpoints you changed by hand, by date. */
   pathEdits: Record<string, number>;
   // finish goals
-  milestones: { title: string; due_date: ISODate }[];
+  milestones: { title: string; due_date: ISODate; value?: number | null; prize?: string }[];
+  /** The treat for finishing, and the extra for finishing by the target date (both optional). */
+  prize?: string;
+  prizeOnTime?: string;
   /** This week's goal, in a line. */
   weekGoal: string;
   /** The first daily task, or null to share one instead. */
@@ -86,7 +89,7 @@ export function opsMakeGoal(data: AppData, plan: Plan, input: NewGoalInput, toda
       target: input.target,
       targetDate: input.targetDate,
       path: newGoalPath(input, start, plan.block_days),
-      milestones: input.type === 'finish' ? input.milestones.filter((m) => m.title.trim()) : [],
+      milestones: input.milestones.filter((m) => m.title.trim()).map((m) => ({ title: m.title, due_date: m.due_date, ...(m.value != null ? { value: m.value } : {}), ...(m.prize?.trim() ? { prize: m.prize.trim() } : {}) })),
       action: null,
     },
     today,
@@ -97,6 +100,12 @@ export function opsMakeGoal(data: AppData, plan: Plan, input: NewGoalInput, toda
   if (input.pathId) dates.path_id = input.pathId;
   if (start > plan.start_date) dates.start_date = start;
   if (input.type !== 'number' && input.finish && input.finish < plan.end_date && input.finish >= start) dates.target_date = input.finish;
+  // Its prizes: for finishing, and for finishing by the date it has right now (that date is fixed as the bonus's judge).
+  if (input.prize?.trim()) dates.prize = input.prize.trim();
+  if (input.prizeOnTime?.trim()) {
+    dates.prize_on_time = input.prizeOnTime.trim();
+    dates.target_date_at_set = (dates.target_date as ISODate | undefined) ?? (input.type === 'number' ? input.targetDate || plan.end_date : plan.end_date);
+  }
   if (Object.keys(dates).length) all.push({ kind: 'update', collection: 'goals', id: goalId, patch: dates });
   let next = withOps(data, all);
   const goal = next.goals.find((g) => g.id === goalId)!;

@@ -5,6 +5,8 @@ import { fmt } from '../../data/derive.ts';
 import { useView } from '../../data/useView.ts';
 import { opsLogSession, opsRestoreSession } from '../../data/ops.ts';
 import { lastReading, measureLabel, measureOnToday, opsRecordReading, readingOn } from '../../data/connect.ts';
+import { nextValuedPrize } from '../../data/prizes.ts';
+import { shortDate, type Goal } from '@six/core';
 import { Icon, useToast } from '../../components/ui.tsx';
 import { FileThumb, useAddFiles } from '../../components/Attachments.tsx';
 import { usePhotoInput } from '../../components/usePhotoInput.tsx';
@@ -58,6 +60,14 @@ export function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
     setChanging({ ...changing, [typeId]: false });
   }
 
+  // "· next prize: 184.2 lb by Dec 13 · 1.6 to go" for a number goal with a dated prize ahead.
+  function nextPrizeText(goal: Goal, current: number | null): string {
+    const m = nextValuedPrize(view, goal);
+    if (!m || m.value == null) return '';
+    const gap = current != null ? Math.abs(current - m.value) : null;
+    return ` · next prize at ${fmt(m.value)} ${goal.unit ?? ''} by ${shortDate(m.due_date)}${gap != null && gap > 0 ? ` · ${fmt(gap)} to go` : ''}`;
+  }
+
   return (
     <section className="card tight stack-sm today-numbers" aria-label={title}>
       <span className="label">{title}</span>
@@ -78,7 +88,10 @@ export function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
             <span className="dot" style={{ background: goal.color }} />
             <span className="grow" style={{ minWidth: 0 }}>
               <span className="today-number-name">{measureLabel(type)}</span>
-              <span className="xsmall muted today-number-goal">{goal.title}</span>
+              <span className="xsmall muted today-number-goal">
+                {goal.title}
+                {nextPrizeText(goal, logged ?? last?.value ?? null)}
+              </span>
             </span>
             {editing ? (
               <>

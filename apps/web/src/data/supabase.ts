@@ -31,6 +31,9 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261108000000_one_window_per_goal.sql', table: 'goals', columns: [], drops: { table: 'goals', column: 'after_goal_id' } },
   { file: '20261109000000_odyssey_paths.sql', table: 'paths', columns: [], creates: true },
   { file: '20261109000000_odyssey_paths.sql', table: 'goals', columns: ['path_id'] },
+  { file: '20261110000000_prizes.sql', table: 'milestones', columns: ['prize', 'prize_claimed_at'] },
+  { file: '20261110000000_prizes.sql', table: 'goals', columns: ['prize_on_time', 'target_date_at_set', 'prize_on_time_claimed_at'] },
+  { file: '20261110000000_prizes.sql', table: 'goal_groups', columns: ['prize_threshold'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */
@@ -109,6 +112,8 @@ function numeric(rows: Record<string, unknown>[], fields: string[]): Record<stri
 
 const NUMERIC_FIELDS: Record<string, string[]> = {
   goals: ['baseline_value', 'target_value'],
+  milestones: ['value'],
+  goal_groups: ['prize_threshold'],
   goal_targets: ['target_value'],
   plan_steps: ['target_value'],
   measurements: ['value'],

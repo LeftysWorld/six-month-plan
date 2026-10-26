@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { shortDate, type ISODate, type Milestone } from '@six/core';
+import { fmt } from '../data/derive.ts';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { opsAddMilestone } from '../data/ops.ts';
@@ -35,21 +36,24 @@ export function MilestoneSheet({
   const [title, setTitle] = useState(milestone?.title ?? '');
   const [date, setDate] = useState(milestone?.due_date ?? date0 ?? today);
   const [done, setDone] = useState(!!milestone?.completed_at);
+  const [value, setValue] = useState(milestone?.value != null ? String(milestone.value) : '');
+  const [prize, setPrize] = useState(milestone?.prize ?? '');
   const goal = view.goal(goalId);
   const plan = goal ? view.planForGoal(goal) : null;
   const window = goal && plan ? view.plannedWindow(goal, plan) : null;
   const outside = !!window && (date < window.start || date > window.end);
-  const valid = !!goal && title.trim().length > 0 && !!date && !outside;
+  const numValue = value.trim() === '' ? null : Number(value);
+  const valid = !!goal && title.trim().length > 0 && !!date && !outside && (numValue == null || Number.isFinite(numValue));
   const example = goal?.type === 'number' ? `e.g. ${goal.unit === 'lb' || goal.unit === 'kg' ? 'Weigh' : 'Reach'} ${goal.target_value ?? 200}${goal.unit ? ` ${goal.unit}` : ''}` : 'e.g. Class begins, Exam day, Module 3 done';
 
   function save() {
     if (!valid || !goal) return;
     if (!milestone) {
-      commit(opsAddMilestone(goal.id, title, date));
+      commit(opsAddMilestone(goal.id, title, date, { value: numValue, prize }));
       toast(`${title.trim()} added on ${shortDate(date)}. It shows on the roadmap, calendar and ${goal.title}.`);
     } else {
       const before = milestone;
-      const ops = opsUpdateMilestone(milestone, { title, due_date: date, completed_at: done ? milestone.completed_at ?? new Date().toISOString() : null });
+      const ops = opsUpdateMilestone(milestone, { title, due_date: date, completed_at: done ? milestone.completed_at ?? new Date().toISOString() : null, value: numValue, prize });
       if (ops.length) {
         commit(ops);
         toast(`${title.trim()} · ${shortDate(date)}`, () => commit(opsRestoreMilestone(data, before)));
@@ -93,6 +97,17 @@ export function MilestoneSheet({
           Date
           <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
         </label>
+        {goal?.type === 'number' && (
+          <label className="field">
+            The number that marks it hit{goal.unit ? ` (${goal.unit})` : ''} <span style={{ fontWeight: 400 }}>(optional)</span>
+            <input type="number" step="any" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder={goal.target_value != null ? `e.g. ${goal.target_value}` : 'e.g. 184.2'} />
+          </label>
+        )}
+        <label className="field">
+          Prize for hitting it <span style={{ fontWeight: 400 }}>(optional)</span>
+          <input value={prize} onChange={(e) => setPrize(e.target.value)} placeholder="e.g. a nice burr grinder" />
+        </label>
+        {goal?.type === 'number' && numValue != null && <span className="xsmall muted">The first reading at or past {fmt(numValue)} ticks this date off by itself. Hit it late and the prize is still yours; the date just shows how late.</span>}
         {outside && window && (
           <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>
             That's outside this goal's dates ({shortDate(window.start)} – {shortDate(window.end)}). Move the goal's dates on the roadmap first if you need it there.

@@ -67,6 +67,14 @@ export interface Goal {
   reflection?: string;
   /** The Odyssey path this goal is a bet on. Missing on older databases. */
   path_id?: string | null;
+  /** The treat for finishing this goal, in your words ("a weekend away"). Blank = none. Missing on older databases. */
+  prize?: string;
+  /** The extra treat for finishing by the target date it had when the prize was set. */
+  prize_on_time?: string;
+  /** The target date the on-time bonus is judged against (fixed when the bonus is set, so moving the date later can't move the bonus). */
+  target_date_at_set?: ISODate | null;
+  prize_claimed_at?: string | null;
+  prize_on_time_claimed_at?: string | null;
 }
 
 /** A named group of goals that work together, made by dragging one goal onto another (like a phone folder). */
@@ -74,6 +82,11 @@ export interface GoalGroup {
   id: string;
   name: string;
   created_at: string;
+  /** The treat for the whole group landing (enough of its goals finished by season end). Missing on older databases. */
+  prize?: string;
+  /** Share of the group's goals that must finish for the prize, 0–1 (default 0.85). */
+  prize_threshold?: number | null;
+  prize_claimed_at?: string | null;
 }
 
 export interface PlanGoal {
@@ -119,6 +132,11 @@ export interface Milestone {
   title: string;
   due_date: ISODate;
   completed_at: string | null;
+  /** For a number goal: the reading that marks this date hit (184.2). A reading at or past it completes the milestone by itself. Missing on older databases. */
+  value?: number | null;
+  /** The treat for hitting it ("a nice burr grinder"). Blank = none. */
+  prize?: string;
+  prize_claimed_at?: string | null;
 }
 
 export interface Action {

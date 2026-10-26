@@ -225,7 +225,7 @@ export interface GoalInput {
   targetDate: ISODate;
   path: PathPoint[];
   // finish goals
-  milestones: { title: string; due_date: ISODate }[];
+  milestones: { title: string; due_date: ISODate; value?: number | null; prize?: string }[];
   // optional regular action
   action: ActionInput | null;
 }
@@ -299,7 +299,7 @@ export function opsCreateGoal(data: AppData, input: GoalInput, today: ISODate): 
     ops.push({
       kind: 'insert',
       collection: 'milestones',
-      rows: rows(ms.map((m): Milestone => ({ id: newId(), goal_id: goalId, title: m.title.trim(), due_date: m.due_date, completed_at: null }))),
+      rows: rows(ms.map((m): Milestone => ({ id: newId(), goal_id: goalId, title: m.title.trim(), due_date: m.due_date, completed_at: null, value: m.value ?? null, prize: m.prize?.trim() ?? '', prize_claimed_at: null }))),
     });
   }
   if (input.action && input.action.title.trim()) {
@@ -381,8 +381,8 @@ export function opsReplacePath(data: AppData, goal: Goal, points: PathPoint[], t
   ];
 }
 
-export function opsAddMilestone(goalId: string, title: string, due: ISODate): Op[] {
-  return [{ kind: 'insert', collection: 'milestones', rows: rows([{ id: newId(), goal_id: goalId, title: title.trim(), due_date: due, completed_at: null }]) }];
+export function opsAddMilestone(goalId: string, title: string, due: ISODate, extra: { value?: number | null; prize?: string } = {}): Op[] {
+  return [{ kind: 'insert', collection: 'milestones', rows: rows([{ id: newId(), goal_id: goalId, title: title.trim(), due_date: due, completed_at: null, value: extra.value ?? null, prize: extra.prize?.trim() ?? '', prize_claimed_at: null }]) }];
 }
 
 export function opsToggleMilestone(m: Milestone): Op[] {

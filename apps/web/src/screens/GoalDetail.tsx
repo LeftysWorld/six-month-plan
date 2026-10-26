@@ -19,6 +19,8 @@ import {
 import { navigate } from '../router.ts';
 import { Icon, NumberInput, useToast } from '../components/ui.tsx';
 import { MilestoneSheet } from '../components/MilestoneSheet.tsx';
+import { PrizeTag } from '../components/Prize.tsx';
+import { goalPrizes } from '../data/prizes.ts';
 import { WeightChart } from '../components/WeightChart.tsx';
 import { GoalFiles } from '../components/Attachments.tsx';
 import { GoalGroupCard } from '../components/Connections.tsx';
@@ -111,10 +113,14 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
                 </span>
               </button>
               <div className="grow">
-                <div style={{ textDecoration: m.completed_at ? 'line-through' : undefined, color: m.completed_at ? 'var(--muted)' : undefined }}>{m.title}</div>
+                <div style={{ textDecoration: m.completed_at ? 'line-through' : undefined, color: m.completed_at ? 'var(--muted)' : undefined }}>
+                  {m.title}
+                  {m.value != null ? <span className="muted"> · {fmt(m.value)} {goal.unit ?? ''}</span> : null}
+                </div>
                 <div className="xsmall muted">
                   {shortDate(m.due_date)}
                   {!m.completed_at && m.due_date < today ? ' · past due' : ''}
+                  {m.prize?.trim() ? ` · prize: ${m.prize.trim()}` : ''}
                 </div>
               </div>
             </div>
@@ -226,6 +232,8 @@ export function GoalRecord({ goal }: { goal: Goal }) {
   const msEditing = editingMs ? data.milestones.find((x) => x.id === editingMs) : undefined;
   const milestones = data.milestones.filter((m) => m.goal_id === goal.id).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
   const types = data.measurementTypes.filter((t) => !t.archived_at && (t.goal_id === goal.id || t.id === goal.measurement_type_id));
+  const prizes = goalPrizes(view, goal, today, plan);
+  const prizeOf = (id: string) => prizes.find((p) => p.key === `m:${id}`);
   return (
     <>
       {/* Every goal can have milestones: checkpoints inside it (class begins, exam booked, module 5). */}
@@ -275,10 +283,16 @@ export function GoalRecord({ goal }: { goal: Goal }) {
                 </span>
               </button>
               <button type="button" className="grow cal-row-btn" onClick={() => setEditingMs(m.id)} aria-label={`Change ${m.title}`}>
-                <div style={{ textDecoration: m.completed_at ? 'line-through' : undefined, color: m.completed_at ? 'var(--muted)' : undefined }}>{m.title}</div>
-                <div className="xsmall muted">
-                  {shortDate(m.due_date)}
-                  {!m.completed_at && m.due_date < today ? ' · past due' : ''}
+                <div style={{ textDecoration: m.completed_at ? 'line-through' : undefined, color: m.completed_at ? 'var(--muted)' : undefined }}>
+                  {m.title}
+                  {m.value != null ? <span className="muted"> · {fmt(m.value)} {goal.unit ?? ''}</span> : null}
+                </div>
+                <div className="xsmall muted row-start" style={{ gap: 6 }}>
+                  <span>
+                    {shortDate(m.due_date)}
+                    {!m.completed_at && m.due_date < today ? ' · past due' : ''}
+                  </span>
+                  {prizeOf(m.id) && <PrizeTag p={prizeOf(m.id)!} />}
                 </div>
               </button>
             </div>
