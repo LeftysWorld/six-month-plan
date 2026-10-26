@@ -200,7 +200,7 @@ const job = goal(
     doneMeans: 'Offer accepted for an AI product owner or product manager role by the end of January',
     finish: JOB_BY,
     // "?" marks a suggestion to swap for your own on the goal page (Prizes → Change).
-    prize: 'A proper celebration dinner out?',
+    prize: 'Start the process for my wife’s US visa',
     pathId: pathAI.id,
     weekGoal: 'Resume and LinkedIn rewritten for AI product roles; 125 applications out',
     task: { title: 'Applications sent', days: [1, 2, 3, 4, 5], minutes: 150 },
@@ -295,9 +295,9 @@ const weight = goal(
     // Four steps down, a treat on each; the first reading at or below the number ticks it off.
     // Dates follow the 1.5 lb/week path. "?" marks a suggestion to swap for your own.
     milestones: [
-      { title: '10 lb down', due_date: '2026-12-13', value: round1(WEIGHT_NOW - 10), prize: 'A sports massage?' },
+      { title: '10 lb down', due_date: '2026-12-13', value: round1(WEIGHT_NOW - 10), prize: 'Canon RF 16mm lens' },
       { title: '20 lb down', due_date: '2027-01-31', value: round1(WEIGHT_NOW - 20), prize: 'A nice burr grinder' },
-      { title: '30 lb down', due_date: '2027-03-14', value: round1(WEIGHT_NOW - 30), prize: 'A tailored shirt in the new size?' },
+      { title: '30 lb down', due_date: '2027-03-14', value: round1(WEIGHT_NOW - 30), prize: 'A new phone' },
     ],
     prize: 'A long weekend somewhere new?',
     weekGoal: 'All five workouts (week 4 of the plan); weight and a photo every morning; no alcohol, keto every day',
@@ -342,7 +342,7 @@ tasks(splits, [{ title: 'Measure the splits gap', kind: 'measure', minutes: 5, d
   const grp = opsCreateGroup(data, 'Body', [weight, splits]);
   run(grp.ops);
   // 155 lb and both splits: the big one.
-  run(opsSetGroupPrize(data.groups.find((g) => g.id === grp.groupId)!, 'A scouting trip to Japan or Taiwan?', 1));
+  run(opsSetGroupPrize(data.groups.find((g) => g.id === grp.groupId)!, 'Take IPPI Level 1, 2 and 3', 1));
 }
 
 // ---------- Group: Documentarian (Plan B) ----------
