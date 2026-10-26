@@ -158,9 +158,14 @@ export function ReviewHub() {
             ))}
           </div>
           {started && (
-            <a className="btn ghost small" href={href('/progress')} style={{ alignSelf: 'flex-start' }}>
-              All charts ›
-            </a>
+            <div className="row-start" style={{ gap: 8 }}>
+              <a className="btn ghost small" href={href('/review/then-now')}>
+                Then vs now ›
+              </a>
+              <a className="btn ghost small" href={href('/progress')}>
+                All charts ›
+              </a>
+            </div>
           )}
         </div>
       </div>

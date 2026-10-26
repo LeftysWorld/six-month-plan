@@ -38,7 +38,7 @@ import { catchUp, catchUpPlan, chainFor, isSet, opsSetLevel, type ChainLevel } f
 import { withOps } from '../data/breakdown.ts';
 import { selectedIdeas } from '../data/backlog.ts';
 import { actionLookup, commitmentTrail, obstacleSentence, planTrend, readCheck, timeAverages, trendFor, weekdaySentence } from '../data/insights.ts';
-import { navigate, useRoute } from '../router.ts';
+import { href, navigate, useRoute } from '../router.ts';
 import { BackLink, Empty, NumberInput, OBSTACLES, PacePill, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { TrendBars } from '../components/TrendBars.tsx';
 import { weekToReview } from './ReviewHub.tsx';
@@ -460,6 +460,14 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
           <span className="small muted" style={{ marginTop: -8 }}>
             {shortDate(period.start)} – {shortDate(period.end)}
           </span>
+          {kind === 'retro' && plan && (
+            <a className="card stack-sm" href={href(`/review/then-now?plan=${plan.id}`)} style={{ textDecoration: 'none' }}>
+              <span className="label" style={{ color: 'var(--accent-ink)' }}>Then vs now ›</span>
+              <span className="small" style={{ color: 'var(--ink-2)' }}>
+                Each goal's why, where you started and where you are, your photos, and a place for your own words. Read it before you rate the six months.
+              </span>
+            </a>
+          )}
 
           {prev?.change_next && (
             <div className="card stack-sm">

@@ -18,6 +18,7 @@ import { GoalNew } from './screens/GoalNew.tsx';
 import { ReviewHub } from './screens/ReviewHub.tsx';
 import { WeeklyReview } from './screens/WeeklyReview.tsx';
 import { ReviewDetail, ReviewList } from './screens/ReviewPast.tsx';
+import { ThenNow } from './screens/ThenNow.tsx';
 import { Progress } from './screens/Progress.tsx';
 import { Settings } from './screens/Settings.tsx';
 import { setAppBadge } from './push.ts';
@@ -188,6 +189,7 @@ function Shell(props: ShellProps) {
     case 'review':
       if (s1 === 'run') screen = <WeeklyReview kind={route.query.get('kind') ?? 'weekly'} />;
       else if (s1 === 'past') screen = s2 ? <ReviewDetail id={s2} /> : <ReviewList />;
+      else if (s1 === 'then-now') screen = <ThenNow planId={route.query.get('plan')} />;
       else screen = <ReviewHub />;
       break;
     case 'progress':

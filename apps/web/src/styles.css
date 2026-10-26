@@ -1275,3 +1275,10 @@ a.rm-name:hover .rm-title { color: var(--accent-ink); }
   .cal-num { align-self: center; }
   .cal-dots { justify-content: center; }
 }
+
+/* Then vs now */
+.then-now-why { margin: 0; font-size: 15px; line-height: 1.45; color: var(--ink-2); font-style: italic; }
+.then-now-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.then-now-col { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--fill); }
+.then-now-col .num { font-size: 22px; }
+.then-now-col .file-thumb { align-self: flex-start; }

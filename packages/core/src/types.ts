@@ -67,6 +67,8 @@ export interface Goal {
   after_goal_id?: string | null;
   /** When work on it starts, if later than its window's start (set on the roadmap). Missing on older databases. */
   start_date?: ISODate | null;
+  /** Your own words from the Then vs now page. Missing on older databases. */
+  reflection?: string;
 }
 
 /** A named group of goals that work together, made by dragging one goal onto another (like a phone folder). */
