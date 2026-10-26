@@ -505,8 +505,6 @@ export function opsDeleteGoal(data: AppData, goal: Goal): { ops: Op[]; files: st
     }
   }
   for (const idea of data.ideas.filter((i) => i.goal_id === goal.id)) ops.push({ kind: 'update', collection: 'ideas', id: idea.id, patch: { goal_id: null } });
-  // Goals that started after this one no longer wait on anything.
-  for (const g of data.goals.filter((x) => x.after_goal_id === goal.id)) ops.push({ kind: 'update', collection: 'goals', id: g.id, patch: { after_goal_id: null } });
   // Leaving its group first means a group left with one goal goes away too.
   ops.push(...opsRemoveFromGroup(data, goal.id));
   del('goals', goal.id);

@@ -9,7 +9,6 @@ import {
   type Goal,
   type Session,
   type SessionStatus,
-  chainAt,
 } from '@six/core';
 import { defaultProfile, emptyData, type AppData } from './model.ts';
 import { blankTask, opsAddTask, withOps } from './breakdown.ts';
@@ -98,7 +97,7 @@ export function buildDemoData(): AppData {
   data.groups = [credentials];
   jhu.group_id = credentials.id;
   const aigp = goal({ title: 'Pass the AIGP exam', type: 'finish', color: '#3FB6C9', why: 'AI governance credibility.', done_means: 'Exam passed', target_date: addDays(start, 70), group_id: credentials.id });
-  const iso = goal({ title: 'ISO 42001 Lead Implementer', type: 'finish', color: '#3FB6C9', why: 'Sell one narrow ISO 42001 implementation workstream.', done_means: 'Foundation, then Lead Implementer passed', group_id: credentials.id, after_goal_id: aigp.id });
+  const iso = goal({ title: 'ISO 42001 Lead Implementer', type: 'finish', color: '#3FB6C9', why: 'Sell one narrow ISO 42001 implementation workstream.', done_means: 'Foundation, then Lead Implementer passed', group_id: credentials.id, start_date: addDays(start, 71) });
   // A goal already finished early in the plan, so Completed has something to show.
   const finishedAt = `${addDays(today, -2)}T18:00:00.000Z`;
   const course = goal({ title: 'Finish the agents course', type: 'finish', color: '#94A3B8', why: 'Hands-on with agents and evals.', done_means: 'All lessons and the capstone done', completed_at: finishedAt, completion_note: 'Done two weeks early. Short evening sessions worked better than weekend marathons.' });
@@ -317,16 +316,16 @@ export function buildDemoData(): AppData {
     [career, '10+ interviews, 2 final rounds', 'Resume and LinkedIn rewritten for AI product roles; 60 applications', '15 tailored applications and one coffee chat'],
     [jhu, 'Modules 1–6 passed', 'Modules 1–2 passed', 'Module 2 quiz done by Sunday'],
   ];
-  for (const [g, quarter, month, week] of chainNotes) {
-    Object.assign(data, withOps(data, opsStartChain(data, g, plan, today, { quarter, month, week })));
+  for (const [g, , , week] of chainNotes) {
+    Object.assign(data, withOps(data, opsStartChain(data, g, plan, today, { week })));
   }
-  Object.assign(data, withOps(data, opsStartChain(data, aigp, plan, today, { quarter: 'Pass the AIGP exam', month: 'Domains I–II read, exam booked', week: 'Domain II, first half' })));
+  Object.assign(data, withOps(data, opsStartChain(data, aigp, plan, today, { week: 'Domain II, first half' })));
   const weekOf = (g: Goal) => chainFor(data, g, plan, today).week.step!;
   const guitarWeek = weekOf(guitar);
   const within = (d: string, w: { end_date: string }) => (d > w.end_date ? w.end_date : d);
   const demoTasks: [Goal, Partial<ReturnType<typeof blankTask>>][] = [
     [guitar, { title: 'Record a baseline video', kind: 'check', minutes: 15, when: 'once', date: within(addDays(today, 2), guitarWeek), cue: 'After dinner, in the music corner' }],
-    [weight, { title: 'Meal prep for the week', kind: 'minutes', minutes: 60, when: 'days', days: [7], through: chainFor(data, weight, plan, today).quarter.node.end }],
+    [weight, { title: 'Meal prep for the week', kind: 'minutes', minutes: 60, when: 'days', days: [7], through: addDays(today, 90) }],
     [career, { title: 'Coffee chat with a product manager', kind: 'check', minutes: 30, when: 'once', date: within(addDays(today, 3), weekOf(career)) }],
     // A one-day task on a set date: the exam itself.
     [aigp, { title: 'Take the AIGP exam', kind: 'check', minutes: 180, when: 'once', date: aigp.target_date! }],
@@ -347,42 +346,25 @@ export function buildDemoData(): AppData {
     data.sessions.push({ id: id(), action_id: courseTask.id, week_start: weekStart(date), slot: 900 + i, date, title: courseTask.title, priority: false, planned_minutes: 40, planned_count: null, status: 'done', actual_minutes: 40 + (i % 3) * 5, actual_count: null, note: '', obstacles: [], origin: 'scheduled', source: 'manual', moved_from: null, logged_at: `${date}T20:00:00.000Z` });
   }
 
-  // The goal backlog: two ideas selected for the next commitment, the rest waiting in order.
-  const ideas: [string, string, string, 'selected' | 'backlog', number][] = [
-    ['Run a half marathon', 'Builds on the cardio from the weight goal.', 'Finish a half marathon in under 2 hours', 'selected', 40],
-    ['Pass the PMP exam', 'Prerequisites are done; the exam is what is left.', 'PMP passed', 'selected', 25],
-    ['Build an AI side project end to end', 'Ship something small with an agent and evals.', '', 'backlog', 30],
-    ['Conversational Spanish', '', '', 'backlog', 12],
-    ['Read 12 books', 'One a month, mostly product and history.', '12 books read, a note on each', 'backlog', 70],
-    ['Cook 30 new recipes', '', '', 'backlog', 5],
+  // The goal backlog: ideas waiting in order.
+  const ideas: [string, string, string, number][] = [
+    ['Run a half marathon', 'Builds on the cardio from the weight goal.', 'Finish a half marathon in under 2 hours', 40],
+    ['Pass the PMP exam', 'Prerequisites are done; the exam is what is left.', 'PMP passed', 25],
+    ['Build an AI side project end to end', 'Ship something small with an agent and evals.', '', 30],
+    ['Conversational Spanish', '', '', 12],
+    ['Read 12 books', 'One a month, mostly product and history.', '12 books read, a note on each', 70],
+    ['Cook 30 new recipes', '', '', 5],
   ];
-  data.ideas = ideas.map(([title, note, done_means, status, age], i) => ({
+  data.ideas = ideas.map(([title, note, done_means, age], i) => ({
     id: id(),
     title,
     note,
     done_means,
-    status,
+    status: 'backlog' as const,
     rank: i + 1,
     goal_id: null,
     created_at: `${addDays(today, -age)}T12:00:00.000Z`,
-    selected_at: status === 'selected' ? `${addDays(today, -3)}T12:00:00.000Z` : null,
     started_at: null,
   }));
-  // The half marathon is prepared (ready to commit); the PMP exam is selected but not prepared yet.
-  const periods = chainAt(plan, today);
-  data.ideas[0]!.prep = {
-    type: 'practice',
-    quarter: 'Run 10 miles without stopping',
-    quarter_of: periods.quarter.start,
-    month: 'Three runs a week, long run up to 5 miles',
-    month_of: periods.month.start,
-    week: 'Three easy runs, 20–30 minutes each',
-    week_of: periods.week.start,
-    task: { title: 'Easy run', days: [2, 4, 6], minutes: 30 },
-    // Its own clock: its six months start the day it's committed.
-    clock: 'own',
-    months: 6,
-    prepared_at: `${addDays(today, -1)}T12:00:00.000Z`,
-  };
   return data;
 }

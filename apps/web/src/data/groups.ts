@@ -43,12 +43,6 @@ export function opsRemoveFromGroup(data: AppData, goalId: string): Op[] {
   return [{ kind: 'update', collection: 'goals', id: goalId, patch: { group_id: null } }, ...opsCleanUpLeft(data, new Set([goalId]))];
 }
 
-/** What a group's goals add up to, in a line. Saved only when it changes. */
-export function opsSetGroupOutcome(group: GoalGroup, outcome: string): Op[] {
-  const o = outcome.trim();
-  return o !== (group.outcome ?? '') ? [{ kind: 'update', collection: 'groups', id: group.id, patch: { outcome: o } }] : [];
-}
-
 export function opsRenameGroup(group: GoalGroup, name: string): Op[] {
   const n = name.trim();
   return n && n !== group.name ? [{ kind: 'update', collection: 'groups', id: group.id, patch: { name: n } }] : [];

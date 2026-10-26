@@ -1,4 +1,4 @@
-import { column, rankAtEnd, rankAtTop, reorder, type GoalIdea, type IdeaStatus } from '@six/core';
+import { rankAtEnd, rankAtTop, reorder, type GoalIdea, type IdeaStatus } from '@six/core';
 import type { AppData, Op } from './model.ts';
 
 /** Changes to the goal backlog, as ops. Ordering rules live in @six/core (backlog.ts). */
@@ -16,7 +16,6 @@ export function opsAddIdea(data: AppData, title: string, note = ''): { ops: Op[]
     rank: rankAtEnd(data.ideas, 'backlog'),
     goal_id: null,
     created_at: now(),
-    selected_at: null,
     started_at: null,
   };
   return { ops: [{ kind: 'insert', collection: 'ideas', rows: row(idea) }], idea };
@@ -80,7 +79,6 @@ export function opsAddIdeas(data: AppData, items: IdeaFileItem[]): { ops: Op[]; 
       rank: rankAtEnd(ideas, 'backlog'),
       goal_id: null,
       created_at: now(),
-      selected_at: null,
       started_at: null,
     };
     ideas.push(idea);
@@ -104,13 +102,10 @@ export function opsMoveIdea(data: AppData, id: string, move: 'up' | 'down' | 'to
   return reorder(data.ideas, id, move).map((r): Op => ({ kind: 'update', collection: 'ideas', id: r.id, patch: { rank: r.rank } }));
 }
 
-/** Put an idea in another column: selected ideas join the end, ideas sent back go to the top of the backlog. */
+/** Discard an idea (it joins the end of the discarded list) or bring one back (to the top of the backlog). */
 export function opsSetStatus(data: AppData, idea: GoalIdea, status: IdeaStatus): Op[] {
   const rank = status === 'backlog' ? rankAtTop(data.ideas, 'backlog') : rankAtEnd(data.ideas, status);
-  const patch: Record<string, unknown> = { status, rank };
-  if (status === 'selected') patch.selected_at = now();
-  if (status === 'backlog') patch.selected_at = null;
-  return [{ kind: 'update', collection: 'ideas', id: idea.id, patch }];
+  return [{ kind: 'update', collection: 'ideas', id: idea.id, patch: { status, rank } }];
 }
 
 /** Restore an idea exactly as it was (for Undo). */
@@ -128,9 +123,4 @@ export function opsStartIdea(data: AppData, ideaId: string, goalId: string): Op[
 
 export function opsDeleteIdea(idea: GoalIdea): Op[] {
   return [{ kind: 'delete', collection: 'ideas', id: idea.id }];
-}
-
-/** Ideas selected for the next commitment, in order. */
-export function selectedIdeas(data: AppData): GoalIdea[] {
-  return column(data.ideas, 'selected');
 }

@@ -85,9 +85,9 @@ export class View {
     return this.data.plans.filter((p) => !p.archived_at && p.end_date >= this.today).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
   }
 
-  /** Batches a goal can join: live, shared plans (not a goal's own clock). */
+  /** Seasons a goal can be in: the live plans. */
   get batches(): Plan[] {
-    return this.livePlans.filter((p) => !p.solo);
+    return this.livePlans;
   }
 
   /** The plan a goal runs in now: its live plan (earliest start), else the last one it was in. */
@@ -118,34 +118,14 @@ export class View {
     return this.data.goals.filter((g) => ids.has(g.id) && (includeArchived || (!g.archived_at && !g.completed_at)));
   }
 
-  /**
-   * The goal this one waits on, while that one isn't complete ("Up next"). A waiting goal isn't
-   * judged on pace. Once the other goal is complete (or archived), it's simply running.
-   */
-  waitingOn(goal: Goal): Goal | null {
-    if (!goal.after_goal_id || goal.completed_at) return null;
-    const before = this.goal(goal.after_goal_id);
-    return before && !before.completed_at && !before.archived_at ? before : null;
-  }
-
   /** A goal's milestones, soonest first. */
   milestonesOf(goalId: string): Milestone[] {
     return this.data.milestones.filter((m) => m.goal_id === goalId).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
   }
 
-  /** Goals that start after this one. */
-  followersOf(goalId: string): Goal[] {
-    return this.data.goals.filter((g) => g.after_goal_id === goalId && !g.archived_at && !g.completed_at);
-  }
-
-  /**
-   * Where a goal's own run starts: the latest of its window's start, its own start date, and the
-   * day the goal it waited on was completed (never past the window's end).
-   */
+  /** Where a goal's own run starts: its start date if later than its season's, else the season's (never past the season's end). */
   startFor(goal: Goal, plan: Plan): ISODate {
-    const before = goal.after_goal_id ? this.goal(goal.after_goal_id) : undefined;
-    const done = before?.completed_at ? this.dayOf(before.completed_at) : undefined;
-    const start = [plan.start_date, goal.start_date ?? '', done ?? ''].sort().at(-1)!;
+    const start = goal.start_date && goal.start_date > plan.start_date ? goal.start_date : plan.start_date;
     return start > plan.end_date ? plan.end_date : start;
   }
 
@@ -156,23 +136,9 @@ export class View {
     return end < start ? start : end;
   }
 
-  /**
-   * A goal's dates as planned, for the roadmap: its start and end, and for a goal still waiting on
-   * another, the earliest it can start (the day after that one is due to end).
-   */
-  plannedWindow(goal: Goal, plan: Plan): { start: ISODate; end: ISODate; waitsFrom: ISODate | null } {
-    let start = this.startFor(goal, plan);
-    const before = this.waitingOn(goal);
-    let waitsFrom: ISODate | null = null;
-    if (before) {
-      const bp = this.planForGoal(before);
-      if (bp) {
-        waitsFrom = addDays(this.endFor(before, bp), 1);
-        if (waitsFrom > start) start = waitsFrom > plan.end_date ? plan.end_date : waitsFrom;
-      }
-    }
-    const end0 = this.endFor(goal, plan);
-    return { start, end: end0 < start ? start : end0, waitsFrom };
+  /** A goal's dates: its start and end inside its season. */
+  plannedWindow(goal: Goal, plan: Plan): { start: ISODate; end: ISODate } {
+    return { start: this.startFor(goal, plan), end: this.endFor(goal, plan) };
   }
 
   plansForGoal(goalId: string): Plan[] {
@@ -311,8 +277,7 @@ export class View {
   /** Pace for one goal over a period (practice goals) or overall (number and finish goals). */
   goalPace(goal: Goal, plan: Plan | null, range?: DateRange): GoalPace {
     const early = this.tooEarly(plan, goal);
-    const waiting = this.waitingOn(goal);
-    if (waiting) return { goal, label: 'none', summary: `Up next · after ${waiting.title}`, progress: null, number: null };
+    if (plan && this.startFor(goal, plan) > this.today) return { goal, label: 'none', summary: `Starts ${this.startFor(goal, plan)}`, progress: null, number: null };
     // The goal's own start: a goal given a later start on the roadmap isn't behind before it begins.
     const fallbackStart = plan ? this.startFor(goal, plan) : this.today;
     if (goal.type === 'number') {

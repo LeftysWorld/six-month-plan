@@ -4,14 +4,14 @@ import { makeStep, suggestedTarget } from './breakdown.ts';
 import { fmt, type View } from './derive.ts';
 
 /**
- * The goal chain: each goal has one 6-month goal (the goal itself) and, for the
- * current period only, one 3-month goal, one month goal and one week goal.
- * Steps are created when you first set them, not for every month and week up front.
+ * The goal chain: the goal itself (what done looks like, by when), the dates to hit along the way
+ * (milestones), and this week's goal. Week steps are created when you first set them, not for every
+ * week up front. Month and 3-month steps from earlier versions stay in the database as history and
+ * are no longer asked for or shown.
  */
 
-export type ChainLevel = 'quarter' | 'month' | 'week';
-export const CHAIN_LEVELS: ChainLevel[] = ['quarter', 'month', 'week'];
-export const LEVEL_NAME: Record<ChainLevel, string> = { quarter: '3-month goal', month: 'This month', week: 'This week' };
+export type ChainLevel = 'week';
+export const CHAIN_LEVELS: ChainLevel[] = ['week'];
 
 export interface ChainLink {
   level: ChainLevel;
@@ -35,7 +35,7 @@ export function chainFor(data: AppData, goal: Goal, plan: Plan, date: ISODate): 
     const node = periods[level];
     return { level, node, step: findStep(data, goal, plan, level, node), suggested: suggestedTarget(data, goal, plan, node.end) };
   };
-  return { quarter: link('quarter'), month: link('month'), week: link('week') };
+  return { week: link('week') };
 }
 
 /** Has this period's goal been written down? */
@@ -47,9 +47,7 @@ export function isSet(link: ChainLink): boolean {
 export function stepFor(goal: Goal, plan: Plan, chain: Chain, level: ChainLevel): PlanStep {
   const link = chain[level];
   if (link.step) return link.step;
-  const parentLevel = level === 'week' ? 'month' : level === 'month' ? 'quarter' : null;
-  const parent = parentLevel ? chain[parentLevel].step?.id ?? null : null;
-  return makeStep(goal, plan, parent, level, link.node.idx, link.node.title, link.node, link.suggested);
+  return makeStep(goal, plan, null, level, link.node.idx, link.node.title, link.node, link.suggested);
 }
 
 /** Ops that save a not-yet-saved step (nothing if it already exists). */
@@ -113,8 +111,8 @@ export function catchUpPlan(view: View, data: AppData, goal: Goal, plan: Plan, t
     const status = view.goalPace(goal, plan).number;
     if (!status || status.aheadBy == null || status.aheadBy >= 0) return null;
     const now = status.trend ?? status.latest;
-    const step = chainFor(data, goal, plan, today).month;
-    const target = step.step?.target_value ?? step.suggested;
+    // Where the path says you should be at the end of this month.
+    const target = suggestedTarget(data, goal, plan, month.end);
     if (now == null || target == null) return null;
     const perWeek = Math.abs(Number(target) - now) / Math.max(1, daysLeft / 7);
     return { text: `${fmt(perWeek)} ${goal.unit ?? ''} a week reaches ${fmt(Number(target))} by ${shortish(month.end)}.`, extra: null };

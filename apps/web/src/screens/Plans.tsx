@@ -4,7 +4,7 @@ import { useStore } from '../data/store.tsx';
 import { AddToGroupSheet, GroupNameSheet } from '../components/Connections.tsx';
 import { opsAddToGroup, opsRemoveFromGroup } from '../data/groups.ts';
 import { MoveSheet } from '../components/MoveSheet.tsx';
-import { currentWindow, type Destination } from '../data/move.ts';
+import { currentWindow } from '../data/move.ts';
 import { type View } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { opsArchivePlan, opsCreatePlan } from '../data/ops.ts';
@@ -16,7 +16,7 @@ import { nextSeasonDates, seasonsOf } from '../data/season.ts';
 import { GroupRowsCard, LooseCard, SeasonHorizon, SeasonOutcomes, SeasonStats, dropHint, placeGoals } from './Season.tsx';
 import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
 
-/** Create a batch: a shared window several goals can be committed to (defaults to six months from today). */
+/** Start a season: the six-month review calendar goals share (defaults to six months from today). */
 export function PlanForm({ onDone }: { onDone?: () => void }) {
   const { today, commit } = useStore();
   const toast = useToast();
@@ -30,7 +30,7 @@ export function PlanForm({ onDone }: { onDone?: () => void }) {
         e.preventDefault();
         if (!name.trim() || end <= start) return;
         commit(opsCreatePlan({ name, start, end }).ops);
-        toast(`${name.trim()} created. Commit goals to it from the backlog.`);
+        toast(`${name.trim()} started. Make goals for it from the backlog.`);
         onDone?.();
       }}
     >
@@ -56,19 +56,17 @@ export function PlanForm({ onDone }: { onDone?: () => void }) {
         </label>
       </div>
       <p className="xsmall muted" style={{ margin: 0 }}>
-        A batch is a window several goals share, with the same checkpoints. Goals can join part-way through, and a goal can also have its own clock instead.
+        A season is the review calendar your goals share: month reviews, a 3-month checkpoint and a retrospective. Each goal has its own start and finish inside it.
       </p>
       <button className="btn primary" type="submit">
-        Create batch
+        Start the season
       </button>
     </form>
   );
 }
 
 /**
- * Goals: every goal you're working on, grouped the way they keep time. Batches (shared windows)
- * each have a slim line with their day count and checkpoint; goals on their own clock are
- * listed together, each with its own day count.
+ * Goals: every goal you're working on, in the season it belongs to, in groups or on their own.
  */
 export function Plans() {
   const { data, today, commit } = useStore();
@@ -79,7 +77,7 @@ export function Plans() {
   const [selected, setSelected] = useState<'current' | 'next'>('current');
   const [naming, setNaming] = useState<Goal[] | null>(null);
   const [moving, setMoving] = useState<Goal | null>(null);
-  const [movingGoals, setMovingGoals] = useState<{ goals: Goal[]; title?: string; dest: Destination | null } | null>(null);
+  const [movingGoals, setMovingGoals] = useState<{ goals: Goal[]; title?: string; dest: Plan | null } | null>(null);
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   const seasons = seasonsOf(view);
   const placed = placeGoals(view, data, today, seasons);
@@ -109,11 +107,7 @@ export function Plans() {
     }
     if (kind === 'plan' && id) {
       const plan = data.plans.find((x) => x.id === id);
-      if (plan) setMovingGoals({ goals: d.goals, title: d.group?.name, dest: { kind: 'plan', plan } });
-      return;
-    }
-    if (kind === 'own') {
-      setMovingGoals({ goals: d.goals, title: d.group?.name, dest: { kind: 'own', months: 6 } });
+      if (plan) setMovingGoals({ goals: d.goals, title: d.group?.name, dest: plan });
       return;
     }
     if (kind === 'goal' && id) {
@@ -143,17 +137,12 @@ export function Plans() {
       {(loose.length > 0 || (dnd.drag && !dnd.drag.group && dnd.drag.goal.group_id)) && <LooseCard title={groups.length ? 'Not in a group' : 'Your goals'} members={loose} dnd={dnd} onMove={setMoving} />}
       {inSeason.length === 0 && selected === 'next' && (
         <div className="card small" style={{ color: 'var(--ink-2)' }}>
-          Nothing in next season yet. Drag a goal or a group onto it on the horizon, use Move on a goal, or commit an idea from your backlog to it.
-        </div>
-      )}
-      {dnd.drag && (
-        <div className={`own-drop${dnd.drag.target === 'own' ? ' drop-on' : ''}`} data-drop="own">
-          Drop here to put {dnd.drag.group ? `${dnd.drag.group.name}'s goals each` : dnd.drag.goal.title} on {dnd.drag.group ? 'their' : 'its'} own clock
+          Nothing in next season yet. Drag a goal or a group onto it on the horizon, use Move on a goal, or make a goal from your backlog for it.
         </div>
       )}
       {others.length > 0 && selected === 'current' && (
         <span className="xsmall muted">
-          Also running in other windows: {others.map((o) => `${o.card.goal.title} (${o.plan.name})`).join(', ')}.
+          Also in other seasons: {others.map((o) => `${o.card.goal.title} (${o.plan.name})`).join(', ')}.
         </span>
       )}
     </div>
@@ -194,7 +183,7 @@ export function Plans() {
       {placed.length === 0 && (
         <div className="card tight small stack-sm" style={{ color: 'var(--ink-2)' }}>
           <span>
-            Nothing committed yet. Goals start in the backlog: write ideas down, select the ones that matter most, prepare them, then commit, to this season or on their own clock. Most people carry 3–4 at a time.
+            Nothing here yet. Goals start in the backlog: write ideas down, order them, and make the top ones goals. Most people carry 3–4 at a time.
           </span>
           <a className="btn small primary" href={href('/goals/backlog')} style={{ alignSelf: 'flex-start' }}>
             Open the backlog
@@ -249,8 +238,8 @@ export function Plans() {
 function setupSteps(view: View, data: AppData, today: ISODate): { title: string; detail: string; action: string; to: string } | null {
   const goals = view.activeGoals;
   if (goals.length === 0) return null; // The empty state already says this.
-  // A goal waiting on another gets its tasks when it starts.
-  const noTasks = goals.find((g) => g.type !== 'number' && !view.waitingOn(g) && view.actionsForGoal(g.id).length === 0);
+  // A goal that starts later gets its tasks when it starts.
+  const noTasks = goals.find((g) => g.type !== 'number' && (view.planForGoal(g) ? view.startFor(g, view.planForGoal(g)!) <= today : true) && view.actionsForGoal(g.id).length === 0);
   if (noTasks) return { title: `Add daily tasks for ${noTasks.title}`, detail: 'Daily tasks on the goal page land on your Today list.', action: 'Add tasks', to: `/goals/${noTasks.id}` };
   const actionIds = new Set(goals.flatMap((g) => view.actionsForGoal(g.id, true).map((a) => a.id)));
   const checkedIn = data.sessions.some((x) => x.action_id && actionIds.has(x.action_id) && x.status !== 'planned' && x.status !== 'moved');
@@ -259,15 +248,15 @@ function setupSteps(view: View, data: AppData, today: ISODate): { title: string;
   return null;
 }
 
-/** A batch's settings: its dates, finished batches, and archiving. */
+/** A season's settings: its dates, past seasons, and archiving. */
 function BatchMenu({ plan, onClose }: { plan: Plan; onClose: () => void }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
   const goals = view.goalsForPlan(plan.id);
-  const past = data.plans.filter((p) => !p.solo && (p.archived_at || p.end_date < today));
+  const past = data.plans.filter((p) => p.archived_at || p.end_date < today);
   const [adding, setAdding] = useState<{ goals: Goal[]; title?: string } | null>(null);
-  // Goals running somewhere else now, and groups with any goal outside this batch.
+  // Goals in another season now, and groups with any goal outside this season.
   const elsewhere = view.activeGoals.filter((g) => currentWindow(data, g.id, today)?.id !== plan.id);
   const groupsOut = data.groups
     .map((gr) => ({ gr, members: view.activeGoals.filter((g) => g.group_id === gr.id) }))
@@ -275,15 +264,15 @@ function BatchMenu({ plan, onClose }: { plan: Plan; onClose: () => void }) {
   return (
     <Sheet title={plan.name} onClose={onClose}>
       <span className="small muted" style={{ marginTop: -8 }}>
-        Batch · {shortDate(plan.start_date)} – {shortDate(plan.end_date)} · {goals.length} goal{goals.length === 1 ? '' : 's'}
+        Season · {shortDate(plan.start_date)} – {shortDate(plan.end_date)} · {goals.length} goal{goals.length === 1 ? '' : 's'}
       </span>
       <p className="small" style={{ margin: 0, color: 'var(--ink-2)' }}>
-        Goals join a batch when you commit them from the backlog. They share its 3-month checkpoint and its reviews; one that joins part-way through simply has less time.
+        A season is the review calendar: its goals share the 3-month checkpoint, the month reviews and the retrospective. Each goal keeps its own start and finish inside it.
       </p>
       {(elsewhere.length > 0 || groupsOut.length > 0) && (
         <div className="stack-sm">
           <span className="label">Add goals</span>
-          <span className="xsmall muted">Moves a goal here from where it runs now. Its daily tasks and history stay. On the Goals page you can also drag a goal or a group onto this batch.</span>
+          <span className="xsmall muted">Moves a goal here from the season it's in now. Its daily tasks, dates and history stay. On the Goals page you can also drag a goal or a group onto this season.</span>
           {groupsOut.map(({ gr, members }) => (
             <div key={gr.id} className="list-row" style={{ gap: 8 }}>
               <span className="grow">
@@ -304,7 +293,7 @@ function BatchMenu({ plan, onClose }: { plan: Plan; onClose: () => void }) {
                 <span className="small strong" style={{ display: 'block' }}>
                   {g.title}
                 </span>
-                <span className="xsmall muted">Now in {(() => { const w = currentWindow(data, g.id, today); return w ? (w.solo ? 'its own clock' : w.name) : 'no window'; })()}</span>
+                <span className="xsmall muted">Now in {currentWindow(data, g.id, today)?.name ?? 'no season'}</span>
               </span>
               <button className="btn small" onClick={() => setAdding({ goals: [g] })}>
                 Move here
@@ -316,7 +305,7 @@ function BatchMenu({ plan, onClose }: { plan: Plan; onClose: () => void }) {
       {past.length > 0 && (
         <details>
           <summary className="label" style={{ cursor: 'pointer', minHeight: 32, display: 'flex', alignItems: 'center' }}>
-            Finished and archived batches · {past.length}
+            Finished and archived seasons · {past.length}
           </summary>
           {past.map((p) => (
             <div key={p.id} className="list-row small">
@@ -338,7 +327,7 @@ function BatchMenu({ plan, onClose }: { plan: Plan; onClose: () => void }) {
       >
         Archive {plan.name}
       </button>
-      {adding && <MoveSheet goals={adding.goals} title={adding.title} initial={{ kind: 'plan', plan }} onClose={() => setAdding(null)} />}
+      {adding && <MoveSheet goals={adding.goals} title={adding.title} initial={plan} onClose={() => setAdding(null)} />}
     </Sheet>
   );
 }

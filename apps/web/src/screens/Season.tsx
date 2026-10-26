@@ -1,4 +1,3 @@
-import { useState, type MouseEvent } from 'react';
 import { daysBetween, shortDate, weekDates, weekStart, type Goal, type GoalGroup, type ISODate, type PaceLabel, type Plan } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { type View } from '../data/derive.ts';
@@ -6,7 +5,6 @@ import { useView } from '../data/useView.ts';
 import { CHAIN_LEVELS, catchUpPlan, chainFor, isSet, type Chain, type ChainLevel, type CatchUp } from '../data/chain.ts';
 import type { AppData } from '../data/model.ts';
 import { firstCheckpoint, goalTrack, groupTrack, nextCheckpoint, nextReviewWord, nextSeasonDates, type Seasons } from '../data/season.ts';
-import { GroupSheet } from '../components/Connections.tsx';
 import { sharedTasksOf } from '../components/Connections.tsx';
 import type { DragApi, GoalDrag } from '../components/goalDrag.ts';
 import { href } from '../router.ts';
@@ -31,7 +29,7 @@ export interface GoalCardData {
   rank: number;
 }
 
-const LEVEL_WORD: Record<ChainLevel, string> = { quarter: '3-month', month: 'month', week: 'week' };
+const LEVEL_WORD: Record<ChainLevel, string> = { week: 'week' };
 
 /** Every goal in the plan with what it needs, goals that need you first. */
 export function goalCards(view: View, data: AppData, plan: Plan, today: ISODate): GoalCardData[] {
@@ -42,8 +40,6 @@ export function goalCards(view: View, data: AppData, plan: Plan, today: ISODate)
       const start = view.startFor(goal, plan);
       const started = start <= today;
       const chain = chainFor(data, goal, plan, started ? today : start);
-      // A goal waiting on another isn't judged yet: it sits at the bottom, asking nothing.
-      if (view.waitingOn(goal)) return { goal, chain, pace: 'none' as PaceLabel, fix: null, gaps: [], needs: false, reason: null, rank: 5000 + i };
       const pace = started ? view.goalPace(goal, plan).label : 'none';
       const fix = started ? catchUpPlan(view, data, goal, plan, today) : null;
       const gaps = CHAIN_LEVELS.filter((l) => !isSet(chain[l]));
@@ -80,8 +76,6 @@ export type SeasonKey = 'current' | 'next' | 'other';
 export interface Placed {
   card: GoalCardData;
   plan: Plan;
-  /** On its own clock (not a batch). */
-  own: boolean;
   season: SeasonKey;
 }
 
@@ -94,11 +88,8 @@ export function placeGoals(view: View, data: AppData, today: ISODate, seasons: S
   const windows = view.livePlans;
   const all: Placed[] = windows.flatMap((plan) =>
     goalCards(view, data, plan, today).map((card) => {
-      const own = !!plan.solo;
-      let season: SeasonKey;
-      if (!own) season = plan.id === current?.id ? 'current' : plan.id === next?.id ? 'next' : 'other';
-      else season = plan.start_date > today && next && plan.start_date >= next.start_date ? 'next' : 'current';
-      return { card, plan, own, season };
+      const season: SeasonKey = plan.id === current?.id ? 'current' : plan.id === next?.id ? 'next' : 'other';
+      return { card, plan, season };
     }),
   );
   // A goal in more than one live window is listed once, in the window it runs in now.
@@ -135,7 +126,7 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
   const due = shortDate(t.by);
   return (
     <div
-      className={`season-row${dragging ? ' lifted' : ''}${over ? ' drop-on' : ''}${t.waiting ? ' waiting' : ''}`}
+      className={`season-row${dragging ? ' lifted' : ''}${over ? ' drop-on' : ''}`}
       data-drop={goal.group_id ? undefined : `goal:${goal.id}`}
       onPointerDown={(e) => {
         if (!dnd || (e.target as HTMLElement).closest('button')) return;
@@ -181,7 +172,6 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
         ) : (
           <span className="season-row-foot">
             <span className="muted">
-              {t.waiting ? `After ${t.waiting} · ` : ''}
               {t.target} by {due}
             </span>
           </span>
@@ -240,40 +230,24 @@ export function GroupRowsCard({ group, members, dnd, onMove, onMoveGroup }: { gr
 }
 
 /**
- * What a group's goals add up to: its outcome in a line and one bar for all of them (each goal
- * counts equally, finished ones fully), against where an even pace would be. Without an outcome
- * it offers to add one.
+ * A group's goals as one bar (each goal counts equally, finished ones fully), against where an
+ * even pace would be.
  */
 export function GroupRollup({ group, big = false }: { group: GoalGroup; big?: boolean }) {
   const view = useView();
-  const [editing, setEditing] = useState(false);
   const r = groupTrack(view, group.id);
-  const open = (e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setEditing(true);
-  };
-  if (!group.outcome?.trim()) {
-    return (
-      <>
-        <button type="button" className="group-outcome-add" onClick={open}>
-          + What do these goals add up to?
-        </button>
-        {editing && <GroupSheet group={group} onClose={() => setEditing(false)} />}
-      </>
-    );
-  }
+  if (r.count < 2) return null;
   const ink = STATUS_INK[r.label] ?? 'var(--ink-2)';
   const word = r.done === r.count ? 'All done' : r.label === 'ahead' ? 'Ahead' : r.label === 'behind' ? 'Behind' : r.label === 'on_track' ? 'On pace' : 'Not started';
   return (
     <div className={`group-rollup${big ? ' big' : ''}`}>
       <div className="group-outcome">
-        <span className="group-outcome-text">{group.outcome}</span>
+        <span className="group-outcome-text">{group.name}, all together</span>
         <span className="small" style={{ color: ink, whiteSpace: 'nowrap' }}>
           {word}
         </span>
       </div>
-      <span className="season-track" style={{ marginLeft: 0 }} aria-label={`${r.prog}% of the outcome done, even pace ${r.exp}%`}>
+      <span className="season-track" style={{ marginLeft: 0 }} aria-label={`${r.prog}% of the group done, even pace ${r.exp}%`}>
         <span className="season-fill" style={{ width: `${r.prog}%`, background: 'var(--gradient)' }} />
         {r.exp > 0 && <span className="season-tick" style={{ left: `${r.exp}%` }} />}
       </span>
@@ -308,7 +282,7 @@ export function LooseCard({ title, members, dnd, onMove }: { title: string; memb
 
 /**
  * Both seasons on one line: this season and the next, today's mark, each season's 3-month
- * checkpoint, and dots where own-clock goals end. Tap a half to show that season. While dragging,
+ * checkpoint, and dots where goals finish early. Tap a half to show that season. While dragging,
  * each half takes a goal or a group.
  */
 export function SeasonHorizon({
@@ -329,6 +303,7 @@ export function SeasonHorizon({
   onMenu: (plan: Plan) => void;
 }) {
   const { today } = useStore();
+  const view = useView();
   const { current, next } = seasons;
   if (!current) return null;
   const nextDates = next ? { start: next.start_date, end: next.end_date } : nextSeasonDates(current);
@@ -355,7 +330,7 @@ export function SeasonHorizon({
       />
     );
   };
-  const ends = placed.filter((p) => p.own && p.plan.end_date <= end && p.plan.end_date !== current.end_date);
+  const ends = placed.map((p) => ({ ...p, by: view.endFor(p.card.goal, p.plan) })).filter((p) => p.by <= end && p.by !== p.plan.end_date);
   const cps = [firstCheckpoint(current), ...(next ? [firstCheckpoint(next)] : [])];
   const dayNo = Math.max(1, Math.min(daysBetween(current.start_date, today) + 1, daysBetween(current.start_date, current.end_date) + 1));
   const days = daysBetween(current.start_date, current.end_date) + 1;
@@ -377,7 +352,7 @@ export function SeasonHorizon({
           <span key={d} className="horizon-cp" style={{ left: `${at(d)}%` }} title={`3-month checkpoint ${shortDate(d)}`} aria-hidden="true" />
         ))}
         {ends.map((p) => (
-          <span key={p.card.goal.id} className="horizon-end" style={{ left: `${at(p.plan.end_date)}%`, background: p.card.goal.color }} title={`${p.card.goal.title} ends ${shortDate(p.plan.end_date)}`} aria-hidden="true" />
+          <span key={p.card.goal.id} className="horizon-end" style={{ left: `${at(p.by)}%`, background: p.card.goal.color }} title={`${p.card.goal.title} finishes ${shortDate(p.by)}`} aria-hidden="true" />
         ))}
       </div>
       <div className="horizon-labels">
@@ -472,7 +447,7 @@ export function SeasonStats({ season, members }: { season: Plan; members: Placed
   );
 }
 
-/** "By Apr 24 you'll have": every goal's outcome, once. Early finishers show their date; goals behind say so. */
+/** "By Apr 24 you'll have": what each goal's done looks like. Early finishers show their date; goals behind say so. */
 export function SeasonOutcomes({ season, members, onPlan }: { season: Plan; members: Placed[]; onPlan?: () => void }) {
   const view = useView();
   const { today } = useStore();
@@ -484,25 +459,7 @@ export function SeasonOutcomes({ season, members, onPlan }: { season: Plan; memb
         <span className="xsmall muted">{future ? 'Planned for next season' : 'If you keep your pace'}</span>
       </div>
       {members.length === 0 && <span className="small muted outcome-row">Nothing planned yet.</span>}
-      {members.map((m, i) => {
-        // A group with an outcome is one line: what its goals add up to.
-        const group = m.card.goal.group_id ? view.data.groups.find((g) => g.id === m.card.goal.group_id && g.outcome?.trim()) : undefined;
-        if (group) {
-          if (members.findIndex((x) => x.card.goal.group_id === group.id) !== i) return null;
-          const r = groupTrack(view, group.id);
-          const early = !!r.by && r.by < season.end_date;
-          return (
-            <div key={`g-${group.id}`} className="outcome-row">
-              <span className="outcome-mark group" aria-hidden="true">
-                <span />
-              </span>
-              <span className="small">{group.outcome}</span>
-              <span className="xsmall" style={{ color: r.label === 'behind' ? 'var(--amber-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>
-                {r.label === 'behind' ? 'at risk' : early ? `by ${shortDate(r.by!)}` : `${r.done} of ${r.count}`}
-              </span>
-            </div>
-          );
-        }
+      {members.map((m) => {
         const t = goalTrack(view, m.card.goal, m.plan);
         const early = t.by < season.end_date;
         return (
@@ -549,7 +506,6 @@ export function WeekStrip({ actionId }: { actionId: string }) {
 export function dropHint(d: GoalDrag): string {
   if (d.target?.startsWith('already:')) return 'Already in this season';
   if (d.target?.startsWith('plan:')) return 'Move into this season';
-  if (d.target === 'own') return d.group ? 'Each on its own clock' : 'Put on its own clock';
   if (d.target === 'loose') return 'Take out of its group';
   if (d.target?.startsWith('group:')) return 'Add to this group';
   return 'Make a group';

@@ -10,8 +10,8 @@ import { fmt } from './derive.ts';
  *   chain, so their dates follow the season's periods; their text is edited on the goal's page.
  */
 
-export type CheckpointLevel = 'quarter' | 'month' | 'week';
-export const CHECKPOINT_NAME: Record<CheckpointLevel, string> = { quarter: '3-month goal', month: 'Month goal', week: 'Week goal' };
+export type CheckpointLevel = 'week';
+export const CHECKPOINT_NAME: Record<CheckpointLevel, string> = { week: 'Week goal' };
 
 export interface Checkpoint {
   id: string;
@@ -36,7 +36,7 @@ export function stepText(goal: Goal, step: PlanStep): string {
  */
 export function checkpointsOf(data: AppData, goal: Goal, weeksFrom: ISODate | null = null, planId: string | null = null): Checkpoint[] {
   return data.planSteps
-    .filter((s) => s.goal_id === goal.id && (s.level === 'quarter' || s.level === 'month' || s.level === 'week'))
+    .filter((s) => s.goal_id === goal.id && s.level === 'week')
     .filter((s) => !planId || s.plan_id === planId)
     .filter((s) => s.level !== 'week' || !weeksFrom || s.end_date >= weeksFrom)
     .map((s) => ({ step: s, text: stepText(goal, s) }))

@@ -16,10 +16,8 @@ export interface DateLimits {
   endLocked: boolean;
 }
 
-export function dateLimits(view: View, goal: Goal, plan: Plan): DateLimits {
-  const { waitsFrom } = view.plannedWindow(goal, plan);
-  const minStart = waitsFrom && waitsFrom > plan.start_date ? (waitsFrom > plan.end_date ? plan.end_date : waitsFrom) : plan.start_date;
-  return { minStart, maxEnd: plan.end_date, endLocked: goal.type === 'number' };
+export function dateLimits(_view: View, goal: Goal, plan: Plan): DateLimits {
+  return { minStart: plan.start_date, maxEnd: plan.end_date, endLocked: goal.type === 'number' };
 }
 
 /**
@@ -94,21 +92,6 @@ export function opsRestoreDates(goal: Goal, logId?: string | null): Op[] {
     { kind: 'update', collection: 'goals', id: goal.id, patch: { start_date: goal.start_date ?? null, target_date: goal.target_date ?? null } },
     ...(logId ? [{ kind: 'delete' as const, collection: 'changeLog' as const, id: logId }] : []),
   ];
-}
-
-/** Goals a goal could start after: others in its window that don't (directly or not) wait on it. */
-export function afterChoices(goals: Goal[], goal: Goal): Goal[] {
-  const waitsOnMe = (g: Goal): boolean => {
-    const seen = new Set<string>();
-    let cur: Goal | undefined = g;
-    while (cur?.after_goal_id && !seen.has(cur.id)) {
-      if (cur.after_goal_id === goal.id) return true;
-      seen.add(cur.id);
-      cur = goals.find((x) => x.id === cur!.after_goal_id);
-    }
-    return false;
-  };
-  return goals.filter((g) => g.id !== goal.id && !g.completed_at && !waitsOnMe(g));
 }
 
 export { addDays };

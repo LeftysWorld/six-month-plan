@@ -104,12 +104,12 @@ export function calendarItems(view: View, from: ISODate, to: ISODate): Map<ISODa
       continue;
     }
     const w = view.plannedWindow(goal, plan);
-    if (w.start !== plan.start_date) add({ id: `s-${goal.id}`, date: w.start, kind: 'start', title: goal.title, sub: w.waitsFrom && w.start === w.waitsFrom ? 'Starts (after the goal before it)' : 'Goal starts', color: goal.color, done: false, to: `/goals/${goal.id}` });
+    if (w.start !== plan.start_date) add({ id: `s-${goal.id}`, date: w.start, kind: 'start', title: goal.title, sub: 'Goal starts', color: goal.color, done: false, to: `/goals/${goal.id}` });
     if (w.end !== plan.end_date) add({ id: `f-${goal.id}`, date: w.end, kind: 'finish', title: goal.title, sub: 'Goal due', color: goal.color, done: false, to: `/goals/${goal.id}` });
   }
   // Seasons: start, 3-month checkpoint, end.
   for (const plan of data.plans) {
-    if (plan.archived_at || plan.solo) continue;
+    if (plan.archived_at) continue;
     add({ id: `ps-${plan.id}`, date: plan.start_date, kind: 'season', title: `${plan.name} starts`, sub: 'Season', color: 'var(--accent)', done: false, to: '/goals' });
     add({ id: `pc-${plan.id}`, date: firstCheckpoint(plan), kind: 'season', title: '3-month checkpoint', sub: plan.name, color: 'var(--accent)', done: false, to: '/review' });
     add({ id: `pe-${plan.id}`, date: plan.end_date, kind: 'season', title: `${plan.name} ends`, sub: 'Season', color: 'var(--accent)', done: false, to: '/review' });

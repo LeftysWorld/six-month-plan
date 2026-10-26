@@ -39,8 +39,6 @@ export interface Plan {
   end_date: ISODate;
   block_days: number;
   archived_at: string | null;
-  /** True for a goal's own clock. Missing on older databases (treated as a batch). */
-  solo?: boolean;
 }
 
 export interface Goal {
@@ -63,8 +61,6 @@ export interface Goal {
   completion_note?: string;
   /** The group it's in (a goal is in one group at most). Missing on older databases. */
   group_id?: string | null;
-  /** Starts after this goal is complete ("Up next" until then). Missing on older databases. */
-  after_goal_id?: string | null;
   /** When work on it starts, if later than its window's start (set on the roadmap). Missing on older databases. */
   start_date?: ISODate | null;
   /** Your own words from the Then vs now page. Missing on older databases. */
@@ -76,8 +72,6 @@ export interface GoalGroup {
   id: string;
   name: string;
   created_at: string;
-  /** What the goals add up to, in a line (e.g. "Qualified for AI product and governance work"). Missing on older databases. */
-  outcome?: string | null;
 }
 
 export interface PlanGoal {
@@ -297,57 +291,22 @@ export interface ChangeLogEntry {
 }
 
 /** Where a goal idea is in the backlog: waiting, selected for the next commitment, started as a goal, or let go. */
-export type IdeaStatus = 'backlog' | 'selected' | 'started' | 'discarded';
+export type IdeaStatus = 'backlog' | 'started' | 'discarded';
 
 /** A goal you might want: written down in a line, ordered by importance, pulled in when there's room. */
 export interface GoalIdea {
   id: string;
   title: string;
-  /** Why it matters (needed to select it). */
+  /** Why it matters. */
   note: string;
-  /** What done looks like in six months, in a line (needed to select it). Missing on older databases. */
+  /** What done looks like in six months, in a line. Missing on older databases. */
   done_means?: string;
-  /** The plan prepared while it's selected (its chain and first daily task); committing turns it into a goal. */
-  prep?: IdeaPrep;
   status: IdeaStatus;
   /** Order within its column: lower comes first (more important). */
   rank: number;
   /** The goal it became, once started. */
   goal_id: string | null;
   created_at: string;
-  selected_at: string | null;
   started_at: string | null;
 }
 
-/**
- * What gets prepared for a selected idea before it's committed as a goal. Saved on the idea,
- * so preparing never creates the goal: committing does, as a separate step.
- */
-export interface IdeaPrep {
-  type?: GoalType;
-  unit?: string;
-  measure_name?: string;
-  baseline?: number | null;
-  target?: number | null;
-  target_date?: ISODate;
-  path_edits?: Record<string, number>;
-  milestones?: { title: string; due_date: ISODate }[];
-  quarter?: string;
-  month?: string;
-  week?: string;
-  /** Start of the 3-month stage, month and week each note was written for (a note goes stale when its period ends). */
-  quarter_of?: ISODate;
-  month_of?: ISODate;
-  week_of?: ISODate;
-  task?: { title: string; days: number[]; minutes: number };
-  /** Goals to connect this one to when it's committed. */
-  connect?: string[];
-  /** Existing daily tasks (action ids) this goal will share when it's committed. */
-  reuse?: string[];
-  /** Timing: its own clock starting the day it's committed, or joining a batch (plan_id). */
-  clock?: 'own' | 'batch';
-  /** Length of its own clock, in months (3 or 6). */
-  months?: number;
-  plan_id?: string;
-  prepared_at?: string;
-}

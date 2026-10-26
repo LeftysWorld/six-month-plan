@@ -61,8 +61,6 @@ export interface Track {
   /** One short status word or phrase for the row. */
   status: string;
   started: boolean;
-  /** The goal it waits on, while it waits. */
-  waiting?: string;
 }
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
@@ -70,20 +68,16 @@ const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 /** A goal's progress across its whole window, against even pace, for the season rows. */
 export function goalTrack(view: View, goal: Goal, plan: Plan): Track {
   const today = view.today;
-  // A goal runs from its own start (or the day the goal it waited on was completed) to its finish date.
+  // A goal runs from its own start to its finish date.
   const from = view.startFor(goal, plan);
   const by = view.endFor(goal, plan);
-  const waiting = view.waitingOn(goal);
-  const started = from <= today && !waiting;
+  const started = from <= today;
   const span = Math.max(1, daysBetween(from, by));
   const timeShare = started ? clamp((daysBetween(from, today) / span) * 100) : 0;
   const pace = started ? view.goalPace(goal, plan) : null;
   const label: PaceLabel = pace?.label ?? 'none';
   const target = goal.type === 'number' && goal.target_value != null ? `${fmt(goal.target_value)} ${goal.unit ?? ''}`.trim() : goal.done_means.trim() || goal.title;
   const word = (fallback: string) => (!started ? (from > today ? `Starts ${shortDate(from)}` : 'Planned') : label === 'ahead' ? 'Ahead' : label === 'behind' ? 'Behind' : label === 'on_track' ? 'On pace' : fallback);
-  if (waiting) {
-    return { prog: 0, exp: 0, now: 'Not started', target, by, label: 'none', status: 'Up next', started: false, waiting: waiting.title };
-  }
 
   if (goal.type === 'number') {
     const n = pace?.number;

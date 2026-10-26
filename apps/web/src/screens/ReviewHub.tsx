@@ -63,8 +63,8 @@ const batchName = (s: PeriodReviewSlot, manyWindows: boolean) => (manyWindows ? 
 
 const KIND_TITLE: Record<Review['kind'], string> = { weekly: 'Week', block: 'Month', quarter: '3-month', retro: 'Retrospective' };
 const SLOT_COPY: Record<PeriodReviewSlot['kind'], { tag: string; name: (s: PeriodReviewSlot, manyWindows: boolean) => string; detail: string; minutes: number; color: string; ink: string }> = {
-  block: { tag: 'M', name: (s, many) => `${s.plan.solo ? `${s.plan.name}: ` : batchName(s, many)}${s.title} review`, detail: "How the month went, then set next month's goals", minutes: 15, color: 'var(--accent-soft)', ink: 'var(--accent-ink)' },
-  quarter: { tag: '3M', name: (s, many) => `${s.plan.solo ? `${s.plan.name}: ` : batchName(s, many)}3-month checkpoint`, detail: 'Keep, adjust or drop each goal, then set the next 3 months', minutes: 25, color: 'var(--blue-soft)', ink: 'var(--blue-ink)' },
+  block: { tag: 'M', name: (s, many) => `${batchName(s, many)}${s.title} review`, detail: "How the month went, then set next month's goals", minutes: 15, color: 'var(--accent-soft)', ink: 'var(--accent-ink)' },
+  quarter: { tag: '3M', name: (s, many) => `${batchName(s, many)}3-month checkpoint`, detail: 'Keep, adjust or drop each goal, then set the next 3 months', minutes: 25, color: 'var(--blue-soft)', ink: 'var(--blue-ink)' },
   retro: { tag: '6M', name: (s) => `${s.plan.name}: retrospective`, detail: 'What worked, what carries over, and your next plan', minutes: 30, color: 'var(--gold-soft)', ink: 'var(--gold-ink)' },
 };
 

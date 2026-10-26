@@ -22,7 +22,7 @@ export function ThenNow({ planId }: { planId?: string | null }) {
   const plans = [...view.livePlans, ...data.plans.filter((p) => !p.archived_at && p.end_date < today && daysBetween(p.end_date, today) <= 120)]
     .filter((p, i, all) => all.findIndex((x) => x.id === p.id) === i)
     .sort((a, b) => (a.start_date < b.start_date ? 1 : -1));
-  const plan = (planId ? data.plans.find((p) => p.id === planId) : undefined) ?? plans.find((p) => !p.solo) ?? plans[0] ?? null;
+  const plan = (planId ? data.plans.find((p) => p.id === planId) : undefined) ?? plans[0] ?? null;
   // Every goal that has run in this window, finished ones included (archived ones are gone on purpose).
   const goals = plan ? view.goalsForPlan(plan.id, true).filter((g) => !g.archived_at) : [];
   const started = plan ? plan.start_date <= today : false;

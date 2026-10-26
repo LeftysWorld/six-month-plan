@@ -159,7 +159,7 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
 
       <div className="row-between xsmall muted">
         <span className="row-start" style={{ gap: 6 }}>
-          In: {plans.filter((p) => !p.archived_at && p.end_date >= today).map((p) => (p.solo ? 'its own clock' : p.name)).join(', ') || 'no running window'}
+          In: {plans.filter((p) => !p.archived_at && p.end_date >= today).map((p) => p.name).join(', ') || 'no running season'}
           {!goal.archived_at && !goal.completed_at && (
             <button className="link-btn small" onClick={() => setMoving(true)} style={{ padding: '0 4px' }}>
               Move to…
@@ -336,7 +336,7 @@ export function GoalManage({ goal }: { goal: Goal }) {
           <CompleteGoal goal={goal} />
           <div className="row-between small" style={{ gap: 8 }}>
             <span className="muted">
-              In {plans.filter((p) => !p.archived_at && p.end_date >= today).map((p) => (p.solo ? 'its own clock' : p.name)).join(', ') || 'no running window'}
+              In {plans.filter((p) => !p.archived_at && p.end_date >= today).map((p) => p.name).join(', ') || 'no running season'}
             </span>
             {!goal.archived_at && !goal.completed_at && (
               <button className="link-btn small" onClick={() => setMoving(true)}>
@@ -417,8 +417,7 @@ function CompleteGoal({ goal }: { goal: Goal }) {
       onSubmit={(e) => {
         e.preventDefault();
         commit(opsCompleteGoal(data, goal, note, today));
-        const next = view.followersOf(goal.id);
-        toast(next.length ? `${goal.title} completed. ${next.map((g) => g.title).join(' and ')} can start now.` : `${goal.title} completed`);
+        toast(`${goal.title} completed`);
         navigate('/goals/completed');
       }}
     >

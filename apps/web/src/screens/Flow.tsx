@@ -18,7 +18,7 @@ import {
 import { useStore } from '../data/store.tsx';
 import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
-import { CHAIN_LEVELS, catchUpPlan, chainFor, isSet, opsAddExtra, opsEnsureStep, periodStatus, opsSetLevel, stepFor, type Chain, type ChainLevel } from '../data/chain.ts';
+import { catchUpPlan, chainFor, isSet, opsAddExtra, opsEnsureStep, periodStatus, opsSetLevel, stepFor, type Chain, type ChainLevel } from '../data/chain.ts';
 import { GoalExtras, GoalManage, GoalRecord, WhyLine } from './GoalDetail.tsx';
 import { GoalGroupCard } from '../components/Connections.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
@@ -37,7 +37,6 @@ import { BackLink, Empty, Icon, Sheet, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
 import { WorkoutPlanEditor, blankExercise } from '../components/Workout.tsx';
 import { goalTrack } from '../data/season.ts';
-import { afterChoices } from '../data/dates.ts';
 import { opsRecordReading } from '../data/connect.ts';
 import { TaskSheet, dateRange, daysOfWeek } from './TaskSheet.tsx';
 
@@ -73,11 +72,7 @@ export function Flow({ goalId }: { goalId: string }) {
   const weeks = stepsForGoal(data, goal.id).filter((s) => s.level === 'week' && s.plan_id === plan.id);
   const t = goalTrack(view, goal, plan);
   const group = goal.group_id ? data.groups.find((g) => g.id === goal.group_id) : undefined;
-  const windowName = plan.solo
-    ? today < plan.start_date
-      ? `Own clock · starts ${shortDate(plan.start_date)}`
-      : `Own clock · day ${Math.max(1, Math.min(daysBetween(plan.start_date, today) + 1, daysBetween(plan.start_date, plan.end_date) + 1))} of ${daysBetween(plan.start_date, plan.end_date) + 1}`
-    : plan.name;
+  const windowName = plan.name;
   const ink = !t.started ? 'var(--muted)' : t.label === 'behind' ? 'var(--amber-ink)' : t.label === 'ahead' ? 'var(--blue-ink)' : 'var(--ink-2)';
 
   return (
@@ -124,22 +119,20 @@ export function Flow({ goalId }: { goalId: string }) {
   );
 }
 
-/** How the current period is going, in a few words: "3 of 5 done", "207.9 now · aiming for 207.8". */
-/** One level of the chain: its goal (or a prompt to set one) and how the period is going. */
-function placeholderFor(goal: Goal, level: ChainLevel): string {
-  if (goal.type === 'number') return level === 'week' ? 'e.g. Eating window every day, no weekday drinks' : 'e.g. Lock in the eating window';
-  if (goal.type === 'finish') return level === 'week' ? 'e.g. Finish the module 4 quiz' : 'e.g. Modules 1–4 passed';
-  return level === 'week' ? 'e.g. G–C–D changes at 60 bpm' : 'e.g. Record song 1 start to finish';
+function placeholderFor(goal: Goal): string {
+  if (goal.type === 'number') return 'e.g. Eating window every day, no weekday drinks';
+  if (goal.type === 'finish') return 'e.g. Finish the module 4 quiz';
+  return 'e.g. G–C–D changes at 60 bpm';
 }
 
-/** Set or change the goal for the current 3 months, month or week. */
+/** Set or change this week's goal. */
 export function ChainSheet({ goal, plan, chain, level, onClose }: { goal: Goal; plan: Plan; chain: Chain; level: ChainLevel; onClose: () => void }) {
   const { data, commit } = useStore();
   const toast = useToast();
   const link = chain[level];
   const [note, setNote] = useState(link.step?.target_note ?? '');
   const [target, setTarget] = useState<number | null>(link.step?.target_value ?? link.suggested);
-  const title = level === 'quarter' ? `${link.node.title}` : level === 'month' ? `This month · ${link.node.title}` : `This week · ${link.node.title}`;
+  const title = `This week · ${link.node.title}`;
   return (
     <Sheet title={title} onClose={onClose}>
       <div className="row-start small muted" style={{ marginTop: -8 }}>
@@ -148,7 +141,7 @@ export function ChainSheet({ goal, plan, chain, level, onClose }: { goal: Goal; 
       </div>
       <label className="field">
         What should be true by {shortDate(link.node.end)}?
-        <textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder={placeholderFor(goal, level)} />
+        <textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder={placeholderFor(goal)} />
       </label>
       {goal.type === 'number' && (
         <label className="field">
@@ -161,7 +154,7 @@ export function ChainSheet({ goal, plan, chain, level, onClose }: { goal: Goal; 
         className="btn primary"
         onClick={() => {
           commit(opsSetLevel(data, goal, plan, chain, level, { target_note: note.trim(), ...(goal.type === 'number' ? { target_value: target } : {}) }));
-          toast(`${level === 'quarter' ? '3-month' : level === 'month' ? "This month's" : "This week's"} goal saved`);
+          toast("This week's goal saved");
           onClose();
         }}
       >
@@ -196,12 +189,9 @@ function ForecastLine({ goal, plan, by }: { goal: Goal; plan: Plan; by: ISODate 
 
 function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: () => void }) {
   const { data, commit } = useStore();
-  const view = useView();
   const toast = useToast();
   const [finishBy, setFinishBy] = useState(goal.target_date ?? '');
   const [startOn, setStartOn] = useState(goal.start_date ?? '');
-  const [after, setAfter] = useState(goal.after_goal_id ?? '');
-  const choices = afterChoices(view.goalsForPlan(plan.id), goal);
   const [title, setTitle] = useState(goal.title);
   const [why, setWhy] = useState(goal.why);
   const [done, setDone] = useState(goal.done_means);
@@ -230,7 +220,7 @@ function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: (
         Starts <span style={{ fontWeight: 400 }}>(optional)</span>
         <input type="date" value={startOn} min={plan.start_date} max={finishBy || plan.end_date} onChange={(e) => setStartOn(e.target.value)} />
         <span className="xsmall muted" style={{ fontWeight: 400 }}>
-          Empty means it starts with {plan.solo ? 'its clock' : 'the season'} ({shortDate(plan.start_date)}). You can also drag it on the Roadmap.
+          Empty means it starts with the season ({shortDate(plan.start_date)}). Later for a course that begins in a month, or a goal that follows another. You can also drag it on the Roadmap.
         </span>
       </label>
       {goal.type !== 'number' && (
@@ -238,33 +228,16 @@ function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: (
           Finish by <span style={{ fontWeight: 400 }}>(optional)</span>
           <input type="date" value={finishBy} min={plan.start_date} max={plan.end_date} onChange={(e) => setFinishBy(e.target.value)} />
           <span className="xsmall muted" style={{ fontWeight: 400 }}>
-            Empty means the end of {plan.solo ? 'its clock' : 'the season'} ({shortDate(plan.end_date)}). Earlier for a course or an exam that ends sooner.
-          </span>
-        </label>
-      )}
-      {choices.length > 0 && (
-        <label className="field">
-          Starts after <span style={{ fontWeight: 400 }}>(optional)</span>
-          <select value={after} onChange={(e) => setAfter(e.target.value)}>
-            <option value="">Nothing, it runs now</option>
-            {choices.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.title}
-              </option>
-            ))}
-          </select>
-          <span className="xsmall muted" style={{ fontWeight: 400 }}>
-            Until that goal is complete, this one shows as “Up next” and isn’t counted as behind.
+            Empty means the end of the season ({shortDate(plan.end_date)}). Earlier for a course or an exam that ends sooner.
           </span>
         </label>
       )}
       <button
         className="btn primary"
         onClick={() => {
-          // Dates and "starts after" are only sent when they change (a database without the update still saves the rest).
+          // Dates are only sent when they change.
           const extra: Partial<Goal> = {};
           if (goal.type !== 'number' && (finishBy || null) !== (goal.target_date ?? null)) extra.target_date = finishBy || null;
-          if ((after || null) !== (goal.after_goal_id ?? null)) extra.after_goal_id = after || null;
           // A start can't be after the finish (or outside the window); the finish wins.
           const end = (goal.type !== 'number' ? finishBy : goal.target_date) || plan.end_date;
           const start = startOn && startOn > end ? end : startOn && startOn < plan.start_date ? plan.start_date : startOn;
@@ -423,7 +396,7 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
       <section className="card stack-sm progress-card">
         <div className="progress-top">
           <div className="stack-sm" style={{ gap: 4, minWidth: 0 }}>
-            <span className="mono">{t.waiting ? `UP NEXT · AFTER ${t.waiting.toUpperCase()}` : `STARTS ${shortDate(plan.start_date).toUpperCase()}`}</span>
+            <span className="mono">{`STARTS ${shortDate(view.startFor(goal, plan)).toUpperCase()}`}</span>
             <span style={{ fontSize: 17, fontWeight: 600 }}>
               {t.target} by {shortDate(t.by)}
             </span>
@@ -620,54 +593,52 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
   );
 }
 
-/** The plan: this week → this month → 3 months → the season, soonest first, one line each with its status. Tap to edit. */
+/** The plan: this week's goal, the next dates to hit, and the season's finish, soonest first. Tap a line to edit it. */
 function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain: Chain; onEdit: (level: ChainLevel | 'goal') => void }) {
   const { data, today } = useStore();
   const view = useView();
   const seasonTarget = goal.type === 'number' && goal.target_value != null ? `${fmt(goal.target_value)} ${goal.unit ?? ''}`.trim() : '';
-  const longestFirst: { key: ChainLevel | 'goal'; name: string; text: string; when: string; status: { text: string; label: PaceLabel } | null; current: boolean }[] = [
+  const week = chain.week;
+  const weekSet = isSet(week);
+  const weekValue = goal.type === 'number' ? week.step?.target_value ?? week.suggested : null;
+  const weekText = weekSet ? [weekValue != null ? `${fmt(weekValue)} ${goal.unit ?? ''}`.trim() : '', week.step!.target_note.trim()].filter(Boolean).join(' · ') : '';
+  const weekStatus = weekSet && view.startFor(goal, plan) <= today ? periodStatus(view, data, goal, plan, week, today) : null;
+  // The next two dates to hit that aren't done yet.
+  const upcoming = view
+    .milestonesOf(goal.id)
+    .filter((m) => !m.completed_at && m.due_date >= today)
+    .slice(0, 2);
+  const lines: { key: string; name: string; text: string; when: string; status: { text: string; label: PaceLabel } | null; current: boolean; onClick?: () => void; edit: boolean }[] = [
+    { key: 'week', name: 'This week', text: weekText, when: rangeLabel(week.node), status: weekStatus, current: true, onClick: () => onEdit('week'), edit: true },
+    ...upcoming.map((m) => ({ key: m.id, name: 'Date to hit', text: m.title, when: `by ${shortDate(m.due_date)}`, status: null, current: false, edit: false })),
     {
       key: 'goal',
-      name: plan.solo ? 'Own clock' : 'Season',
+      name: 'Season',
       text: [seasonTarget, goal.done_means.trim()].filter(Boolean).join(' · ') || goal.title,
-      when: `by ${shortDate(goal.target_date && goal.target_date <= plan.end_date ? goal.target_date : plan.end_date)}`,
+      when: `by ${shortDate(view.endFor(goal, plan))}`,
       status: null,
       current: false,
+      onClick: () => onEdit('goal'),
+      edit: true,
     },
-    ...CHAIN_LEVELS.map((level) => {
-      const link = chain[level];
-      const set = isSet(link);
-      const value = goal.type === 'number' ? link.step?.target_value ?? link.suggested : null;
-      const text = set ? [value != null ? `${fmt(value)} ${goal.unit ?? ''}`.trim() : '', link.step!.target_note.trim()].filter(Boolean).join(' · ') : '';
-      return {
-        key: level,
-        name: level === 'quarter' ? '3 months' : level === 'month' ? 'This month' : 'This week',
-        text,
-        when: `${level === 'quarter' ? 'checkpoint ' : ''}${rangeLabel(link.node)}`,
-        status: set && plan.start_date <= today ? periodStatus(view, data, goal, plan, link, today) : null,
-        current: level === 'week',
-      };
-    }),
   ];
-  // Soonest first: this week → this month → 3 months → the season.
-  const lines = [...longestFirst].reverse();
   return (
     <section className="card plan-card" aria-label="The plan">
       <b className="plan-card-title">The plan</b>
       {lines.map((l, i) => (
-        <button key={l.key} type="button" className={`plan-line-row${l.current ? ' current' : ''}`} onClick={() => onEdit(l.key)}>
+        <button key={l.key} type="button" className={`plan-line-row${l.current ? ' current' : ''}`} onClick={l.onClick} disabled={!l.onClick} style={l.onClick ? undefined : { cursor: 'default' }}>
           <span className="plan-rail" aria-hidden="true">
             <span className="plan-dot" style={l.current ? { background: goal.color, borderColor: goal.color } : undefined} />
             {i < lines.length - 1 && <span className="plan-stem" />}
           </span>
           <span className="plan-text">
-            {l.text ? <span className="small" style={{ fontWeight: l.current ? 600 : 450 }}>{l.text}</span> : <span className="small" style={{ color: 'var(--accent-ink)' }}>+ Set {l.name.toLowerCase()}’s goal</span>}
+            {l.text ? <span className="small" style={{ fontWeight: l.current ? 600 : 450 }}>{l.text}</span> : <span className="small" style={{ color: 'var(--accent-ink)' }}>+ Set this week’s goal</span>}
             <span className="xsmall muted">
               {l.name.toUpperCase()} · {l.when}
               {l.status ? <span style={{ color: l.status.label === 'behind' ? 'var(--amber-ink)' : undefined }}> · {l.status.text}</span> : null}
             </span>
           </span>
-          <span className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{l.text ? 'Edit' : ''}</span>
+          <span className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{l.text && l.edit ? 'Edit' : ''}</span>
         </button>
       ))}
     </section>

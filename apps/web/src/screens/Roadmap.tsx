@@ -1,10 +1,10 @@
-import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { addDays, daysBetween, shortDate, weekStart, type Goal, type GoalGroup, type ISODate, type Milestone, type Plan } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { type View } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { goalTrack, groupTrack, seasonsOf } from '../data/season.ts';
-import { afterChoices, clampDates, dateLimits, opsRestoreDates, opsSetGoalDates } from '../data/dates.ts';
+import { clampDates, dateLimits, opsRestoreDates, opsSetGoalDates } from '../data/dates.ts';
 import { href, navigate } from '../router.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { MilestoneSheet } from '../components/MilestoneSheet.tsx';
@@ -12,7 +12,7 @@ import { CHECKPOINT_NAME, checkpointsOf, opsRestoreMilestone, opsUpdateMilestone
 
 /**
  * The roadmap: every goal of a season on one timeline, from its start to its finish, grouped the
- * way you grouped them. A group's row shows its outcome with each of its goals' finishes as a
+ * way you grouped them. A group's row shows each of its goals' finishes as a
  * milestone (◆); "starts after" shows as an arrow. Dates change right here: drag a bar's ends (or
  * the whole bar), or tap it for exact dates. Changes are the goals' own dates, so the goal pages,
  * pace and reviews follow.
@@ -31,7 +31,6 @@ interface GoalRow {
   /** Share done, 0..100. */
   prog: number;
   status: string;
-  waiting: string | null;
   done: boolean;
   inGroup: boolean;
 }
@@ -50,8 +49,7 @@ type Row = GroupRow | GoalRow;
 function buildRows(view: View, season: Plan | null): { rows: Row[]; lo: ISODate; hi: ISODate } {
   const today = view.today;
   if (!season) return { rows: [], lo: today, hi: addDays(today, 182) };
-  // The season's batch plus own clocks that run inside it.
-  const plans = view.data.plans.filter((p) => !p.archived_at && (p.id === season.id || (p.solo && p.start_date <= season.end_date && p.end_date >= season.start_date)));
+  const plans = view.data.plans.filter((p) => !p.archived_at && p.id === season.id);
   const seen = new Set<string>();
   const goalRows: GoalRow[] = [];
   for (const plan of plans) {
@@ -69,7 +67,6 @@ function buildRows(view: View, season: Plan | null): { rows: Row[]; lo: ISODate;
         end: done && view.dayOf(g.completed_at!) < w.end ? (view.dayOf(g.completed_at!) < w.start ? w.start : view.dayOf(g.completed_at!)) : w.end,
         prog: done ? 100 : t.prog,
         status: done ? `Done ${shortDate(view.dayOf(g.completed_at!))}` : t.status,
-        waiting: t.waiting ?? null,
         done,
         inGroup: !!g.group_id,
       });
@@ -150,46 +147,6 @@ export function Roadmap() {
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   const goalCount = rows.reduce((n, r) => n + (r.kind === 'group' ? r.goals.length : 1), 0);
 
-  // Bars are measured after layout to draw "starts after" arrows between them, at any width.
-  const body = useRef<HTMLDivElement>(null);
-  const bars = useRef(new Map<string, HTMLDivElement>());
-  const [arrows, setArrows] = useState<{ id: string; d: string; late: boolean }[]>([]);
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  const visibleIds = new Set(rows.flatMap((r) => (r.kind === 'group' ? (closed[r.group.id] ? [] : r.goals.map((g) => g.goal.id)) : [r.goal.id])));
-  const links = rows
-    .flatMap((r) => (r.kind === 'group' ? r.goals : [r]))
-    .filter((r) => r.goal.after_goal_id && visibleIds.has(r.goal.id) && visibleIds.has(r.goal.after_goal_id))
-    .map((r) => ({ from: r.goal.after_goal_id!, to: r.goal.id }));
-  const linkKey = links.map((l) => `${l.from}>${l.to}`).join(',');
-  useLayoutEffect(() => {
-    const el = body.current;
-    if (!el) return;
-    const measure = () => {
-      const box = el.getBoundingClientRect();
-      setSize({ w: box.width, h: box.height });
-      const next: { id: string; d: string; late: boolean }[] = [];
-      for (const l of links) {
-        const a = bars.current.get(l.from)?.getBoundingClientRect();
-        const b = bars.current.get(l.to)?.getBoundingClientRect();
-        if (!a || !b) continue;
-        const x1 = a.right - box.left;
-        const y1 = a.top + a.height / 2 - box.top;
-        const x2 = b.left - box.left;
-        const y2 = b.top + b.height / 2 - box.top;
-        const late = x2 < x1 - 1;
-        const elbow = late ? x1 : Math.min(x1 + 8, x2 - 6);
-        next.push({ id: `${l.from}>${l.to}`, late, d: late ? `M${x1},${y1 + a.height / 2} V${b.top - box.top - 2}` : `M${x1},${y1} H${elbow} V${y2} H${x2 - 2}` });
-      }
-      setArrows(next);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-    // Re-measure when rows, collapsed groups or a drag change the bars.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkKey, data, which, mode, closed, drag?.start, drag?.end]);
-
   function startDrag(e: ReactPointerEvent, r: GoalRow, m: Drag['mode']) {
     if (e.button !== 0) return;
     const track = (e.currentTarget as HTMLElement).closest('.rm-track') as HTMLElement | null;
@@ -229,16 +186,14 @@ export function Roadmap() {
       setEditing(r);
       return;
     }
-    save(r, d.start, d.end, undefined, d.mode === 'start' ? 'end' : 'start');
+    save(r, d.start, d.end, d.mode === 'start' ? 'end' : 'start');
   }
-  function save(r: GoalRow, start: ISODate, end: ISODate, after?: string | null, hold?: 'start' | 'end') {
+  function save(r: GoalRow, start: ISODate, end: ISODate, hold?: 'start' | 'end') {
     const before = r.goal;
     const res = opsSetGoalDates(view, r.goal, r.plan, { start, end }, today, hold);
-    const ops = [...res.ops];
-    if (after !== undefined && (after || null) !== (r.goal.after_goal_id ?? null)) ops.push({ kind: 'update', collection: 'goals', id: r.goal.id, patch: { after_goal_id: after || null } });
-    if (!ops.length) return;
-    commit(ops);
-    toast(`${r.goal.title}: ${shortDate(res.start)} – ${shortDate(res.end)}${res.clamped ? ' (kept inside its window)' : ''}`, () => commit([...opsRestoreDates(before, res.logId), { kind: 'update', collection: 'goals', id: before.id, patch: { after_goal_id: before.after_goal_id ?? null } }]));
+    if (!res.ops.length) return;
+    commit(res.ops);
+    toast(`${r.goal.title}: ${shortDate(res.start)} – ${shortDate(res.end)}${res.clamped ? ' (kept inside its season)' : ''}`, () => commit(opsRestoreDates(before, res.logId)));
   }
 
   // Milestones: drag to move (a day at a time), tap to change; arrow keys move them too.
@@ -348,7 +303,7 @@ export function Roadmap() {
       <div className="rm-label">
         <span className="rm-name-row">
           <a href={href(`/goals/${r.goal.id}`)} className="rm-name" title={`Open ${r.goal.title}`}>
-            <span className="dot" style={{ background: r.goal.color, opacity: r.waiting ? 0.45 : 1 }} />
+            <span className="dot" style={{ background: r.goal.color }} />
             <span className="rm-title">{r.goal.title}</span>
           </a>
           {!r.done && (
@@ -358,7 +313,7 @@ export function Roadmap() {
           )}
         </span>
         <span className="rm-meta">
-          {shortDate(w.start)} – {shortDate(w.end)} · <span className={r.status.startsWith('Behind') || /behind/.test(r.status) ? 'warn' : ''}>{r.waiting ? `Up next · after ${r.waiting}` : r.status}</span>
+          {shortDate(w.start)} – {shortDate(w.end)} · <span className={r.status.startsWith('Behind') || /behind/.test(r.status) ? 'warn' : ''}>{r.status}</span>
         </span>
       </div>
     );
@@ -377,11 +332,7 @@ export function Roadmap() {
         ))}
         {today >= lo && today <= hi && <span className="rm-today" style={{ left: `${pct(today)}%` }} />}
         <div
-          ref={(el) => {
-            if (el) bars.current.set(r.goal.id, el);
-            else bars.current.delete(r.goal.id);
-          }}
-          className={`rm-bar${r.waiting ? ' waiting' : ''}${r.done ? ' done' : ''}${dragging ? ' dragging' : ''}`}
+          className={`rm-bar${r.done ? ' done' : ''}${dragging ? ' dragging' : ''}`}
           style={{ left: `${left}%`, width: `${width}%`, ['--c' as string]: r.goal.color }}
           role="button"
           tabIndex={0}
@@ -518,7 +469,7 @@ export function Roadmap() {
               )}
             </div>
           </div>
-          <div className="rm-body" ref={body}>
+          <div className="rm-body">
             {rows.map((row) =>
               row.kind === 'group' ? (
                 <div key={row.group.id} className="rm-groupblock">
@@ -531,7 +482,6 @@ export function Roadmap() {
                         <span className="rm-title">{row.group.name}</span>
                       </button>
                       <span className="rm-meta">
-                        {row.group.outcome?.trim() ? `${row.group.outcome} · ` : ''}
                         {row.goals.filter((g) => g.done).length} of {row.goals.length} done
                       </span>
                     </div>
@@ -552,26 +502,10 @@ export function Roadmap() {
                 </div>
               ),
             )}
-            <svg className="rm-arrows" width={size.w} height={size.h} aria-hidden="true">
-              <defs>
-                <marker id="rm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
-                  <path d="M0 0L8 4L0 8z" fill="var(--muted)" />
-                </marker>
-                <marker id="rm-arrow-late" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
-                  <path d="M0 0L8 4L0 8z" fill="var(--amber)" />
-                </marker>
-              </defs>
-              {arrows.map((a) => (
-                <path key={a.id} d={a.d} fill="none" stroke={a.late ? 'var(--amber)' : 'var(--muted)'} strokeWidth={1.5} markerEnd={`url(#${a.late ? 'rm-arrow-late' : 'rm-arrow'})`} />
-              ))}
-            </svg>
           </div>
           <div className="rm-legend" aria-label="Key">
             <span>
               <span className="lg-bar" /> Done so far
-            </span>
-            <span>
-              <span className="lg-bar next" /> Up next
             </span>
             <span>
               <span className="lg-start" /> A goal starts
@@ -606,7 +540,6 @@ export function Roadmap() {
                 <div className="rm-list-head">
                   <b>{row.group.name}</b>
                   <span className="xsmall muted">
-                    {row.group.outcome?.trim() ? `${row.group.outcome} · ` : ''}
                     {shortDate(row.start)} – {shortDate(row.end)}
                   </span>
                 </div>
@@ -623,7 +556,7 @@ export function Roadmap() {
 
       {msSheet && <MilestoneSheet {...msSheet} onClose={() => setMsSheet(null)} />}
       {cpSheet && <CheckpointSheet cp={cpSheet.cp} goal={cpSheet.goal} onClose={() => setCpSheet(null)} />}
-      {editing && <DatesSheet row={editing} onClose={() => setEditing(null)} onSave={(s, e, after) => (save(editing, s, e, after), setEditing(null))} />}
+      {editing && <DatesSheet row={editing} onClose={() => setEditing(null)} onSave={(s, e) => (save(editing, s, e), setEditing(null))} />}
     </div>
   );
 }
@@ -640,11 +573,11 @@ function ListRow({ r, onEdit, onDate, onCheckpoint }: { r: GoalRow; onEdit: () =
   return (
     <div className="rm-list-item">
     <div className="rm-list-row">
-      <span className="dot" style={{ background: r.goal.color, opacity: r.waiting ? 0.45 : 1 }} />
+      <span className="dot" style={{ background: r.goal.color }} />
       <a className="grow stack-sm" href={href(`/goals/${r.goal.id}`)} style={{ gap: 1, color: 'var(--ink)', textDecoration: 'none' }}>
         <span className="small strong">{r.goal.title}</span>
         <span className="xsmall muted">
-          {shortDate(r.start)} → {shortDate(r.end)} · {days} days · {r.waiting ? `up next, after ${r.waiting}` : r.status.toLowerCase()}
+          {shortDate(r.start)} → {shortDate(r.end)} · {days} days · {r.status.toLowerCase()}
         </span>
       </a>
       {!r.done && (
@@ -681,7 +614,7 @@ function CheckpointSheet({ cp, goal, onClose }: { cp: Checkpoint; goal: Goal; on
         {cp.done ? ' · done' : ''}
       </span>
       <p style={{ margin: 0, fontSize: 17 }}>{cp.text}</p>
-      <span className="xsmall muted">Its date is the end of its {cp.level === 'quarter' ? '3 months' : cp.level}. Change what it says on the goal's page, under The plan.</span>
+      <span className="xsmall muted">Its date is the end of its week. Change what it says on the goal's page, under The plan.</span>
       <div className="btn-row">
         <button
           className="btn primary"
@@ -697,22 +630,15 @@ function CheckpointSheet({ cp, goal, onClose }: { cp: Checkpoint; goal: Goal; on
   );
 }
 
-/** Exact dates for one goal: start, finish, and what it starts after, inside its window. */
-function DatesSheet({ row, onClose, onSave }: { row: GoalRow; onClose: () => void; onSave: (start: ISODate, end: ISODate, after: string | null) => void }) {
+/** Exact dates for one goal: start and finish, inside its season. */
+function DatesSheet({ row, onClose, onSave }: { row: GoalRow; onClose: () => void; onSave: (start: ISODate, end: ISODate) => void }) {
   const view = useView();
   const goal = view.goal(row.goal.id) ?? row.goal;
   const limits = dateLimits(view, goal, row.plan);
   const [start, setStart] = useState(row.start);
   const [end, setEnd] = useState(row.end);
-  const [after, setAfter] = useState(goal.after_goal_id ?? '');
-  const choices = afterChoices(view.goalsForPlan(row.plan.id), goal);
-  const pickedAfter = after ? view.goal(after) : undefined;
-  const afterPlan = pickedAfter ? view.planForGoal(pickedAfter) : null;
-  const afterEnd = pickedAfter && afterPlan && !pickedAfter.completed_at ? view.endFor(pickedAfter, afterPlan) : null;
-  const minStart = afterEnd && addDays(afterEnd, 1) > row.plan.start_date ? addDays(afterEnd, 1) : row.plan.start_date;
-  const tooEarly = start < minStart;
-  const bad = end < start || start > limits.maxEnd || end > limits.maxEnd;
-  const windowName = row.plan.solo ? 'its own clock' : row.plan.name;
+  const bad = end < start || start < limits.minStart || start > limits.maxEnd || end > limits.maxEnd;
+  const windowName = row.plan.name;
   return (
     <Sheet title={goal.title} onClose={onClose}>
       <span className="xsmall muted" style={{ marginTop: -8 }}>
@@ -733,27 +659,9 @@ function DatesSheet({ row, onClose, onSave }: { row: GoalRow; onClose: () => voi
           <Icon name="lock" size={12} stroke={2.2} /> A number goal finishes where its path does. Change the target on its page.
         </span>
       )}
-      {choices.length > 0 && (
-        <label className="field">
-          Starts after
-          <select value={after} onChange={(e) => setAfter(e.target.value)}>
-            <option value="">Nothing, it runs on its own dates</option>
-            {choices.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.title}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {tooEarly && afterEnd && (
-        <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>
-          {pickedAfter!.title} is due to end {shortDate(afterEnd)}, so this starts {shortDate(minStart)} at the earliest.
-        </span>
-      )}
       {bad && <span className="xsmall" style={{ color: 'var(--danger)' }}>The finish has to be on or after the start, inside {windowName}.</span>}
       <div className="btn-row">
-        <button className="btn primary" disabled={bad} onClick={() => onSave(tooEarly ? minStart : start, end < (tooEarly ? minStart : start) ? (tooEarly ? minStart : start) : end, after || null)}>
+        <button className="btn primary" disabled={bad} onClick={() => onSave(start, end < start ? start : end)}>
           Save dates
         </button>
         <button

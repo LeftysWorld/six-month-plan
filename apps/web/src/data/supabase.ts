@@ -13,24 +13,32 @@ export const supabaseConfigured = Boolean(url && anonKey);
  * The app checks these once when it loads and names the first missing one in a banner; a save that
  * fails on one of these columns or tables names the same file.
  */
-const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: boolean }[] = [
+const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: boolean; drops?: { table: string; column: string } }[] = [
   { file: '20261019000000_goal_breakdown.sql', table: 'plan_steps', columns: [], creates: true },
   { file: '20261021000000_reminders_and_cues.sql', table: 'actions', columns: ['cue'] },
   { file: '20261025000000_review_overhaul.sql', table: 'reviews', columns: ['commitment_kept', 'goal_results', 'goal_decisions', 'carry_forward', 'minutes_planned', 'minutes_done'] },
   { file: '20261026000000_goal_backlog.sql', table: 'goal_ideas', columns: [], creates: true },
   { file: '20261027000000_completed_goals_and_readiness.sql', table: 'goals', columns: ['completed_at', 'completion_note'] },
   { file: '20261028000000_idea_prep.sql', table: 'goal_ideas', columns: ['prep'] },
-  { file: '20261029000000_batches_and_own_clocks.sql', table: 'plans', columns: ['solo'] },
   { file: '20261030000000_attachments.sql', table: 'attachments', columns: [], creates: true },
   { file: '20261031000000_connected_goals.sql', table: 'actions', columns: ['measurement_type_id'] },
   { file: '20261101000000_goal_groups.sql', table: 'goal_groups', columns: [], creates: true },
   { file: '20261102000000_task_details.sql', table: 'actions', columns: ['details'] },
   { file: '20261103000000_measure_on_today.sql', table: 'measurement_types', columns: ['on_today'] },
   { file: '20261104000000_workout_plans.sql', table: 'actions', columns: ['workout_plan'] },
-  { file: '20261105000000_group_outcomes.sql', table: 'goals', columns: ['after_goal_id'] },
   { file: '20261106000000_goal_start_dates.sql', table: 'goals', columns: ['start_date'] },
   { file: '20261107000000_review_fixes.sql', table: 'goals', columns: ['reflection'] },
+  { file: '20261108000000_one_window_per_goal.sql', table: 'goals', columns: [], drops: { table: 'goals', column: 'after_goal_id' } },
 ];
+
+/** Columns older exports may still carry that the schema no longer has. */
+const GONE_GOAL_COLUMNS = ['after_goal_id'];
+
+function without<T extends object>(row: T, keys: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(row as Record<string, unknown>) };
+  for (const k of keys) delete out[k];
+  return out;
+}
 
 /** Tables that exist only once their migration has run. */
 const CREATED_TABLES = new Map(MIGRATIONS.filter((m) => m.creates).map((m) => [m.table, m]));
@@ -181,6 +189,11 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
         for (const m of MIGRATIONS) if (m.columns.length) byTable.set(m.table, [...(byTable.get(m.table) ?? []), ...m.columns]);
         const probes = await Promise.all([...byTable].map(async ([table, cols]) => (await sb.from(table).select(cols.join(',')).limit(1)).error?.message ?? null));
         const missing = probes.map((msg) => (msg ? migrationFor(msg) : null)).filter((m): m is (typeof MIGRATIONS)[number] => !!m);
+        // A migration that drops a column hasn't run while the column can still be selected.
+        for (const m of MIGRATIONS.filter((x) => x.drops)) {
+          const probe = await sb.from(m.drops!.table).select(m.drops!.column).limit(1);
+          if (!probe.error) missing.push(m);
+        }
         const first = MIGRATIONS.find((m) => missing.includes(m));
         if (first) schemaWarning = `Your database needs an update. ${runText(first)}`;
       }
@@ -240,13 +253,8 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       await insert('plans', incoming.plans ?? []);
       await insert('goal_groups', incoming.groups ?? []);
       // Goals and their measurements point at each other: goals first without it, then the link.
-      await insert('goals', (incoming.goals ?? []).map((g) => ({ ...g, measurement_type_id: null, ...(g.after_goal_id ? { after_goal_id: null } : {}) })));
-      // "Starts after" points at another goal: linked once every goal exists.
-      for (const g of incoming.goals ?? []) {
-        if (!g.after_goal_id) continue;
-        const { error } = await sb.from('goals').update({ after_goal_id: g.after_goal_id }).eq('id', g.id);
-        if (error) throw new Error(`goals: ${error.message}`);
-      }
+      // Older exports may carry columns this version no longer has.
+      await insert('goals', (incoming.goals ?? []).map((g) => ({ ...without(g, GONE_GOAL_COLUMNS), measurement_type_id: null })));
       await insert('measurement_types', incoming.measurementTypes ?? []);
       for (const g of incoming.goals ?? []) {
         if (!g.measurement_type_id) continue;

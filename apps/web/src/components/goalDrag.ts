@@ -18,7 +18,7 @@ export type DragWhat = Pick<GoalDrag, 'goal' | 'group' | 'goals'>;
 /**
  * Drag goals like phone apps: grab the handle (or press and hold a card on a touch screen, or
  * drag it a few pixels with a mouse). A group drags by its handle too. Drop targets carry
- * data-drop: "goal:<id>", "group:<id>" and "loose" (for goals), "plan:<id>" and "own" (for goals
+ * data-drop: "goal:<id>", "group:<id>" and "loose" (for goals), "plan:<id>" (for goals
  * and groups). A batch line lists the goals already in it (data-goals), so dropping them there
  * again does nothing.
  */
@@ -40,8 +40,7 @@ export function useGoalDrag(onDrop: (d: GoalDrag, target: string) => void) {
       // Already there: still a target, so the batch can say so (dropping does nothing).
       return what.goals.every((g) => there.has(g.id)) ? `already:${t.slice(5)}` : t;
     }
-    if (t === 'own') return t;
-    if (what.group) return null; // a group only goes into a batch or onto own clocks
+    if (what.group) return null; // a group only goes into a season
     const goal = what.goal;
     if (t === `goal:${goal.id}`) return null;
     if (t === `group:${goal.group_id}`) return null; // already in it
