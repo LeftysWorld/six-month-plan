@@ -17,6 +17,8 @@ import { opsCreateGroup } from '../src/data/groups.ts';
 import { opsMakeGoal, opsStartSeason, type NewGoalInput } from '../src/data/newGoal.ts';
 import { blankPath, opsCreatePath } from '../src/data/paths.ts';
 import { opsAddIdea } from '../src/data/backlog.ts';
+import { opsAddPhotoTracker } from '../src/data/tracking.ts';
+import { blankHabit, opsCreateHabit } from '../src/data/habits.ts';
 // Goal colours (the same set as components/ui.tsx).
 const GOAL_COLORS = ['#5B8CFF', '#22B07D', '#FF7A45', '#E8559B', '#8B6CF6', '#3FB6C9'];
 
@@ -36,6 +38,8 @@ const JHU_PREREQS_DONE = '2026-11-13' as ISODate;
 const JHU_STARTS = '2026-11-14' as ISODate;
 const JHU_ENDS = addDays(JHU_STARTS, 22 * 7 - 1); // 22 weeks → 2027-04-16
 const AIGP_EXAM = '2027-01-29' as ISODate;
+const AIGP_STUDY_STARTS = '2026-12-01' as ISODate; // no AIGP study before December 1
+const DOC_COURSE_STARTS = '2026-11-02' as ISODate; // choose and buy the course this week, start it next Monday
 const ISO_COURSE_STARTS = '2027-02-15' as ISODate;
 const ISO_EXAM = '2027-02-22' as ISODate;
 const JOB_BY = '2027-01-31' as ISODate;
@@ -139,6 +143,7 @@ const aigp = goal(
     type: 'finish',
     why: 'The governance credential people recognise. Credibility for the consulting path.',
     doneMeans: 'AIGP passed, exam taken by the end of January',
+    start: AIGP_STUDY_STARTS,
     finish: addDays(AIGP_EXAM, 2),
     pathId: pathAI.id,
     weekGoal: 'Study plan set; Body of Knowledge domain I read',
@@ -277,22 +282,26 @@ const weight = goal(
     baseline: WEIGHT_NOW,
     target: WEIGHT_GOAL,
     targetDate: plan.end_date,
-    weekGoal: 'No alcohol, keto every day, all five workouts (week 4 of the plan), weigh in every morning',
+    weekGoal: 'All five workouts (week 4 of the plan); weight and a photo every morning; no alcohol, keto every day',
     task: null,
   },
   GOAL_COLORS[1]!,
 );
 {
+  // Weight is the goal's own number, so it sits in "Today's numbers" every day (logged there, charted on
+  // the goal) — no separate weigh-in task, which would hide it from that card. A daily progress photo
+  // sits beside it with a camera button; photos collect on the goal, labelled by day, and Then vs now
+  // shows the first against the latest.
   const g = data.goals.find((x) => x.id === weight)!;
-  const measureId = g.measurement_type_id!;
-  tasks(weight, [
-    { title: 'Weigh in', kind: 'measure', minutes: 0, days: [1, 2, 3, 4, 5, 6, 7], measurementTypeId: measureId, cue: 'First thing, after the bathroom' },
-    // The 5-Day Upper Body Plan (Oct 13 version), one workout a day Mon–Fri, each with its exercises.
-    ...WORKOUTS.map(([day, title, plan]): Extra => ({ title, kind: 'workout', minutes: 60, days: [day], priority: true, workoutPlan: plan, details: WARMUP })),
-    { title: 'No alcohol', kind: 'check', minutes: 0, days: [1, 2, 3, 4, 5, 6, 7] },
-    { title: 'Keto / carnivore eating', kind: 'check', minutes: 0, days: [1, 2, 3, 4, 5, 6, 7], minLabel: 'No sugar, no bread' },
-  ]);
+  run(opsAddPhotoTracker(data, g.id, 'Progress photo', [1, 2, 3, 4, 5, 6, 7], TODAY));
+  // The 5-Day Upper Body Plan (Oct 13 version), one workout a day Mon–Fri, each with its exercises.
+  tasks(weight, WORKOUTS.map(([day, title, plan]): Extra => ({ title, kind: 'workout', minutes: 60, days: [day], priority: true, workoutPlan: plan, details: WARMUP })));
 }
+
+// ---------- Habits (every day, for their own sake; they have their own tab with streaks) ----------
+
+run(opsCreateHabit(data, { ...blankHabit(TODAY), title: 'No alcohol', kind: 'check', minutes: 0 }, TODAY).ops);
+run(opsCreateHabit(data, { ...blankHabit(TODAY), title: 'Keto / carnivore eating', kind: 'check', minutes: 0, minLabel: 'No sugar, no bread' }, TODAY).ops);
 
 const splits = goal(
   {
@@ -322,9 +331,10 @@ const doc = goal(
     why: 'Six months of reps so the camera holds and the sound carries. The craft before the channel.',
     doneMeans: 'Two episodes published: a Session with a full uninterrupted performance, and a Search episode at an Appalachian old-time jam; Valledupar prepared',
     pathId: pathDoc.id,
-    weekGoal: 'Enrolled in Documentary Fundamentals; module 1 done and a treatment written',
-    task: { title: 'Documentary Fundamentals course', days: [1, 2, 3, 4, 5], minutes: 45 },
+    weekGoal: 'Course chosen and bought (Documentary Fundamentals at docfilmacademy, or better); starts Monday Nov 2',
+    task: null,
     milestones: [
+      { title: 'Course bought', due_date: '2026-11-01' },
       { title: 'DFA modules 1–7 done; a 2-minute natural-sound film', due_date: '2026-11-30' },
       { title: 'One song recorded in three rooms, best cut', due_date: '2026-12-31' },
       { title: 'First Session published: full performance, 8 min', due_date: '2027-01-31' },
@@ -335,14 +345,12 @@ const doc = goal(
   },
   GOAL_COLORS[2]!,
 );
-{
-  const course = data.actions.find((a) => a.title === 'Documentary Fundamentals course')!;
-  const sched = data.schedules.find((s) => s.action_id === course.id)!;
-  run([{ kind: 'update', collection: 'schedules', id: sched.id, patch: { effective_to: '2026-11-30' } }]);
-}
 tasks(doc, [
-  { title: 'Shoot or edit', kind: 'minutes', minutes: 90, days: [6, 7], cue: 'Record the song first, then the interview' },
-  { title: 'Log every clip from the shoot', kind: 'check', minutes: 15, days: [7] },
+  // This week: pick the course. Next week: start it.
+  { title: 'Compare documentary courses and buy one', kind: 'minutes', minutes: 45, when: 'once', date: '2026-10-28' as ISODate, cue: 'Documentary Fundamentals (docfilmacademy) is the front-runner' },
+  { title: 'Documentary Fundamentals course', kind: 'minutes', minutes: 45, days: [1, 2, 3, 4, 5], start: DOC_COURSE_STARTS, through: '2026-11-30' as ISODate },
+  { title: 'Shoot or edit', kind: 'minutes', minutes: 90, days: [6, 7], start: addDays(DOC_COURSE_STARTS, 5), cue: 'Record the song first, then the interview' },
+  { title: 'Log every clip from the shoot', kind: 'check', minutes: 15, days: [7], start: addDays(DOC_COURSE_STARTS, 6) },
 ]);
 run(opsCreateGroup(data, 'Documentarian', [doc]).ops);
 
