@@ -185,7 +185,6 @@ function HabitSheet({ action, onClose }: { action: Action | null; onClose: () =>
   const [ends, setEnds] = useState(!!v.through);
   const set = (p: Partial<TaskInput>) => setV({ ...v, ...p });
   const valid = v.title.trim() && (v.when !== 'days' || v.days.length > 0) && (!ends || (v.through && v.through >= (v.start ?? today)));
-  void view;
   return (
     <Sheet title={action ? 'Edit habit' : 'New habit'} onClose={onClose}>
       <label className="field">

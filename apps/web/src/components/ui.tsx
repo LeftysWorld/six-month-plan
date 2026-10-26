@@ -156,11 +156,38 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  // The latest onClose, so the effect below runs once per sheet and never re-focuses mid-typing.
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
-    ref.current?.focus();
+    const el = ref.current;
+    el?.focus();
+    const focusable = () =>
+      [...(el?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? [])].filter(
+        (x) => x.offsetParent !== null,
+      );
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close.current();
+        return;
+      }
+      // Keep Tab inside the sheet.
+      if (e.key === 'Tab' && el) {
+        const items = focusable();
+        if (items.length === 0) return;
+        const first = items[0]!;
+        const last = items[items.length - 1]!;
+        const active = document.activeElement;
+        if (e.shiftKey && (active === first || active === el)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
@@ -169,7 +196,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
       document.body.style.overflow = '';
       previous?.focus?.();
     };
-  }, [onClose]);
+  }, []);
   // Render at the top of the page: a card with backdrop-filter traps fixed children inside its own layer.
   return createPortal(
     <div className="sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>

@@ -217,7 +217,8 @@ export function Roadmap() {
       en = addDays(s, len);
     }
     if (limits.endLocked) en = drag.end0;
-    const c = clampDates(limits, s, en);
+    // The end you didn't grab holds still: a start dragged past the end stops at the end.
+    const c = clampDates(limits, s, en, drag.mode === 'start' ? 'end' : 'start');
     setDrag({ ...drag, start: c.start, end: c.end, moved: true });
   }
   function endDrag(r: GoalRow) {
@@ -228,16 +229,16 @@ export function Roadmap() {
       setEditing(r);
       return;
     }
-    save(r, d.start, d.end);
+    save(r, d.start, d.end, undefined, d.mode === 'start' ? 'end' : 'start');
   }
-  function save(r: GoalRow, start: ISODate, end: ISODate, after?: string | null) {
+  function save(r: GoalRow, start: ISODate, end: ISODate, after?: string | null, hold?: 'start' | 'end') {
     const before = r.goal;
-    const res = opsSetGoalDates(view, r.goal, r.plan, { start, end }, today);
+    const res = opsSetGoalDates(view, r.goal, r.plan, { start, end }, today, hold);
     const ops = [...res.ops];
     if (after !== undefined && (after || null) !== (r.goal.after_goal_id ?? null)) ops.push({ kind: 'update', collection: 'goals', id: r.goal.id, patch: { after_goal_id: after || null } });
     if (!ops.length) return;
     commit(ops);
-    toast(`${r.goal.title}: ${shortDate(res.start)} – ${shortDate(res.end)}${res.clamped ? ' (kept inside its window)' : ''}`, () => commit([...opsRestoreDates(before), { kind: 'update', collection: 'goals', id: before.id, patch: { after_goal_id: before.after_goal_id ?? null } }]));
+    toast(`${r.goal.title}: ${shortDate(res.start)} – ${shortDate(res.end)}${res.clamped ? ' (kept inside its window)' : ''}`, () => commit([...opsRestoreDates(before, res.logId), { kind: 'update', collection: 'goals', id: before.id, patch: { after_goal_id: before.after_goal_id ?? null } }]));
   }
 
   // Milestones: drag to move (a day at a time), tap to change; arrow keys move them too.
@@ -249,16 +250,27 @@ export function Roadmap() {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setMsDrag({ id: m.id, x0: e.clientX, dayPx: track.getBoundingClientRect().width / span, date0: m.due_date, date: m.due_date, moved: false });
   }
+  /** The dates a goal's milestone may sit on: the goal's own run (the roadmap's edges when unknown). */
+  function msBounds(m: Milestone): { lo: ISODate; hi: ISODate } {
+    const goal = view.goal(m.goal_id);
+    const plan = goal ? view.planForGoal(goal) : null;
+    if (!goal || !plan) return { lo, hi };
+    const w = view.plannedWindow(goal, plan);
+    return { lo: w.start, hi: w.end };
+  }
   function msMove(e: ReactPointerEvent, m: Milestone) {
     if (!msDrag || msDrag.id !== m.id) return;
     const dx = e.clientX - msDrag.x0;
     if (!msDrag.moved && Math.abs(dx) < 4) return;
+    const b = msBounds(m);
     let date = addDays(msDrag.date0, Math.round(dx / msDrag.dayPx));
-    if (date < lo) date = lo;
-    if (date > hi) date = hi;
+    if (date < b.lo) date = b.lo;
+    if (date > b.hi) date = b.hi;
     setMsDrag({ ...msDrag, date, moved: true });
   }
   function moveMilestone(m: Milestone, date: ISODate) {
+    const b = msBounds(m);
+    if (date < b.lo || date > b.hi) return toast(`${m.title} stays inside its goal's dates (${shortDate(b.lo)} – ${shortDate(b.hi)})`);
     const ops = opsUpdateMilestone(m, { due_date: date });
     if (!ops.length) return;
     commit(ops);

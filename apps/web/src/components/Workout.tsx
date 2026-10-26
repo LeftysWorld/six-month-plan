@@ -225,7 +225,7 @@ const clock = (t: number) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2,
  * finished exercise folds to what you actually did. Progress is kept on this device until you
  * finish, so a locked phone loses nothing.
  */
-export function WorkoutSheet({ session, plan: basePlan, onClose }: { session: Session; plan: PlannedExercise[]; onClose: () => void }) {
+export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { session: Session; plan: PlannedExercise[]; onClose: () => void; onGeneral?: () => void }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
@@ -630,6 +630,11 @@ export function WorkoutSheet({ session, plan: basePlan, onClose }: { session: Se
           <button className="btn primary" disabled={doneCount === 0} onClick={finish}>
             {session.status === 'planned' ? (doneCount >= total ? 'Finish workout' : `Finish: ${doneCount} of ${total} sets`) : 'Save changes'}
           </button>
+          {onGeneral && (
+            <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start' }} onClick={onGeneral}>
+              {session.status === 'planned' ? 'Skip today, keep the minimum, or log it without sets' : 'Change or clear this log'}
+            </button>
+          )}
         </>
       )}
       {session.status === 'planned' && moveDates.length > 0 && (
@@ -651,7 +656,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose }: { session: Se
                     onClose();
                   }}
                 >
-                  {d === today ? 'Today' : `${weekdayName(d)} ${shortDate(d).split(' ')[1]}`}
+                  {d === today ? 'Today' : `${weekdayName(d)} ${Number(d.slice(8))}`}
                 </button>
               ))}
             </div>

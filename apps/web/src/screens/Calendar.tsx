@@ -186,7 +186,7 @@ export function DayDates({ day }: { day: ISODate }) {
                 const m = data.milestones.find((y) => y.id === x.milestoneId);
                 if (!m) return;
                 commit(opsToggleMilestone(m));
-                toast(m.completed_at ? `${m.title} reopened` : `${m.title} done`);
+                toast(m.completed_at ? `${m.title} reopened` : `${m.title} done`, () => commit([{ kind: 'update', collection: 'milestones', id: m.id, patch: { completed_at: m.completed_at } }]));
               }}
               aria-label={x.done ? `${x.title} done, tap to reopen` : `Mark ${x.title} done`}
               style={{ flex: 'none', cursor: 'pointer' }}

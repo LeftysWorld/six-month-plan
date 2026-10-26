@@ -75,13 +75,19 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
   // A task happens at most once a day, so days that already have it aren't offered.
   const moveDates = [...weekDates(monday), ...weekDates(addDays(monday, 7))].filter((d) => d >= today && d !== session.date && view.canPlace(session, d));
 
-  if (action?.kind === 'workout' && action.workout_plan?.length && !general) {
-    return <WorkoutSheet session={session} plan={action.workout_plan} onClose={onClose} />;
+  const hasWorkoutLog = action?.kind === 'workout' && !!action.workout_plan?.length;
+  if (hasWorkoutLog && !general) {
+    return <WorkoutSheet session={session} plan={action!.workout_plan!} onClose={onClose} onGeneral={() => setGeneral(true)} />;
   }
 
   return (
     <Sheet title={session.title} onClose={onClose}>
       {needsGoalLink(data, session) ? <LinkToGoal session={session} /> : <CountsFor actionId={session.action_id!} cue={action?.cue} />}
+      {hasWorkoutLog && (
+        <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start', padding: 0 }} onClick={() => setGeneral(false)}>
+          ‹ Log it set by set instead
+        </button>
+      )}
       {action?.details?.trim() && (
         <details className="task-details" open={session.status === 'planned'}>
           <summary>{action.kind === 'workout' ? 'The workout' : 'Details'}</summary>
@@ -94,7 +100,7 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
           <div className="grid-3">
             {moveDates.map((d) => (
               <button key={d} className="btn small" onClick={() => moveTo(d)}>
-                {d === today ? 'Today' : `${weekdayName(d)} ${shortDate(d).split(' ')[1]}`}
+                {d === today ? 'Today' : `${weekdayName(d)} ${Number(d.slice(8))}`}
               </button>
             ))}
           </div>
@@ -155,7 +161,6 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
                 key={s.value}
                 role="radio"
                 aria-checked={status === s.value}
-                aria-pressed={status === s.value}
                 className={`choice ${s.amber ? 'amber' : ''}`}
                 onClick={() => setStatus(s.value)}
               >
@@ -196,7 +201,9 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
             <button
               className="link-btn"
               onClick={() => {
+                const before = session;
                 commit(opsLogSession(session, { status: 'planned', actual_count: null, actual_minutes: null }));
+                toast(`${session.title}: log cleared`, () => commit(opsRestoreSession(before)));
                 onClose();
               }}
             >

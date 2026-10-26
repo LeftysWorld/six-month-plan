@@ -37,7 +37,7 @@ import { opsArchiveAction, opsArchiveGoal, opsCompleteGoal, opsCompleteReview, o
 import { catchUp, catchUpPlan, chainFor, isSet, opsSetLevel, type ChainLevel } from '../data/chain.ts';
 import { withOps } from '../data/breakdown.ts';
 import { selectedIdeas } from '../data/backlog.ts';
-import { actionLookup, commitmentTrail, obstacleSentence, planTrend, timeAverages, trendFor, weekdaySentence } from '../data/insights.ts';
+import { actionLookup, commitmentTrail, obstacleSentence, planTrend, readCheck, timeAverages, trendFor, weekdaySentence } from '../data/insights.ts';
 import { navigate, useRoute } from '../router.ts';
 import { BackLink, Empty, NumberInput, OBSTACLES, PacePill, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { TrendBars } from '../components/TrendBars.tsx';
@@ -465,7 +465,10 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
             <div className="card stack-sm">
               <span className="label">Last {word} you said</span>
               <p style={{ margin: 0, fontSize: 16, lineHeight: 1.4 }}>“{prev.change_next}”</p>
-              <span className="xsmall muted">Did it happen?</span>
+              <span className="xsmall muted">
+                Did it happen?
+                {readCheck(prev.id) ? ` Midweek you said you were ${readCheck(prev.id) === 'on' ? 'on it' : 'slipping'}.` : ''}
+              </span>
               <div className="chips" role="group" aria-label="Did it happen?">
                 {(['yes', 'partly', 'no'] as const).map((a) => (
                   <button key={a} className="chip" aria-pressed={draft.commitment === a} onClick={() => set({ commitment: draft.commitment === a ? null : a })}>
@@ -1067,6 +1070,7 @@ function NextGoalField({ f, draft, set }: { f: NextField; draft: Draft; set: (p:
 }
 
 function Decide({ goals, fields, draft, set, view, plan, nextMonday }: { goals: Goal[]; fields: NextField[]; draft: Draft; set: (p: Partial<Draft>) => void; view: View; plan: Plan; nextMonday: ISODate }) {
+  const today = view.today;
   return (
     <>
       <h1>Decide</h1>
@@ -1107,7 +1111,7 @@ function Decide({ goals, fields, draft, set, view, plan, nextMonday }: { goals: 
                   <NumberInput label={`New 6-month target${g.unit ? ` (${g.unit})` : ''}`} value={adjust.target ?? null} placeholder={g.target_value != null ? `e.g. ${fmt(g.target_value)}` : undefined} onChange={(v) => setAdjust({ target: v })} />
                   <label className="field">
                     By
-                    <input type="date" value={adjust.date ?? g.target_date ?? plan.end_date} onChange={(e) => setAdjust({ date: e.target.value })} />
+                    <input type="date" min={addDays(today, 1)} max={plan.end_date} value={adjust.date ?? g.target_date ?? plan.end_date} onChange={(e) => e.target.value && setAdjust({ date: e.target.value < addDays(today, 1) ? addDays(today, 1) : e.target.value > plan.end_date ? plan.end_date : e.target.value })} />
                   </label>
                   <span className="xsmall muted" style={{ gridColumn: 'span 2' }}>
                     The path is redrawn from where you are now to the new target.

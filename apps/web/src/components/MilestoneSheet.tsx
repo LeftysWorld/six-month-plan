@@ -37,8 +37,9 @@ export function MilestoneSheet({
   const [done, setDone] = useState(!!milestone?.completed_at);
   const goal = view.goal(goalId);
   const plan = goal ? view.planForGoal(goal) : null;
-  const outside = !!plan && (date < plan.start_date || date > plan.end_date);
-  const valid = !!goal && title.trim().length > 0 && !!date;
+  const window = goal && plan ? view.plannedWindow(goal, plan) : null;
+  const outside = !!window && (date < window.start || date > window.end);
+  const valid = !!goal && title.trim().length > 0 && !!date && !outside;
   const example = goal?.type === 'number' ? `e.g. ${goal.unit === 'lb' || goal.unit === 'kg' ? 'Weigh' : 'Reach'} ${goal.target_value ?? 200}${goal.unit ? ` ${goal.unit}` : ''}` : 'e.g. Class begins, Exam day, Module 3 done';
 
   function save() {
@@ -92,9 +93,9 @@ export function MilestoneSheet({
           Date
           <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
         </label>
-        {outside && plan && (
+        {outside && window && (
           <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>
-            That's outside this goal's {plan.solo ? 'own clock' : 'season'} ({shortDate(plan.start_date)} – {shortDate(plan.end_date)}). It still saves, but won't show on this season's roadmap.
+            That's outside this goal's dates ({shortDate(window.start)} – {shortDate(window.end)}). Move the goal's dates on the roadmap first if you need it there.
           </span>
         )}
         {milestone && (

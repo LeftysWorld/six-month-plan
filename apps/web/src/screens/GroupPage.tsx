@@ -20,7 +20,7 @@ export function GroupPage({ id }: { id: string }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<'edit' | 'share' | null>(null);
   const [moving, setMoving] = useState(false);
   const group = data.groups.find((g) => g.id === id);
   if (!group) return <Empty title="This group isn’t here anymore." />;
@@ -80,10 +80,10 @@ export function GroupPage({ id }: { id: string }) {
               );
             })}
             <div className="group-actions">
-              <button className="link-btn small" onClick={() => setEditing(true)}>
+              <button className="link-btn small" onClick={() => setEditing('edit')}>
                 Edit group
               </button>
-              <button className="link-btn small" onClick={() => setEditing(true)}>
+              <button className="link-btn small" onClick={() => setEditing('share')}>
                 Share a task
               </button>
               {now.length > 0 && (
@@ -106,7 +106,7 @@ export function GroupPage({ id }: { id: string }) {
           </section>
         </aside>
       </div>
-      {editing && <GroupSheet group={group} onClose={() => setEditing(false)} />}
+      {editing && <GroupSheet group={group} startSharing={editing === 'share'} onClose={() => setEditing(null)} />}
       {moving && <MoveSheet goals={now.map((p) => p.card.goal)} title={group.name} onClose={() => setMoving(false)} />}
     </div>
   );

@@ -157,13 +157,13 @@ export function GroupNameSheet({ goals, onClose, onCreated }: { goals: Goal[]; o
 }
 
 /** An open group, like an open folder: rename it, see and remove its goals, its shared tasks, ungroup. */
-export function GroupSheet({ group, onClose }: { group: GoalGroup; onClose: () => void }) {
+export function GroupSheet({ group, onClose, startSharing = false }: { group: GoalGroup; onClose: () => void; startSharing?: boolean }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
   const [name, setName] = useState(group.name);
   const [outcome, setOutcome] = useState(group.outcome ?? '');
-  const [sharing, setSharing] = useState(false);
+  const [sharing, setSharing] = useState(startSharing);
   const members = groupMembers(data, group.id);
   const shared = sharedTasksOf(view, members);
   const options = shareableAcross(view, members, today);

@@ -282,15 +282,27 @@ function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: (
           const extra: Partial<Goal> = {};
           if (goal.type !== 'number' && (finishBy || null) !== (goal.target_date ?? null)) extra.target_date = finishBy || null;
           if ((after || null) !== (goal.after_goal_id ?? null)) extra.after_goal_id = after || null;
-          const storedStart = startOn && startOn > plan.start_date ? startOn : null;
+          // A start can't be after the finish (or outside the window); the finish wins.
+          const end = (goal.type !== 'number' ? finishBy : goal.target_date) || plan.end_date;
+          const start = startOn && startOn > end ? end : startOn && startOn < plan.start_date ? plan.start_date : startOn;
+          const storedStart = start && start > plan.start_date ? start : null;
           if (storedStart !== (goal.start_date ?? null)) extra.start_date = storedStart;
-          let ops = opsUpdateGoal(goal, { title: title.trim() || goal.title, why: why.trim(), done_means: done.trim(), ...(goal.type === 'number' ? { target_value: target } : {}), ...extra });
+          const patch: Partial<Goal> = { title: title.trim() || goal.title, why: why.trim(), done_means: done.trim(), ...(goal.type === 'number' ? { target_value: target } : {}), ...extra };
+          let ops = opsUpdateGoal(goal, patch);
+          const wasTargets = currentTargets(data.goalTargets, goal.id);
           if (goal.type === 'number' && target !== goal.target_value) {
             const now = new Date().toISOString();
-            ops = [...ops, ...currentTargets(data.goalTargets, goal.id).map((t) => ({ kind: 'update', collection: 'goalTargets', id: t.id, patch: { superseded_at: now } }) as const)];
+            ops = [...ops, ...wasTargets.map((t) => ({ kind: 'update', collection: 'goalTargets', id: t.id, patch: { superseded_at: now } }) as const)];
           }
+          const was: Partial<Goal> = {};
+          for (const k of Object.keys(patch) as (keyof Goal)[]) (was as Record<string, unknown>)[k] = goal[k] ?? null;
           commit(ops);
-          toast('Goal saved');
+          toast('Goal saved', () =>
+            commit([
+              ...opsUpdateGoal(goal, was),
+              ...(goal.type === 'number' && target !== goal.target_value ? wasTargets.map((t) => ({ kind: 'update', collection: 'goalTargets', id: t.id, patch: { superseded_at: null } }) as const) : []),
+            ]),
+          );
           onClose();
         }}
       >
@@ -918,8 +930,11 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
       return onToast(`${t.action.title} done ${d === today ? 'today' : `on ${weekdayName(d)}`}`, () => commit(opsRestoreSession(target)));
     }
     // Not planned that day: log it as an extra (a task still happens at most once a day).
-    commit(opsLogUnplanned(data, t.action, d, t.action.planned_minutes));
-    onToast(`${t.action.title} logged ${d === today ? 'today' : `on ${weekdayName(d)}`} as an extra`);
+    const extra = opsLogUnplanned(data, t.action, d, t.action.planned_minutes);
+    commit(extra);
+    const added = extra.find((op) => op.kind === 'insert');
+    const ids = added?.kind === 'insert' ? added.rows.map((r) => r.id) : [];
+    onToast(`${t.action.title} logged ${d === today ? 'today' : `on ${weekdayName(d)}`} as an extra`, () => commit(ids.map((id) => ({ kind: 'delete', collection: 'sessions', id }))));
   }
 
   return (

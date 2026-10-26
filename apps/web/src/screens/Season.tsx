@@ -403,7 +403,8 @@ export function SeasonHorizon({
 /** On pace, the next checkpoint and the next review, as three tiles that wrap instead of crowding. */
 export function SeasonStats({ season, members }: { season: Plan; members: Placed[] }) {
   const view = useView();
-  const { today } = useStore();
+  const { today, data } = useStore();
+  const weekReviewed = data.reviews.some((r) => r.kind === 'weekly' && r.status === 'done' && r.period_start === weekStart(today));
   if (season.start_date > today) {
     return (
       <div className="season-stats">
@@ -444,7 +445,7 @@ export function SeasonStats({ season, members }: { season: Plan; members: Placed
       </div>
       <div className="season-stat">
         <span className="mono">REVIEW</span>
-        <b>{nextReviewWord(today)}</b>
+        <b>{nextReviewWord(today, weekReviewed)}</b>
         <small>Weekly</small>
       </div>
     </div>

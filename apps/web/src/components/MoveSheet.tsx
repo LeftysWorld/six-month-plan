@@ -44,13 +44,13 @@ export function MoveSheet({ goals, title, initial, onClose }: { goals: Goal[]; t
         {batches.map((p) => {
           const on = chosen?.kind === 'plan' && chosen.plan.id === p.id;
           return (
-            <button key={p.id} type="button" role="radio" aria-checked={on} className={`choice${on ? ' on' : ''}`} aria-pressed={on} onClick={() => setDest({ kind: 'plan', plan: p })} style={{ textAlign: 'left' }}>
+            <button key={p.id} type="button" role="radio" aria-checked={on} className={`choice${on ? ' on' : ''}`} onClick={() => setDest({ kind: 'plan', plan: p })} style={{ textAlign: 'left' }}>
               <b>{p.name}</b>
               <span>{windowLine(p, today)}</span>
             </button>
           );
         })}
-        <button type="button" role="radio" aria-checked={chosen?.kind === 'own'} aria-pressed={chosen?.kind === 'own'} className="choice" onClick={() => setDest({ kind: 'own', months })} style={{ textAlign: 'left' }}>
+        <button type="button" role="radio" aria-checked={chosen?.kind === 'own'} className="choice" onClick={() => setDest({ kind: 'own', months })} style={{ textAlign: 'left' }}>
           <b>{goals.length === 1 ? 'Its own clock' : 'Each on its own clock'}</b>
           <span>Starts today, independent of any batch</span>
         </button>

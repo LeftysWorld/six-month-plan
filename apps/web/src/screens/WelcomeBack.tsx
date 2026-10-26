@@ -31,8 +31,9 @@ export function WelcomeBack({ days, onDone }: { days: number; onDone: () => void
       id: s.id,
       patch: { planned_minutes: minutes, planned_count: count },
     }));
+    const undo: Op[] = lighter.map(({ s }) => ({ kind: 'update', collection: 'sessions', id: s.id, patch: { planned_minutes: s.planned_minutes, planned_count: s.planned_count } }));
     commit(ops);
-    toast('This week is lighter: minimum versions until Sunday');
+    toast('This week is lighter: minimum versions until Sunday', () => commit(undo));
     onDone();
     navigate('/today');
   }

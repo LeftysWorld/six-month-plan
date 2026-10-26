@@ -59,13 +59,12 @@ export function dueLabel(target: { overdue: boolean; done: boolean }, today: ISO
 }
 
 /** A batch's month or 3-month review is named after the batch when more than one window is running. */
-let manyWindows = false;
-const batchName = (s: PeriodReviewSlot) => (manyWindows ? `${s.plan.name}: ` : '');
+const batchName = (s: PeriodReviewSlot, manyWindows: boolean) => (manyWindows ? `${s.plan.name}: ` : '');
 
 const KIND_TITLE: Record<Review['kind'], string> = { weekly: 'Week', block: 'Month', quarter: '3-month', retro: 'Retrospective' };
-const SLOT_COPY: Record<PeriodReviewSlot['kind'], { tag: string; name: (s: PeriodReviewSlot) => string; detail: string; minutes: number; color: string; ink: string }> = {
-  block: { tag: 'M', name: (s) => `${s.plan.solo ? `${s.plan.name}: ` : batchName(s)}${s.title} review`, detail: "How the month went, then set next month's goals", minutes: 15, color: 'var(--accent-soft)', ink: 'var(--accent-ink)' },
-  quarter: { tag: '3M', name: (s) => `${s.plan.solo ? `${s.plan.name}: ` : batchName(s)}3-month checkpoint`, detail: 'Keep, adjust or drop each goal, then set the next 3 months', minutes: 25, color: 'var(--blue-soft)', ink: 'var(--blue-ink)' },
+const SLOT_COPY: Record<PeriodReviewSlot['kind'], { tag: string; name: (s: PeriodReviewSlot, manyWindows: boolean) => string; detail: string; minutes: number; color: string; ink: string }> = {
+  block: { tag: 'M', name: (s, many) => `${s.plan.solo ? `${s.plan.name}: ` : batchName(s, many)}${s.title} review`, detail: "How the month went, then set next month's goals", minutes: 15, color: 'var(--accent-soft)', ink: 'var(--accent-ink)' },
+  quarter: { tag: '3M', name: (s, many) => `${s.plan.solo ? `${s.plan.name}: ` : batchName(s, many)}3-month checkpoint`, detail: 'Keep, adjust or drop each goal, then set the next 3 months', minutes: 25, color: 'var(--blue-soft)', ink: 'var(--blue-ink)' },
   retro: { tag: '6M', name: (s) => `${s.plan.name}: retrospective`, detail: 'What worked, what carries over, and your next plan', minutes: 30, color: 'var(--gold-soft)', ink: 'var(--gold-ink)' },
 };
 
@@ -102,7 +101,7 @@ export function ReviewHub() {
     const r = retroSlot(p, data.reviews, today);
     if (r) slots.push(r);
   }
-  manyWindows = running.length > 1;
+  const manyWindows = running.length > 1;
   const open = slots.filter((s) => s.state !== 'upcoming');
   const nextUp = slots.filter((s) => s.state === 'upcoming').sort((a, b) => (a.opensOn < b.opensOn ? -1 : 1))[0];
   const insights = plan && started ? hubInsights(data, plan, today, !target.done) : null;
@@ -111,7 +110,7 @@ export function ReviewHub() {
 
   const topCard = <WeeklyCard target={target} />;
   const commitmentCard = commitment ? <CommitmentCard review={commitment.review} text={commitment.text} forWeek={commitment.forWeek} today={today} /> : null;
-  const openCards = open.map((s) => <SlotCard key={`${s.kind}:${s.plan.id}:${s.period.start}`} s={s} />);
+  const openCards = open.map((s) => <SlotCard key={`${s.kind}:${s.plan.id}:${s.period.start}`} s={s} manyWindows={manyWindows} />);
 
   return (
     <div className="stack rise">
@@ -137,7 +136,7 @@ export function ReviewHub() {
             <div className="card tight row-start" style={{ gap: 12, flexWrap: 'nowrap' }}>
               <SlotTag tag={SLOT_COPY[nextUp.kind].tag} color={SLOT_COPY[nextUp.kind].color} ink={SLOT_COPY[nextUp.kind].ink} />
               <div className="grow" style={{ minWidth: 0 }}>
-                <div className="small strong">Next: {SLOT_COPY[nextUp.kind].name(nextUp)}</div>
+                <div className="small strong">Next: {SLOT_COPY[nextUp.kind].name(nextUp, manyWindows)}</div>
                 <div className="xsmall muted">
                   Opens {shortDate(nextUp.opensOn)} · ~{SLOT_COPY[nextUp.kind].minutes} min
                 </div>
@@ -239,14 +238,14 @@ function ReviewCount({ done, weeks }: { done: number; weeks: number }) {
   );
 }
 
-function SlotCard({ s }: { s: PeriodReviewSlot }) {
+function SlotCard({ s, manyWindows }: { s: PeriodReviewSlot; manyWindows: boolean }) {
   const copy = SLOT_COPY[s.kind];
   return (
     <div className="card stack-sm">
       <div className="row-between" style={{ alignItems: 'baseline', gap: 8 }}>
         <span className="row-start" style={{ gap: 10, flexWrap: 'nowrap' }}>
           <SlotTag tag={copy.tag} color={copy.color} ink={copy.ink} />
-          <b>{copy.name(s)}</b>
+          <b>{copy.name(s, manyWindows)}</b>
         </span>
         <span className="xsmall" style={{ color: s.state === 'overdue' ? 'var(--amber-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>
           {s.state === 'overdue' ? 'Still open' : `Due ${shortDate(s.period.end)}`} · ~{copy.minutes} min

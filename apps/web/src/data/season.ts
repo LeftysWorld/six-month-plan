@@ -39,9 +39,10 @@ export function firstCheckpoint(plan: Plan): ISODate {
   return quarterRange(plan, plan.start_date).end;
 }
 
-/** The weekly review opens on Saturday: "Today", "Tomorrow" or "Saturday". */
-export function nextReviewWord(today: ISODate): string {
+/** The weekly review opens on Saturday: "Today", "Tomorrow", "Saturday", or "Done" once this week's is saved. */
+export function nextReviewWord(today: ISODate, done = false): string {
   const d = isoWeekday(today);
+  if (done && d >= 6) return 'Done';
   return d === 6 ? 'Today' : d === 5 ? 'Tomorrow' : d === 7 ? 'Today' : 'Saturday';
 }
 

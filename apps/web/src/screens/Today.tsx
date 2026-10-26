@@ -37,6 +37,14 @@ export function Today({ date }: { date?: ISODate } = {}) {
   // The day being shown. Opens on today; tap a day, page weeks with ‹ ›, or use the arrow keys.
   const [picked, setPicked] = useState<ISODate>(date ?? today);
   const [, bump] = useState(0);
+  // Midnight: a page left open on "today" follows the new day (a day picked on purpose stays).
+  const lastToday = useRef(today);
+  useEffect(() => {
+    if (lastToday.current !== today) {
+      if (!date && picked === lastToday.current) setPicked(today);
+      lastToday.current = today;
+    }
+  }, [today, date, picked]);
   const thisMonday = weekStart(today);
   const monday = weekStart(picked);
   const week = weekDates(monday);
@@ -66,6 +74,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      if (document.querySelector('.sheet')) return;
       if (e.key === 'ArrowLeft') setPicked(addDays(day, -1));
       if (e.key === 'ArrowRight') setPicked(addDays(day, 1));
     };
@@ -362,7 +371,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
 
         {planned.length + done.length > 0 && (
           <div className="task-cards">
-            {[...planned, ...done].filter((s) => !isHabit(data, s.action_id)).map((s) => (
+            {[...planned, ...done].map((s) => (
               <TaskCard key={s.id} session={s} hint={hintFor(s)} onToggle={() => toggle(s)} onOpen={() => openSession(s)} swipe={!isFuture && s.status === 'planned'} />
             ))}
           </div>
@@ -489,11 +498,11 @@ function MorningPlan({ sessions, available, onDone }: { sessions: Session[]; ava
             <div key={s.id} className="row-between" style={{ gap: 8 }}>
               <span className="small grow" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</span>
               {view.canPlace(s, today) && (
-                <button className="btn small" onClick={() => { commit(opsMoveSession(s, today)); toast(`${s.title} moved to today`); }}>
+                <button className="btn small" onClick={() => { commit(opsMoveSession(s, today)); toast(`${s.title} moved to today`, () => commit(opsRestoreSession(s))); }}>
                   Today
                 </button>
               )}
-              <button className="btn small" onClick={() => { commit(opsLogSession(s, { status: 'skipped' })); toast(`${s.title} skipped`); }}>
+              <button className="btn small" onClick={() => { commit(opsLogSession(s, { status: 'skipped' })); toast(`${s.title} skipped`, () => commit(opsRestoreSession(s))); }}>
                 Let go
               </button>
             </div>
@@ -575,7 +584,7 @@ function EveningWrap({ sessions, onDone }: { sessions: Session[]; onDone: () => 
               className="btn small ghost"
               onClick={() => {
                 commit(movable.flatMap((s) => opsMoveSession(s, tomorrow)));
-                toast(`Moved ${movable.length} to tomorrow`);
+                toast(`Moved ${movable.length} to tomorrow`, () => commit(movable.flatMap((s) => opsRestoreSession(s))));
               }}
             >
               Move {movable.length === open.length ? `all ${open.length}` : `the ${movable.length} that can go`} to tomorrow
