@@ -30,6 +30,7 @@ import { Roadmap } from './screens/Roadmap.tsx';
 import { Calendar } from './screens/Calendar.tsx';
 import { Habits } from './screens/Habits.tsx';
 import { GroupPage } from './screens/GroupPage.tsx';
+import { PathDetail, Paths } from './screens/Paths.tsx';
 
 const MODE_KEY = 'six.mode';
 
@@ -146,7 +147,7 @@ function Shell(props: ShellProps) {
     setAppBadge(openToday);
   }, [openToday]);
 
-  // Keyboard shortcuts on a computer: N add, T today, G goals, B backlog, R review.
+  // Keyboard shortcuts on a computer: N add, T today, G goals, B backlog, P paths, R review.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -163,6 +164,7 @@ function Shell(props: ShellProps) {
       else if (k === 'm') navigate('/roadmap');
       else if (k === 'c') navigate('/calendar');
       else if (k === 'h') navigate('/habits');
+      else if (k === 'p') navigate('/paths');
       else if (k === 'r') navigate('/review');
     };
     window.addEventListener('keydown', onKey);
@@ -179,7 +181,7 @@ function Shell(props: ShellProps) {
       break;
     case 'plans':
     case 'goals':
-      if (s0 === 'goals' && s1 === 'new') screen = <GoalNew ideaId={route.query.get('idea')} />;
+      if (s0 === 'goals' && s1 === 'new') screen = <GoalNew ideaId={route.query.get('idea')} pathId={route.query.get('path')} />;
       else if (s0 === 'goals' && s1 === 'backlog') screen = <Backlog />;
       else if (s0 === 'goals' && s1 === 'completed') screen = <Completed />;
       else if (s0 === 'goals' && s1 === 'group' && s2) screen = <GroupPage id={s2} />;
@@ -204,6 +206,9 @@ function Shell(props: ShellProps) {
     case 'habits':
       screen = <Habits />;
       break;
+    case 'paths':
+      screen = s1 ? <PathDetail id={s1} /> : <Paths />;
+      break;
     case 'settings':
       screen = <Settings {...props} />;
       break;
@@ -211,7 +216,7 @@ function Shell(props: ShellProps) {
       screen = <Today />;
   }
 
-  const tab = s0 === 'roadmap' ? 'roadmap' : s0 === 'calendar' ? 'calendar' : s0 === 'habits' ? 'habits' : s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
+  const tab = s0 === 'roadmap' ? 'roadmap' : s0 === 'calendar' ? 'calendar' : s0 === 'habits' ? 'habits' : s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'paths' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
 
   return (
     <div className="shell">

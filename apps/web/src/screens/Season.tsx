@@ -119,6 +119,7 @@ const STATUS_INK: Record<string, string> = { ahead: 'var(--blue-ink)', behind: '
 export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi; onMove?: (g: Goal) => void }) {
   const view = useView();
   const { goal } = placed.card;
+  const path = goal.path_id ? view.data.paths.find((p) => p.id === goal.path_id && !p.archived_at) : undefined;
   const t = goalTrack(view, goal, placed.plan);
   const ink = t.started ? STATUS_INK[t.label] ?? 'var(--ink-2)' : 'var(--muted)';
   const dragging = !!dnd?.drag && !dnd.drag.group && dnd.drag.goal.id === goal.id;
@@ -151,6 +152,7 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
         <span className="season-row-head">
           <span className="dot" style={{ width: 8, height: 8, flex: 'none', background: goal.color }} />
           <span className="season-row-title">{goal.title}</span>
+          {path && <span className="dot" title={`${path.name}`} style={{ width: 7, height: 7, flex: 'none', background: path.color }} />}
           <span className="season-row-status" style={{ color: ink }}>
             {t.status}
           </span>

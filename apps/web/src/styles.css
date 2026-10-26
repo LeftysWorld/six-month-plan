@@ -1247,3 +1247,23 @@ a.rm-name:hover .rm-title { color: var(--accent-ink); }
 .then-now-col { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--fill); }
 .then-now-col .num { font-size: 22px; }
 .then-now-col .file-thumb { align-self: flex-start; }
+
+/* Odyssey paths */
+.paths-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 860px) { .paths-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; } }
+.path-card { border-top: 3px solid var(--c); }
+.path-card-link { display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: inherit; }
+.path-name { font-size: 20px; letter-spacing: -0.02em; margin: 0; line-height: 1.2; }
+.path-headline { margin: 0; font-size: 14px; line-height: 1.4; color: var(--ink-2); }
+.gauges { display: flex; flex-direction: column; gap: 6px; }
+.gauges.compact { gap: 3px; }
+.gauge-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.gauge-name { font-size: 12px; color: var(--muted); }
+.gauges.compact .gauge-name { font-size: 11px; }
+.gauge-dots { display: inline-flex; gap: 4px; }
+.gauge-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--track); border: 0; padding: 0; display: inline-block; }
+.gauges.compact .gauge-dot { width: 9px; height: 9px; }
+.gauge-dot.on { background: var(--c, var(--accent)); }
+button.gauge-dot { cursor: pointer; position: relative; }
+button.gauge-dot::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
+button.gauge-dot:hover { filter: brightness(0.9); }

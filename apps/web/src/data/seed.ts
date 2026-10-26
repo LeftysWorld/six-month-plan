@@ -93,7 +93,7 @@ export function buildDemoData(): AppData {
   const jhu = goal({ title: 'JHU AI certificate', type: 'finish', color: '#3FB6C9', why: 'Credibility for AI product roles.', done_means: 'All modules passed' });
   // Three goals that add up to one outcome: a group with an outcome line. The AIGP finishes before
   // the season ends, and ISO 42001 starts after it ("Up next" until then).
-  const credentials = { id: id(), name: 'Credentials', created_at: `${start}T12:00:00.000Z`, outcome: 'Qualified for AI product and governance work' };
+  const credentials = { id: id(), name: 'Credentials', created_at: `${start}T12:00:00.000Z` };
   data.groups = [credentials];
   jhu.group_id = credentials.id;
   const aigp = goal({ title: 'Pass the AIGP exam', type: 'finish', color: '#3FB6C9', why: 'AI governance credibility.', done_means: 'Exam passed', target_date: addDays(start, 70), group_id: credentials.id });
@@ -366,5 +366,42 @@ export function buildDemoData(): AppData {
     created_at: `${addDays(today, -age)}T12:00:00.000Z`,
     started_at: null,
   }));
+
+  // Three Odyssey paths. Goals and ideas point at them, so each path's progress is measured.
+  const at = (d: string) => `${d}T12:00:00.000Z`;
+  const planA = {
+    id: id(), name: 'AI product owner', headline: 'Technical PO on an AI team, Myrtle Beach, steady', why: 'Builds on twelve years of delivery; the shortest path to good work.',
+    color: '#5B8CFF', rank: 0, horizon_years: 5,
+    years: ['JHU certificate; a product role that touches AI', 'Own a roadmap end to end', 'Senior PO or PM; one shipped AI feature people use', 'Lead product on a small AI team', 'Head of product somewhere worth it'],
+    gauges: { resources: 4, likability: 3, confidence: 4, coherence: 4 }, gauge_log: [{ on: start, gauges: { resources: 4, likability: 3, confidence: 4, coherence: 4 } }],
+    questions: [{ id: id(), text: 'Will companies hire a delivery lead as a technical PO without a shipped AI product?', answer: '', answered_at: null }],
+    notes: [], archived_at: null, created_at: at(start),
+  };
+  const planB = {
+    id: id(), name: 'AI governance consultant', headline: 'Independent, ISO 42001 and AIGP, three clients', why: 'Independence, and the GxP compliance work I already know how to do.',
+    color: '#22B07D', rank: 1, horizon_years: 5,
+    years: ['AIGP and ISO 42001 LI passed; first paid readiness check', 'Three clients; a repeatable 90-day offer', 'A small practice; one hire', '', 'A known name in one narrow niche'],
+    gauges: { resources: 3, likability: 4, confidence: 3, coherence: 4 }, gauge_log: [{ on: start, gauges: { resources: 3, likability: 4, confidence: 3, coherence: 4 } }],
+    questions: [
+      { id: id(), text: 'Would anyone pay for a 90-day governance readiness check?', answer: '', answered_at: null },
+      { id: id(), text: 'Can I sell with one cold call a day?', answer: '', answered_at: null },
+    ],
+    notes: [], archived_at: null, created_at: at(start),
+  };
+  const planC = {
+    id: id(), name: 'Recovery retreat host', headline: 'A glamping retreat near Greenville, music and mountains', why: 'The life I would pick if money and image did not matter.',
+    color: '#FF7A45', rank: 2, horizon_years: 5,
+    years: ['Land criteria and a financing plan', 'Land bought; first two units', 'Open; weekends booked', 'Four units; a second host', 'Known for one thing: real recovery'],
+    gauges: { resources: 2, likability: 5, confidence: 2, coherence: 4 }, gauge_log: [{ on: start, gauges: { resources: 2, likability: 5, confidence: 2, coherence: 4 } }],
+    questions: [{ id: id(), text: 'Would I still love it after a season of hosting strangers?', answer: '', answered_at: null }],
+    notes: [], archived_at: null, created_at: at(start),
+  };
+  data.paths = [planA, planB, planC];
+  for (const g of [career, jhu]) g.path_id = planA.id;
+  for (const g of [aigp, iso]) g.path_id = planB.id;
+  for (const i of data.ideas) {
+    if (/AI side project|PMP/.test(i.title)) i.path_id = planA.id;
+    if (/half marathon/.test(i.title)) i.path_id = planC.id;
+  }
   return data;
 }

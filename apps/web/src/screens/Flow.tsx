@@ -39,6 +39,7 @@ import { WorkoutPlanEditor, blankExercise } from '../components/Workout.tsx';
 import { goalTrack } from '../data/season.ts';
 import { opsRecordReading } from '../data/connect.ts';
 import { TaskSheet, dateRange, daysOfWeek } from './TaskSheet.tsx';
+import { pathLetter, pathsOf } from '../data/paths.ts';
 
 /**
  * One page per goal: the goal chain, top to bottom, then this week's daily tasks.
@@ -193,6 +194,8 @@ function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: (
   const [finishBy, setFinishBy] = useState(goal.target_date ?? '');
   const [startOn, setStartOn] = useState(goal.start_date ?? '');
   const [title, setTitle] = useState(goal.title);
+  const paths = pathsOf(data);
+  const [pathId, setPathId] = useState<string>(goal.path_id ?? '');
   const [why, setWhy] = useState(goal.why);
   const [done, setDone] = useState(goal.done_means);
   const [target, setTarget] = useState<number | null>(goal.target_value);
@@ -216,6 +219,19 @@ function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: (
         Done means
         <input value={done} onChange={(e) => setDone(e.target.value)} placeholder="How you'll know it's done" />
       </label>
+      {paths.length > 0 && (
+        <label className="field">
+          Path <span style={{ fontWeight: 400 }}>(which life is this a bet on?)</span>
+          <select value={pathId} onChange={(e) => setPathId(e.target.value)}>
+            <option value="">No path</option>
+            {paths.map((p) => (
+              <option key={p.id} value={p.id}>
+                {pathLetter(data, p)} · {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="field">
         Starts <span style={{ fontWeight: 400 }}>(optional)</span>
         <input type="date" value={startOn} min={plan.start_date} max={finishBy || plan.end_date} onChange={(e) => setStartOn(e.target.value)} />
@@ -243,6 +259,7 @@ function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: (
           const start = startOn && startOn > end ? end : startOn && startOn < plan.start_date ? plan.start_date : startOn;
           const storedStart = start && start > plan.start_date ? start : null;
           if (storedStart !== (goal.start_date ?? null)) extra.start_date = storedStart;
+          if ((pathId || null) !== (goal.path_id ?? null)) extra.path_id = pathId || null;
           const patch: Partial<Goal> = { title: title.trim() || goal.title, why: why.trim(), done_means: done.trim(), ...(goal.type === 'number' ? { target_value: target } : {}), ...extra };
           let ops = opsUpdateGoal(goal, patch);
           const wasTargets = currentTargets(data.goalTargets, goal.id);

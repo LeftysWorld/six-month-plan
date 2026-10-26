@@ -16,6 +16,10 @@ it cut the model down to what one person needs. This is what the app is now, and
   bar. Group outcomes are gone.
 - The **backlog** is one ordered list. **Make it a goal** opens one page: goal, when, this week,
   first task. No selected column, no limit, no readiness rule, no prepare-then-commit.
+- **Odyssey paths** sit above the seasons: three five-year lives, each with a headline, a line per
+  year, four gauges and open questions. Goals and ideas point at a path; a path's progress is rolled
+  up from its goals. The 3-month checkpoint re-rates the gauges; the retrospective asks what the
+  season taught you about each path.
 - The **weekly review** is two minutes: did last week's change happen, hit / partly / missed per
   goal, readings due, one change. "Plan next week in detail" is folded underneath.
 
@@ -28,6 +32,7 @@ Run in order; each is safe to run twice:
 - `20261108000000_one_window_per_goal.sql` — folds own clocks and "starts after" into each goal's
   start/finish and archives the clocks; flattens the backlog (selected → backlog, drops `prep`);
   drops `goal_groups.outcome`. **This one drops columns.** Take a backup (Settings → Export) first.
+- `20261109000000_odyssey_paths.sql` — the `paths` table, `goals.path_id`, `goal_ideas.path_id`.
 
 ## Still open
 
@@ -48,7 +53,7 @@ Built in a container that could not reach npm, so `npm run dev` / `vite build` w
 
 - `tsc --strict --noUnusedLocals` over the whole web app with typed stubs for React, react-dom and
   supabase-js in place of `node_modules`: **0 errors**.
-- `packages/core` tests **34/34**; `apps/web` tests **47/47**, run with Node's own TypeScript support.
+- `packages/core` tests **34/34**; `apps/web` tests **51/51**, run with Node's own TypeScript support.
 - SQL migrations were read, not executed. Run them on a copy if you can.
 - Everything visual needs your eyes in a browser: Today's order, the flat backlog, Make a goal, the
-  one-page reviews, Then vs now.
+  one-page reviews, Then vs now, Paths.

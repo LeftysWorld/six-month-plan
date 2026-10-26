@@ -6,6 +6,7 @@ import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { newGoalGaps, newGoalPath, opsMakeGoal, opsStartSeason, type NewGoalInput } from '../data/newGoal.ts';
 import { withOps } from '../data/breakdown.ts';
+import { pathLetter, pathsOf } from '../data/paths.ts';
 import { navigate } from '../router.ts';
 import { BackLink, GOAL_COLORS, NumberInput, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
@@ -20,7 +21,7 @@ const TYPES: { value: GoalType; title: string; sub: string }[] = [
  * Make a goal in one go: what it is and what done looks like, when it runs, this week's goal and
  * the first daily task. Opened from the backlog ("Make it a goal") or from the Goals page.
  */
-export function GoalNew({ ideaId = null }: { ideaId?: string | null }) {
+export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: string | null; pathId?: string | null }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
@@ -54,6 +55,8 @@ export function GoalNew({ ideaId = null }: { ideaId?: string | null }) {
   const [taskMinutes, setTaskMinutes] = useState(30);
   const [share, setShare] = useState<string[]>([]);
   const [groupWith, setGroupWith] = useState<string | null>(null);
+  const paths = pathsOf(data);
+  const [pathId, setPathId] = useState<string | null>(pathParam ?? idea?.path_id ?? null);
 
   const others = view.activeGoals;
   const shareable = [...new Map(others.flatMap((g) => view.actionsForGoal(g.id).filter((a) => !!runningSchedule(data, a.id, today))).map((a) => [a.id, a])).values()];
@@ -80,6 +83,7 @@ export function GoalNew({ ideaId = null }: { ideaId?: string | null }) {
     task: taskTitle.trim() ? { title: taskTitle, days: taskDays, minutes: taskMinutes } : null,
     shareActionIds: share,
     groupWithGoalId: groupWith,
+    pathId,
     ideaId: idea?.id ?? null,
   };
   const path = useMemo(() => newGoalPath(input, start && start > from ? start : from, season.block_days), [type, baseline, target, targetDate, edits, start, from, season.block_days]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -119,6 +123,19 @@ export function GoalNew({ ideaId = null }: { ideaId?: string | null }) {
             </button>
           ))}
         </div>
+        {paths.length > 0 && (
+          <div className="stack-sm">
+            <span className="label">Which path is this a bet on?</span>
+            <div className="chips" role="radiogroup" aria-label="Path">
+              {paths.map((p) => (
+                <button key={p.id} type="button" className="chip" role="radio" aria-checked={pathId === p.id} onClick={() => setPathId(pathId === p.id ? null : p.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                  <span className="dot" style={{ width: 7, height: 7, background: p.color }} />
+                  {pathLetter(data, p)} · {p.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <label className="field">
           Why it matters <span style={{ fontWeight: 400 }}>(one line for the hard days)</span>
           <input value={why} onChange={(e) => setWhy(e.target.value)} placeholder="e.g. Play for myself at the end of the day" />

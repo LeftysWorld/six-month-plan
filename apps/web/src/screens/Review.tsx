@@ -41,6 +41,9 @@ import { href, navigate, useRoute } from '../router.ts';
 import { BackLink, Empty, NumberInput, OBSTACLES, PacePill, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { TrendBars } from '../components/TrendBars.tsx';
 import { weekToReview } from './ReviewHub.tsx';
+import { gaugeAverage, opsNotePath, opsRatePath, pathLetter, pathProgress, pathsOf } from '../data/paths.ts';
+import { Gauges } from './Paths.tsx';
+import type { PathGauges } from '@six/core';
 
 /**
  * Reviews, one page each.
@@ -92,6 +95,10 @@ interface Draft {
   newPlan: { on: boolean; name: string; start: ISODate; end: ISODate; carry: Record<string, boolean> };
   /** The detailed next-week planner, open or folded. */
   detail: boolean;
+  /** 3-month checkpoint: the paths' gauges, re-rated. */
+  pathGauges: Record<string, Partial<PathGauges>>;
+  /** Retrospective: what the season taught you about each path. */
+  pathNotes: Record<string, string>;
 }
 
 const PERIOD_WORD: Record<ReviewKind, string> = { weekly: 'week', block: 'month', quarter: '3 months', retro: 'plan' };
@@ -148,6 +155,8 @@ function freshDraft(data: AppData, kind: ReviewKind, period: DateRange, plan: Pl
     adjust: {},
     newPlan: { on: true, name: 'My next six months', start, end: addDays(start, 182), carry: {} },
     detail: false,
+    pathGauges: {},
+    pathNotes: {},
   };
 }
 
@@ -388,6 +397,11 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
       newPlanId = created.plan.id;
       for (const g of goals) if (carryDefault(draft, g)) add(opsLinkGoalToPlan(next, g.id, created.plan.id));
     }
+    // Paths: re-rated gauges (3-month checkpoint) and what the season taught you (retrospective).
+    for (const p of pathsOf(data)) {
+      if (kind === 'quarter' && draft.pathGauges[p.id]) add(opsRatePath(p, draft.pathGauges[p.id]!, today));
+      if (kind === 'retro' && draft.pathNotes[p.id]?.trim()) add(opsNotePath(p, draft.pathNotes[p.id]!, period.end < today ? period.end : today));
+    }
     commit(ops);
     try {
       localStorage.removeItem(draftKey);
@@ -513,6 +527,7 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
       )}
 
       {kind === 'quarter' && plan && <Decide goals={goals} draft={draft} set={set} view={view} plan={plan} nextMonday={nextMonday} />}
+      {(kind === 'quarter' || kind === 'retro') && <PathsCheck kind={kind} draft={draft} set={set} />}
 
       {/* The one thing to change (or, for the retrospective, what carries over). */}
       {kind === 'retro' ? (
@@ -770,6 +785,54 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
 }
 
 // ---------- Pieces ----------
+
+/**
+ * Your Odyssey paths at a checkpoint: re-rate the four gauges (3-month), or write down what the
+ * season taught you about each path (retrospective). Shown only when you have paths.
+ */
+function PathsCheck({ kind, draft, set }: { kind: ReviewKind; draft: Draft; set: (p: Partial<Draft>) => void }) {
+  const { data } = useStore();
+  const view = useView();
+  const paths = pathsOf(data);
+  if (paths.length === 0) return null;
+  return (
+    <div className="card stack">
+      <span className="label">{kind === 'quarter' ? 'Your paths: rate them again' : 'Your paths: what did this season teach you?'}</span>
+      <span className="xsmall muted" style={{ marginTop: -6 }}>
+        {kind === 'quarter' ? 'Resources, likability, confidence, coherence, 1–5. Watching these move is how you notice you are changing lives.' : 'One or two lines per path. A goal on a path is a prototype of that life; what did it tell you?'}
+      </span>
+      {paths.map((p) => {
+        const prog = pathProgress(view, p);
+        const gauges = draft.pathGauges[p.id] ?? p.gauges;
+        const last = gaugeAverage(p.gauges);
+        return (
+          <div key={p.id} className="stack-sm">
+            <div className="row-between">
+              <span className="row-start small strong" style={{ gap: 8, minWidth: 0, flexWrap: 'nowrap' }}>
+                <span className="dot" style={{ background: p.color, flex: 'none' }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {pathLetter(data, p)} · {p.name}
+                </span>
+              </span>
+              <span className="xsmall muted" style={{ flex: 'none' }}>
+                {prog.goals.length ? `${prog.finished} of ${prog.goals.length} goals done` : 'no goals yet'}
+                {prog.minutes ? ` · ${minutesText(prog.minutes)}` : ''}
+              </span>
+            </div>
+            {kind === 'quarter' ? (
+              <>
+                <Gauges gauges={gauges} onChange={(g) => set({ pathGauges: { ...draft.pathGauges, [p.id]: g } })} />
+                {last != null && <span className="xsmall muted">Last time: {last}/5 on average.</span>}
+              </>
+            ) : (
+              <textarea rows={2} value={draft.pathNotes[p.id] ?? ''} onChange={(e) => set({ pathNotes: { ...draft.pathNotes, [p.id]: e.target.value } })} placeholder={p.questions.some((q) => !q.answered_at) ? `e.g. ${p.questions.find((q) => !q.answered_at)!.text} → …` : 'What you know now that you didn’t in week 1'} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 /** Obstacles as one-tap chips, counts from your logs. */
 function ObstacleChips({ period, draft, set }: { period: DateRange; draft: Draft; set: (p: Partial<Draft>) => void }) {

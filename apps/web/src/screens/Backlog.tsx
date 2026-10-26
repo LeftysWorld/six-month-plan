@@ -4,23 +4,26 @@ import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { opsAddIdea, opsDeleteIdea, opsEditIdea, opsMoveIdea, opsRestoreIdea, opsSetStatus } from '../data/backlog.ts';
 import { href } from '../router.ts';
+import { opsSetIdeaPath, pathLetter, pathsOf } from '../data/paths.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 
 /** Backlog → Goals → Completed: the flow of a goal, left to right (shown on all three pages). */
-export function GoalsSwitch({ current }: { current: 'backlog' | 'goals' | 'completed' }) {
+export function GoalsSwitch({ current }: { current: 'paths' | 'backlog' | 'goals' | 'completed' }) {
   const { data } = useStore();
   const view = useView();
   const goals = view.activeGoals.length;
   const waiting = data.ideas.filter((i) => i.status === 'backlog').length;
   const done = data.goals.filter((g) => g.completed_at && !g.archived_at).length;
   const archived = data.goals.filter((g) => g.archived_at).length;
+  const paths = data.paths.filter((p) => !p.archived_at).length;
   const tab = (key: typeof current, to: string, label: string, count: number) => (
     <a href={href(to)} aria-current={current === key ? 'page' : undefined}>
       {label} <span className="count">{count}</span>
     </a>
   );
   return (
-    <nav className="seg goals-switch" aria-label="Backlog, goals or completed">
+    <nav className="seg goals-switch" aria-label="Paths, backlog, goals or completed">
+      {tab('paths', '/paths', 'Paths', paths)}
       {tab('backlog', '/goals/backlog', 'Backlog', waiting)}
       {tab('goals', '/goals', 'Goals', goals)}
       {tab('completed', '/goals/completed', archived ? 'Done & archived' : 'Completed', done + archived)}
@@ -29,7 +32,7 @@ export function GoalsSwitch({ current }: { current: 'backlog' | 'goals' | 'compl
 }
 
 /** A one-line "add a goal idea" box. New goals can start here, or be made straight away. */
-export function IdeaAdd({ placeholder = 'A goal you might want…', after }: { placeholder?: string; after?: (title: string) => void }) {
+export function IdeaAdd({ placeholder = 'A goal you might want…', after, pathId = null }: { placeholder?: string; after?: (title: string) => void; pathId?: string | null }) {
   const { data, commit } = useStore();
   const toast = useToast();
   const [title, setTitle] = useState('');
@@ -45,7 +48,8 @@ export function IdeaAdd({ placeholder = 'A goal you might want…', after }: { p
       toast(goal ? `You already have a goal called “${goal.title}”` : `“${idea!.title}” is already in your backlog`);
       return;
     }
-    commit(opsAddIdea(data, title).ops);
+    const added = opsAddIdea(data, title);
+    commit(pathId ? [...added.ops, { kind: 'update', collection: 'ideas', id: added.idea.id, patch: { path_id: pathId } }] : added.ops);
     if (after) after(title.trim());
     else toast('Added to the backlog');
     setTitle('');
@@ -73,7 +77,10 @@ export function Backlog() {
   const view = useView();
   const toast = useToast();
   const [editing, setEditing] = useState<GoalIdea | null>(null);
-  const ideas = column(data.ideas, 'backlog');
+  const paths = pathsOf(data);
+  const [pathFilter, setPathFilter] = useState<string | 'all' | 'none'>('all');
+  const allIdeas = column(data.ideas, 'backlog');
+  const ideas = pathFilter === 'all' ? allIdeas : pathFilter === 'none' ? allIdeas.filter((i) => !i.path_id) : allIdeas.filter((i) => i.path_id === pathFilter);
   const discarded = column(data.ideas, 'discarded');
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   const running = view.activeGoals.length;
@@ -100,11 +107,30 @@ export function Backlog() {
       <h1 style={{ marginTop: -4 }}>Backlog</h1>
       <GoalsSwitch current="backlog" />
 
-      <IdeaAdd />
+      <IdeaAdd pathId={pathFilter !== 'all' && pathFilter !== 'none' ? pathFilter : null} />
+
+      {paths.length > 0 && (
+        <div className="chips" role="radiogroup" aria-label="Show ideas for">
+          <button type="button" className="chip" role="radio" aria-checked={pathFilter === 'all'} onClick={() => setPathFilter('all')}>
+            All · {allIdeas.length}
+          </button>
+          {paths.map((p) => (
+            <button key={p.id} type="button" className="chip" role="radio" aria-checked={pathFilter === p.id} onClick={() => setPathFilter(p.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+              <span className="dot" style={{ width: 7, height: 7, background: p.color }} />
+              {pathLetter(data, p)} · {allIdeas.filter((i) => i.path_id === p.id).length}
+            </button>
+          ))}
+          {allIdeas.some((i) => !i.path_id) && (
+            <button type="button" className="chip" role="radio" aria-checked={pathFilter === 'none'} onClick={() => setPathFilter('none')}>
+              No path · {allIdeas.filter((i) => !i.path_id).length}
+            </button>
+          )}
+        </div>
+      )}
 
       {ideas.length === 0 ? (
         <div className="card empty">
-          <h3 style={{ marginBottom: 6 }}>Nothing waiting.</h3>
+          <h3 style={{ marginBottom: 6 }}>Nothing waiting{pathFilter !== 'all' ? ' here' : ''}.</h3>
           Write down goals you might want, one line each. Order them; make the top one a goal when you have room (most people carry 3–4 at a time).
         </div>
       ) : (
@@ -153,6 +179,7 @@ export function Backlog() {
 /** One idea: its place, title, why, and what to do with it: make it a goal, edit, move, discard. */
 function IdeaRow({ idea, index, count, onEdit, onDiscard }: { idea: GoalIdea; index: number; count: number; onEdit: () => void; onDiscard: () => void }) {
   const { data, commit } = useStore();
+  const path = idea.path_id ? data.paths.find((p) => p.id === idea.path_id && !p.archived_at) : undefined;
   const move = (dir: 'up' | 'down' | 'top') => commit(opsMoveIdea(data, idea.id, dir));
   const age = ageInDays(idea);
   return (
@@ -169,6 +196,7 @@ function IdeaRow({ idea, index, count, onEdit, onDiscard }: { idea: GoalIdea; in
         <span className="idea-title">
           <span className="mono" style={{ marginRight: 8 }}>{index + 1}</span>
           {idea.title}
+          {path && <span className="dot" title={`${pathLetter(data, path)} · ${path.name}`} style={{ width: 7, height: 7, background: path.color, marginLeft: 8, verticalAlign: 'middle' }} />}
         </span>
         <span className="xsmall muted">
           {idea.note.trim() ? idea.note.trim() : 'Tap to say why it matters'}
@@ -189,8 +217,10 @@ function IdeaRow({ idea, index, count, onEdit, onDiscard }: { idea: GoalIdea; in
 
 /** Edit an idea: its name, why it matters, what done looks like. */
 function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
-  const { commit } = useStore();
+  const { data, commit } = useStore();
   const toast = useToast();
+  const paths = pathsOf(data);
+  const [pathId, setPathId] = useState(idea.path_id ?? '');
   const [title, setTitle] = useState(idea.title);
   const [note, setNote] = useState(idea.note);
   const [done, setDone] = useState(idea.done_means ?? '');
@@ -208,6 +238,19 @@ function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
         What done looks like in six months
         <input value={done} onChange={(e) => setDone(e.target.value)} placeholder="e.g. Three songs recorded start to finish" />
       </label>
+      {paths.length > 0 && (
+        <label className="field">
+          Path
+          <select value={pathId} onChange={(e) => setPathId(e.target.value)}>
+            <option value="">No path</option>
+            {paths.map((p) => (
+              <option key={p.id} value={p.id}>
+                {pathLetter(data, p)} · {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="btn-row">
         <button type="button" className="btn" onClick={onClose}>
           Cancel
@@ -217,7 +260,7 @@ function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
           className="btn primary"
           disabled={!title.trim()}
           onClick={() => {
-            const ops = opsEditIdea(idea, { title, note, done_means: done });
+            const ops = [...opsEditIdea(idea, { title, note, done_means: done }), ...opsSetIdeaPath(idea, pathId || null)];
             if (ops.length) {
               commit(ops);
               toast('Idea saved', () => commit(opsRestoreIdea(idea)));

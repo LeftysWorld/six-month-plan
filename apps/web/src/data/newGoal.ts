@@ -43,6 +43,8 @@ export interface NewGoalInput {
   shareActionIds: string[];
   /** A goal to group it with (it joins that goal's group, or they start one). */
   groupWithGoalId: string | null;
+  /** The Odyssey path this goal is a bet on, if any. */
+  pathId: string | null;
   /** The backlog idea it came from, if any. */
   ideaId: string | null;
 }
@@ -92,6 +94,7 @@ export function opsMakeGoal(data: AppData, plan: Plan, input: NewGoalInput, toda
   const all: Op[] = [...ops];
   // Its own dates inside the season.
   const dates: Record<string, unknown> = {};
+  if (input.pathId) dates.path_id = input.pathId;
   if (start > plan.start_date) dates.start_date = start;
   if (input.type !== 'number' && input.finish && input.finish < plan.end_date && input.finish >= start) dates.target_date = input.finish;
   if (Object.keys(dates).length) all.push({ kind: 'update', collection: 'goals', id: goalId, patch: dates });

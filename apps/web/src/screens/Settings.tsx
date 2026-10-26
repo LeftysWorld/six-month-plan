@@ -40,7 +40,8 @@ function StartOver({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const counts = [
-    [data.plans.length, 'plan'],
+    [data.paths.filter((p) => !p.archived_at).length, 'path'],
+    [data.plans.length, 'season'],
     [data.goals.length, 'goal'],
     [data.actions.length, 'task'],
     [data.sessions.filter((s) => s.status !== 'planned').length, 'logged task'],

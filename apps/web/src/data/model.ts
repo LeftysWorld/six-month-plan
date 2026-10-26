@@ -11,6 +11,7 @@ import type {
   Measurement,
   MeasurementType,
   Milestone,
+  Path,
   Plan,
   PlanGoal,
   PlanStep,
@@ -46,6 +47,8 @@ export interface AppData {
   attachments: Attachment[];
   /** Named groups of goals. A goal points at its group with group_id. */
   groups: GoalGroup[];
+  /** Odyssey paths: the five-year lives goals and ideas are bets on. */
+  paths: Path[];
 }
 
 export type CollectionKey = Exclude<keyof AppData, 'profile'>;
@@ -71,6 +74,7 @@ export const TABLES: Record<CollectionKey, string> = {
   ideas: 'goal_ideas',
   attachments: 'attachments',
   groups: 'goal_groups',
+  paths: 'paths',
 };
 
 export const COLLECTIONS = Object.keys(TABLES) as CollectionKey[];
@@ -116,6 +120,7 @@ export function emptyData(): AppData {
     ideas: [],
     attachments: [],
     groups: [],
+    paths: [],
   };
 }
 

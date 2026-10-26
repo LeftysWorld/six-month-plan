@@ -162,6 +162,9 @@ export function ReviewHub() {
               <a className="btn ghost small" href={href('/review/then-now')}>
                 Then vs now ›
               </a>
+              <a className="btn ghost small" href={href('/paths')}>
+                Your paths ›
+              </a>
               <a className="btn ghost small" href={href('/progress')}>
                 All charts ›
               </a>

@@ -65,6 +65,8 @@ export interface Goal {
   start_date?: ISODate | null;
   /** Your own words from the Then vs now page. Missing on older databases. */
   reflection?: string;
+  /** The Odyssey path this goal is a bet on. Missing on older databases. */
+  path_id?: string | null;
 }
 
 /** A named group of goals that work together, made by dragging one goal onto another (like a phone folder). */
@@ -308,5 +310,57 @@ export interface GoalIdea {
   goal_id: string | null;
   created_at: string;
   started_at: string | null;
+  /** The Odyssey path this idea belongs to. Missing on older databases. */
+  path_id?: string | null;
+}
+
+// ---------- Odyssey paths ----------
+
+/** The four gauges from Designing Your Life, each 1–5. */
+export interface PathGauges {
+  /** Time, money, skill, contacts: do you have what this life needs? */
+  resources: number;
+  /** How much do you like this version of your life? */
+  likability: number;
+  /** How confident are you that you could pull it off? */
+  confidence: number;
+  /** Does it fit who you are and what you believe? */
+  coherence: number;
+}
+
+export const GAUGE_KEYS: (keyof PathGauges)[] = ['resources', 'likability', 'confidence', 'coherence'];
+
+export interface PathQuestion {
+  id: string;
+  text: string;
+  /** What you learned once a prototype answered it. */
+  answer: string;
+  answered_at: string | null;
+}
+
+/**
+ * An Odyssey path: one of the five-year lives you could live (Plan A: where you're heading; Plan B:
+ * if A vanished; Plan C: if money and image didn't matter). Goals and ideas point at a path, so its
+ * progress is measured, not guessed.
+ */
+export interface Path {
+  id: string;
+  name: string;
+  /** The six-word version of this life. */
+  headline: string;
+  why: string;
+  color: string;
+  /** Lower first: A, B, C. */
+  rank: number;
+  horizon_years: number;
+  /** One line per year. */
+  years: string[];
+  gauges: Partial<PathGauges>;
+  gauge_log: { on: ISODate; gauges: Partial<PathGauges> }[];
+  questions: PathQuestion[];
+  /** What each season taught you about this path. */
+  notes: { on: ISODate; text: string }[];
+  archived_at: string | null;
+  created_at: string;
 }
 

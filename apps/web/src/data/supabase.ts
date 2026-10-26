@@ -29,6 +29,8 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261106000000_goal_start_dates.sql', table: 'goals', columns: ['start_date'] },
   { file: '20261107000000_review_fixes.sql', table: 'goals', columns: ['reflection'] },
   { file: '20261108000000_one_window_per_goal.sql', table: 'goals', columns: [], drops: { table: 'goals', column: 'after_goal_id' } },
+  { file: '20261109000000_odyssey_paths.sql', table: 'paths', columns: [], creates: true },
+  { file: '20261109000000_odyssey_paths.sql', table: 'goals', columns: ['path_id'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */
@@ -253,6 +255,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       const { error: pe } = await sb.from('profiles').upsert({ ...defaultProfile(), ...incoming.profile, user_id: userId });
       if (pe) throw new Error(`profiles: ${pe.message}`);
       await insert('plans', incoming.plans ?? []);
+      await insert('paths', incoming.paths ?? []);
       await insert('goal_groups', (incoming.groups ?? []).map((g) => without(g, GONE_GROUP_COLUMNS)));
       // Goals and their measurements point at each other: goals first without it, then the link.
       // Older exports may carry columns this version no longer has.
@@ -281,7 +284,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       const order = [
         'attachments', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
         'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
-        'plan_steps', 'plan_goals', 'goals', 'goal_groups', 'plans', 'measurement_types',
+        'plan_steps', 'plan_goals', 'goals', 'goal_groups', 'plans', 'paths', 'measurement_types',
       ];
       for (const table of order) {
         const { error } = await sb.from(table).delete().eq('user_id', userId);

@@ -30,6 +30,7 @@ function input(over: Partial<NewGoalInput> = {}): NewGoalInput {
     task: { title: 'Guitar practice', days: [1, 3, 5], minutes: 20 },
     shareActionIds: [],
     groupWithGoalId: null,
+    pathId: null,
     ideaId: null,
     ...over,
   };
