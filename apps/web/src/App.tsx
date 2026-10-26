@@ -10,7 +10,9 @@ import { opsProfile } from './data/ops.ts';
 import { href, navigate, useRoute } from './router.ts';
 import { Icon, ToastProvider } from './components/ui.tsx';
 import { Login } from './screens/Login.tsx';
-import { QuickAdd, Today } from './screens/Today.tsx';
+import { Today } from './screens/Today.tsx';
+import { QuickAdd } from './screens/today/QuickAdd.tsx';
+import { useShownDay } from './data/shownDay.ts';
 import { Plans } from './screens/Plans.tsx';
 import { GoalNew } from './screens/GoalNew.tsx';
 import { ReviewHub } from './screens/ReviewHub.tsx';
@@ -126,6 +128,8 @@ function Shell(props: ShellProps) {
   const route = useRoute();
   const { sync, clearError, today, data, commit } = useStore();
   const view = useView();
+  // The day Today is showing (when it isn't today): the dock's + adds to it.
+  const shownDay = useShownDay();
   const [s0 = '', s1, s2] = route.segments;
   const [adding, setAdding] = useState(false);
 
@@ -253,7 +257,7 @@ function Shell(props: ShellProps) {
           {showWelcome ? <WelcomeBack days={away!} onDone={dismissWelcome} /> : screen}
         </div>
       </main>
-      {adding && <QuickAdd date={today} onClose={() => setAdding(false)} />}
+      {adding && <QuickAdd date={shownDay ?? today} onClose={() => setAdding(false)} />}
     </div>
   );
 }

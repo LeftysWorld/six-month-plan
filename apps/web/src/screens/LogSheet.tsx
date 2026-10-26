@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { addDays, shortDate, weekDates, weekStart, weekdayName, type Session, type SessionStatus } from '@six/core';
+import { type Session, type SessionStatus } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { opsLogSession, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
@@ -9,6 +9,7 @@ import { SessionFiles } from '../components/Attachments.tsx';
 import { lastReading, opsRecordReading, opsSetTaskGoals, readingOn } from '../data/connect.ts';
 import { WorkoutSheet } from '../components/Workout.tsx';
 import { LinkToGoal, needsGoalLink } from '../components/LinkToGoal.tsx';
+import { MoveDayPicker } from '../components/MoveDayPicker.tsx';
 
 /** Log an item beyond a one-tap check: amount, state, obstacles, note, or move it. */
 export function LogSheet({ session, onClose }: { session: Session; onClose: () => void }) {
@@ -64,16 +65,12 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
     onClose();
   }
 
-  function moveTo(date: string | null) {
+  function unplace() {
     const before = session;
-    commit(opsMoveSession(session, date));
-    toast(date ? `Moved to ${weekdayName(date)} ${shortDate(date)}` : 'Moved to any day this week', () => commit(opsRestoreSession(before)));
+    commit(opsMoveSession(session, null));
+    toast('Moved to any day this week', () => commit(opsRestoreSession(before)));
     onClose();
   }
-
-  const monday = weekStart(session.date ?? today);
-  // A task happens at most once a day, so days that already have it aren't offered.
-  const moveDates = [...weekDates(monday), ...weekDates(addDays(monday, 7))].filter((d) => d >= today && d !== session.date && view.canPlace(session, d));
 
   const hasWorkoutLog = action?.kind === 'workout' && !!action.workout_plan?.length;
   if (hasWorkoutLog && !general) {
@@ -97,15 +94,9 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
       {moving ? (
         <div className="stack-sm">
           <div className="small muted">Move this one only. To change how often it happens, edit the task on its goal page.</div>
-          <div className="grid-3">
-            {moveDates.map((d) => (
-              <button key={d} className="btn small" onClick={() => moveTo(d)}>
-                {d === today ? 'Today' : `${weekdayName(d)} ${Number(d.slice(8))}`}
-              </button>
-            ))}
-          </div>
+          <MoveDayPicker session={session} onMoved={onClose} />
           {session.origin === 'scheduled' && (
-            <button className="btn small" onClick={() => moveTo(null)}>
+            <button className="btn small" onClick={unplace}>
               Back to "any day this week"
             </button>
           )}

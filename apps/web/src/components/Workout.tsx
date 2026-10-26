@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { addDays, parseWorkoutPlan, shortDate, weekDates, weekStart, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
+import { parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
-import { opsLogSession, opsMoveSession, opsRestoreSession, opsSaveWorkout, opsStartExtra } from '../data/ops.ts';
+import { opsLogSession, opsRestoreSession, opsSaveWorkout, opsStartExtra } from '../data/ops.ts';
 import { cleanPlan } from '../data/breakdown.ts';
 import { SessionFiles, useAddFiles } from './Attachments.tsx';
 import type { AppData, Op } from '../data/model.ts';
 import { Icon, Sheet, useToast } from './ui.tsx';
 import { LinkToGoal, needsGoalLink } from './LinkToGoal.tsx';
+import { MoveDayPicker, moveDatesFor } from './MoveDayPicker.tsx';
 
 /**
  * The workout task type: a plan of exercises (sets, reps, target weight) on the task, and a log
@@ -355,8 +356,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     setRows((all) => all.filter((_, j) => j !== i));
     setOpen(-1);
   }
-  const monday = weekStart(day);
-  const moveDates = [...weekDates(monday), ...weekDates(addDays(monday, 7))].filter((d) => d >= today && d !== session.date && view.canPlace(session, d));
+  const canMove = moveDatesFor(view, session, today).length > 0;
   const workouts = data.actions.filter((a) => !a.archived_at && a.kind === 'workout' && a.workout_plan?.length);
   const doneCount = rows.flat().filter((r) => r.done).length;
   const total = rows.flat().length;
@@ -637,30 +637,12 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
           )}
         </>
       )}
-      {session.status === 'planned' && moveDates.length > 0 && (
+      {session.status === 'planned' && canMove && (
         <div className="stack-sm">
           <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setMoving(!moving)}>
             {moving ? 'Cancel' : 'Move to another day'}
           </button>
-          {moving && (
-            <div className="chips" role="group" aria-label="Move to">
-              {moveDates.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  className="chip"
-                  onClick={() => {
-                    const before = session;
-                    commit(opsMoveSession(session, d));
-                    toast(`Moved to ${weekdayName(d)} ${shortDate(d)}`, () => commit(opsRestoreSession(before)));
-                    onClose();
-                  }}
-                >
-                  {d === today ? 'Today' : `${weekdayName(d)} ${Number(d.slice(8))}`}
-                </button>
-              ))}
-            </div>
-          )}
+          {moving && <MoveDayPicker session={session} onMoved={onClose} />}
         </div>
       )}
       {day === today && workouts.length > 0 && (

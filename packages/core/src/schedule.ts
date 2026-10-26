@@ -1,4 +1,4 @@
-import { addDays, daysBetween, isoWeekday, weekDates, type ISODate } from './dates.ts';
+import { addDays, isoWeekday, weekDates, type ISODate } from './dates.ts';
 import type { Action, ActionSchedule, Session } from './types.ts';
 
 /** The schedule row in force for an action at any point during the week starting `monday`. */
