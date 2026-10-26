@@ -22,6 +22,74 @@ export function opsAddIdea(data: AppData, title: string, note = ''): { ops: Op[]
   return { ops: [{ kind: 'insert', collection: 'ideas', rows: row(idea) }], idea };
 }
 
+/** One idea in a file for "Add ideas from a file": a title, and optionally why it matters and what done looks like. */
+export interface IdeaFileItem {
+  title: string;
+  note?: string;
+  done_means?: string;
+}
+
+/** Read an ideas file: { "ideas": [{ "title", "note", "done_means" }] } or just the list. Throws with a plain message. */
+export function parseIdeaFile(text: string): IdeaFileItem[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("This file isn't valid JSON.");
+  }
+  const list = Array.isArray(parsed) ? parsed : (parsed as { ideas?: unknown } | null)?.ideas;
+  if (!Array.isArray(list)) throw new Error('This file has no list of ideas.');
+  const items = list
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && typeof (x as { title?: unknown }).title === 'string')
+    .map((x) => ({
+      title: String(x.title).trim(),
+      note: typeof x.note === 'string' ? x.note.trim() : '',
+      done_means: typeof x.done_means === 'string' ? x.done_means.trim() : '',
+    }))
+    .filter((x) => x.title);
+  if (!items.length) throw new Error('This file has no ideas with a title.');
+  return items;
+}
+
+/**
+ * Add ideas to the end of the backlog, in the file's order, without touching anything else.
+ * An idea whose title matches a goal or an idea you already have (not discarded) is skipped.
+ */
+export function opsAddIdeas(data: AppData, items: IdeaFileItem[]): { ops: Op[]; added: string[]; skipped: string[] } {
+  const key = (s: string) => s.trim().toLowerCase();
+  const taken = new Set([
+    ...data.goals.filter((g) => !g.archived_at).map((g) => key(g.title)),
+    ...data.ideas.filter((i) => i.status !== 'discarded').map((i) => key(i.title)),
+  ]);
+  const ideas = [...data.ideas];
+  const ops: Op[] = [];
+  const added: string[] = [];
+  const skipped: string[] = [];
+  for (const item of items) {
+    if (taken.has(key(item.title))) {
+      skipped.push(item.title);
+      continue;
+    }
+    taken.add(key(item.title));
+    const idea: GoalIdea = {
+      id: crypto.randomUUID(),
+      title: item.title,
+      note: item.note ?? '',
+      ...(item.done_means ? { done_means: item.done_means } : {}),
+      status: 'backlog',
+      rank: rankAtEnd(ideas, 'backlog'),
+      goal_id: null,
+      created_at: now(),
+      selected_at: null,
+      started_at: null,
+    };
+    ideas.push(idea);
+    ops.push({ kind: 'insert', collection: 'ideas', rows: row(idea) });
+    added.push(item.title);
+  }
+  return { ops, added, skipped };
+}
+
 export function opsEditIdea(idea: GoalIdea, patch: { title?: string; note?: string; done_means?: string }): Op[] {
   const clean: Record<string, string> = {};
   if (patch.title !== undefined && patch.title.trim()) clean.title = patch.title.trim();

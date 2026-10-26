@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useStore } from '../data/store.tsx';
 import { opsProfile } from '../data/ops.ts';
 import { resetDemo } from '../data/local.ts';
+import { navigate } from '../router.ts';
+import { opsAddIdeas, parseIdeaFile, type IdeaFileItem } from '../data/backlog.ts';
 import type { AppData } from '../data/model.ts';
 import { opsAddPracticeWorkout, opsRemovePracticeWorkouts, practiceSource, practiceWorkouts } from '../data/practice.ts';
 import { BackLink, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
@@ -84,6 +86,56 @@ function StartOver({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Adds goal ideas from a JSON file to the end of the backlog. Nothing else changes. */
+function AddIdeas({ onClose }: { onClose: () => void }) {
+  const { data, commit } = useStore();
+  const toast = useToast();
+  const [file, setFile] = useState<{ name: string; items: IdeaFileItem[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pick(f: File | undefined) {
+    setError(null);
+    setFile(null);
+    if (!f) return;
+    try {
+      setFile({ name: f.name, items: parseIdeaFile(await f.text()) });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  const plan = file ? opsAddIdeas(data, file.items) : null;
+  function run() {
+    if (!plan || !plan.added.length) return;
+    commit(plan.ops);
+    toast(`Added ${plan.added.length} idea${plan.added.length === 1 ? '' : 's'} to the backlog`);
+    onClose();
+    navigate('/goals/backlog');
+  }
+
+  return (
+    <Sheet title="Add ideas from a file" onClose={onClose}>
+      <p className="small" style={{ margin: 0 }}>
+        The ideas join the end of your backlog. Nothing you already have changes, and an idea with the same name as a goal or idea you have is skipped.
+      </p>
+      <label className="field">
+        Choose a .json file
+        <input type="file" accept="application/json,.json" onChange={(e) => void pick(e.target.files?.[0])} />
+      </label>
+      {plan && (
+        <div className="banner" role="status">
+          {plan.added.length ? `Adds: ${plan.added.join(', ')}` : 'Every idea in this file is already in the app.'}
+          {plan.skipped.length > 0 && <div className="xsmall">Already there, skipped: {plan.skipped.join(', ')}</div>}
+        </div>
+      )}
+      {error && <div className="banner warn" role="alert">{error}</div>}
+      <button className="btn primary" disabled={!plan || !plan.added.length} onClick={run}>
+        Add to the backlog
+      </button>
+    </Sheet>
+  );
+}
+
 /** Replaces everything in the app with a JSON file (from Export everything, or one made for you). */
 function ImportData({ onClose }: { onClose: () => void }) {
   const { db } = useStore();
@@ -159,6 +211,7 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
   const [name, setName] = useState(p.display_name);
   const [startOver, setStartOver] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [addingIdeas, setAddingIdeas] = useState(false);
   const [theme, setThemeState] = useState<Theme>(getTheme);
   const zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [p.timezone];
 
@@ -272,10 +325,14 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
             Measurements CSV
           </button>
         </div>
+        <button className="btn" onClick={() => setAddingIdeas(true)}>
+          Add ideas from a file…
+        </button>
         <button className="btn" onClick={() => setImporting(true)}>
           Import from a file…
         </button>
       </div>
+      {addingIdeas && <AddIdeas onClose={() => setAddingIdeas(false)} />}
       {importing && <ImportData onClose={() => setImporting(false)} />}
 
       {demo && (
