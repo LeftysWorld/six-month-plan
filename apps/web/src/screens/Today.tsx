@@ -13,7 +13,8 @@ import { opsAddOneOff, opsEnsureWeek, opsLogSession, opsLogUnplanned, opsMoveSes
 import { href } from '../router.ts';
 import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
-import { AddWorkoutToday, WorkoutCardPlan } from '../components/Workout.tsx';
+import { WorkoutCardPlan } from '../components/Workout.tsx';
+import { opsAddOnDate } from '../data/calendar.ts';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { FileThumb, useAddFiles } from '../components/Attachments.tsx';
 import { lastReading, measureLabel, measureOnToday, opsRecordReading, readingOn } from '../data/connect.ts';
@@ -31,7 +32,6 @@ export function Today() {
   const view = useView();
   const toast = useToast();
   const [open, setOpen] = useState<Session | null>(null);
-  const [adding, setAdding] = useState(false);
   // The day being shown. Opens on today; tap a day, page weeks with ‹ ›, or use the arrow keys.
   const [picked, setPicked] = useState<ISODate>(today);
   const [, bump] = useState(0);
@@ -356,15 +356,9 @@ export function Today() {
           </div>
         )}
 
+        {(isToday || isFuture) && <AddTaskOnDay day={day} label={isToday ? 'Add a task' : `Add a task on ${weekdayName(day)}`} />}
+
         <TodayHabits day={day} />
-
-        {isToday && <AddWorkoutToday />}
-
-        {isFuture && (
-          <button className="btn ghost" onClick={() => setAdding(true)}>
-            <Icon name="plus" size={18} stroke={2.2} /> Add a task on {weekdayName(day)}
-          </button>
-        )}
 
         <div className="only-narrow">{anyDay}</div>
       </div>
@@ -387,7 +381,6 @@ export function Today() {
       {open && <LogSheet session={data.sessions.find((s) => s.id === open.id) ?? open} onClose={() => setOpen(null)} />}
       {measuring && <MeasureSheet session={data.sessions.find((s) => s.id === measuring.id) ?? measuring} onClose={() => setMeasuring(null)} />}
       <input ref={photoInput} type="file" accept="image/*" hidden onChange={(e) => void photoPicked(e.target.files)} />
-      {adding && <QuickAdd date={placeOn} onClose={() => setAdding(false)} />}
     </div>
   );
 }
@@ -1016,5 +1009,70 @@ function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
         );
       })}
     </section>
+  );
+}
+
+/**
+ * "+ Add a task" on Today (or a coming day): something to do that day. On its own it's a one-off;
+ * pick a goal and it's a one-day task of that goal. A one-off can be linked to a goal later from its
+ * log sheet.
+ */
+function AddTaskOnDay({ day, label }: { day: string; label: string }) {
+  const { data, today, commit } = useStore();
+  const view = useView();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [minutes, setMinutes] = useState(15);
+  const [goalId, setGoalId] = useState('');
+  const goals = view.activeGoals;
+  if (!open) {
+    return (
+      <button type="button" className="btn ghost" onClick={() => setOpen(true)}>
+        <Icon name="plus" size={18} stroke={2.2} /> {label}
+      </button>
+    );
+  }
+  return (
+    <form
+      className="card stack-sm add-task-today"
+      aria-label={label}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        commit(opsAddOnDate(data, { title, date: day, goalId: goalId || null, minutes }, today));
+        const g = goalId ? view.goal(goalId) : undefined;
+        toast(`${title.trim()} added${day === today ? ' to today' : ` to ${weekdayName(day)}`}${g ? ` for ${g.title}` : ''}`);
+        setTitle('');
+        setGoalId('');
+        setOpen(false);
+      }}
+    >
+      <span className="label">{label}</span>
+      <input className="input" autoFocus aria-label="Task" placeholder="e.g. Call the bank, Pick up dry cleaning" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <div className="row-start" style={{ flexWrap: 'nowrap', gap: 8 }}>
+        <select className="input" aria-label="Goal" value={goalId} onChange={(e) => setGoalId(e.target.value)} style={{ minWidth: 0 }}>
+          <option value="">No goal</option>
+          {goals.map((g) => (
+            <option key={g.id} value={g.id}>
+              For {g.title}
+            </option>
+          ))}
+        </select>
+        <label className="row-start small muted" style={{ gap: 6, flex: 'none', flexWrap: 'nowrap' }}>
+          <input className="input" type="number" min={0} step={5} aria-label="Minutes" value={minutes} onChange={(e) => setMinutes(Math.max(0, Number(e.target.value)))} style={{ width: 72 }} />
+          min
+        </label>
+      </div>
+      <span className="xsmall muted">{goalId ? "Counts for the goal and shows on its page." : 'You can link it to a goal later: tap it, then Link to a goal.'}</span>
+      <div className="btn-row">
+        <button className="btn primary" type="submit" disabled={!title.trim()}>
+          Add
+        </button>
+        <button type="button" className="btn" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }

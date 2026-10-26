@@ -1,4 +1,4 @@
-import { addDays, isoWeekday, scheduleOn, shortDate, type Action, type ActionSchedule, type ISODate } from '@six/core';
+import { addDays, isoWeekday, scheduleOn, shortDate, slotsForWeek, weekStart, type Action, type ActionSchedule, type ISODate, type Session } from '@six/core';
 import type { AppData, Op } from './model.ts';
 import type { View } from './derive.ts';
 import { blankTask, isOnce, opsGenerateThisWeek, scheduleFor, withOps } from './breakdown.ts';
@@ -151,6 +151,36 @@ export function opsAddOnDate(data: AppData, input: { title: string; date: ISODat
     { kind: 'insert', collection: 'actionGoals', rows: [{ id: crypto.randomUUID(), action_id: action.id, goal_id: input.goalId }] },
   ];
   return [...ops, ...opsGenerateThisWeek(withOps(data, ops), today)];
+}
+
+/**
+ * Turn a one-off (something added for a day with no goal) into a one-day task of a goal: it keeps
+ * its day, its log and its notes, and from then on counts for the goal (pace, the goal's page,
+ * reviews). The session becomes that task's session, so nothing is duplicated.
+ */
+export function opsLinkOneOff(data: AppData, session: Session, goalId: string): Op[] {
+  if (session.action_id || !data.goals.some((g) => g.id === goalId)) return [];
+  const date = session.date ?? weekStart(session.week_start);
+  const action: Action = { id: crypto.randomUUID(), title: session.title, kind: session.planned_count != null ? 'count' : 'check', planned_minutes: session.planned_minutes, planned_count: session.planned_count, min_label: '', min_minutes: null, min_count: null, priority: session.priority, step_id: null, archived_at: null };
+  const task = { ...blankTask({ start_date: date, end_date: date } as never, date), title: session.title, when: 'once' as const, date };
+  const schedule = scheduleFor(action.id, task, date);
+  const slot = slotsForWeek(schedule, weekStart(date))[0];
+  return [
+    { kind: 'insert', collection: 'actions', rows: [action as unknown as { id: string } & Record<string, unknown>] },
+    { kind: 'insert', collection: 'schedules', rows: [schedule as unknown as { id: string } & Record<string, unknown>] },
+    { kind: 'insert', collection: 'actionGoals', rows: [{ id: crypto.randomUUID(), action_id: action.id, goal_id: goalId }] },
+    { kind: 'update', collection: 'sessions', id: session.id, patch: { action_id: action.id, origin: 'scheduled', slot: slot?.slot ?? 0, date, week_start: weekStart(date) } },
+  ];
+}
+
+/** Undo a link: the session is a one-off again, and the task made for it goes. */
+export function opsUnlinkOneOff(before: Session, actionId: string, data: AppData): Op[] {
+  return [
+    { kind: 'update', collection: 'sessions', id: before.id, patch: { action_id: null, origin: before.origin, slot: before.slot, date: before.date, week_start: before.week_start } },
+    ...data.actionGoals.filter((ag) => ag.action_id === actionId).map((ag) => ({ kind: 'delete' as const, collection: 'actionGoals' as const, id: ag.id })),
+    ...data.schedules.filter((s) => s.action_id === actionId).map((s) => ({ kind: 'delete' as const, collection: 'schedules' as const, id: s.id })),
+    { kind: 'delete', collection: 'actions', id: actionId },
+  ];
 }
 
 /** "Mon Nov 14" */

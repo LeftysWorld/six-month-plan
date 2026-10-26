@@ -82,3 +82,23 @@ test('dates inside a goal: milestones change and undo; set 3-month, month and we
   const items = calendarItems(new View(d, TODAY, 0.5), '2026-10-19', '2027-04-19');
   assert.ok((items.get('2027-01-17') ?? []).some((i) => i.kind === 'checkpoint' && i.title === '3-month goal: 197 lb · Modules 1–6'));
 });
+
+test('a one-off added on Today can be linked to a goal later, without a second copy', async () => {
+  const { opsLinkOneOff, opsUnlinkOneOff } = await import('../src/data/calendar.ts');
+  const { opsGenerateThisWeek } = await import('../src/data/breakdown.ts');
+  let d = base();
+  d = run(d, opsAddOnDate(d, { title: 'Read the syllabus', date: TODAY, goalId: null, minutes: 20 }, TODAY));
+  const s = d.sessions.find((x) => x.title === 'Read the syllabus')!;
+  d = run(d, [...d.sessions.filter((x) => x.id === s.id).map(() => ({ kind: 'update' as const, collection: 'sessions' as const, id: s.id, patch: { status: 'done', actual_minutes: 25 } }))]);
+  const linked = run(d, opsLinkOneOff(d, d.sessions.find((x) => x.id === s.id)!, 'jhu'));
+  const now = linked.sessions.find((x) => x.id === s.id)!;
+  assert.ok(now.action_id, 'now a task');
+  assert.equal(now.status, 'done', 'keeps its log');
+  assert.deepEqual(linked.actionGoals.filter((ag) => ag.action_id === now.action_id).map((ag) => ag.goal_id), ['jhu']);
+  assert.equal(new View(linked, TODAY, 0.5).goalsForAction(now.action_id).length, 1);
+  const again = run(linked, opsGenerateThisWeek(linked, TODAY));
+  assert.equal(again.sessions.filter((x) => x.action_id === now.action_id).length, 1, 'no duplicate session generated');
+  const back = run(linked, opsUnlinkOneOff(s, now.action_id!, linked));
+  assert.equal(back.sessions.find((x) => x.id === s.id)!.action_id, null);
+  assert.equal(back.actions.length, d.actions.length, 'undo removes the task it made');
+});

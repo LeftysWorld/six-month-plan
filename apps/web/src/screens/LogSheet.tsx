@@ -8,6 +8,8 @@ import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
 import { SessionFiles } from '../components/Attachments.tsx';
 import { lastReading, opsRecordReading, opsSetTaskGoals, readingOn } from '../data/connect.ts';
 import { WorkoutSheet } from '../components/Workout.tsx';
+import { opsLinkOneOff, opsUnlinkOneOff } from '../data/calendar.ts';
+import { withOps } from '../data/breakdown.ts';
 
 /** Log an item beyond a one-tap check: amount, state, obstacles, note, or move it. */
 export function LogSheet({ session, onClose }: { session: Session; onClose: () => void }) {
@@ -80,7 +82,7 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
 
   return (
     <Sheet title={session.title} onClose={onClose}>
-      {goal && <CountsFor actionId={session.action_id!} cue={action?.cue} />}
+      {session.action_id ? <CountsFor actionId={session.action_id} cue={action?.cue} /> : <LinkToGoal session={session} />}
       {action?.details?.trim() && (
         <details className="task-details" open={session.status === 'planned'}>
           <summary>{action.kind === 'workout' ? 'The workout' : 'Details'}</summary>
@@ -212,6 +214,50 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
  * "Counts for: Work out + Lose weight · Change": which goals this task supports, and a quick way to
  * change that from Today. Each tap saves; the task always keeps at least one goal.
  */
+/** A one-off (no goal): say so, and offer to link it to a goal, which makes it a one-day task of that goal. */
+function LinkToGoal({ session }: { session: Session }) {
+  const { data, commit } = useStore();
+  const view = useView();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const goals = view.activeGoals;
+  return (
+    <div className="stack-sm" style={{ marginTop: -8 }}>
+      <div className="row-start small muted" style={{ gap: 6 }}>
+        <span>One-off · not for a goal</span>
+        {goals.length > 0 && (
+          <button className="link-btn small" onClick={() => setOpen(!open)} style={{ padding: '0 4px' }}>
+            {open ? 'Cancel' : 'Link to a goal'}
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="chips" role="group" aria-label="Link to a goal">
+          {goals.map((g) => (
+            <button
+              key={g.id}
+              className="chip"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minHeight: 34 }}
+              onClick={() => {
+                const ops = opsLinkOneOff(data, session, g.id);
+                if (!ops.length) return;
+                const after = withOps(data, ops);
+                const actionId = after.sessions.find((x) => x.id === session.id)!.action_id!;
+                commit(ops);
+                toast(`${session.title} now counts for ${g.title}`, () => commit(opsUnlinkOneOff(session, actionId, after)));
+                setOpen(false);
+              }}
+            >
+              <span className="dot" style={{ width: 7, height: 7, background: g.color }} />
+              {g.title}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CountsFor({ actionId, cue }: { actionId: string; cue?: string }) {
   const { data, commit } = useStore();
   const view = useView();
