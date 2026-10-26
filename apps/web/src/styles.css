@@ -924,6 +924,7 @@ input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-o
 .season-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
 .season-tick { position: absolute; top: -4px; width: 2px; height: 14px; margin-left: -1px; border-radius: 1px; background: var(--ink); }
 .season-row-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-left: 16px; font-size: 12.5px; color: var(--ink); }
+.season-row-needs { display: block; margin-left: 16px; margin-top: 2px; }
 .season-row-foot .muted { color: var(--muted); }
 
 .horizon { display: flex; flex-direction: column; gap: 6px; }

@@ -1,6 +1,5 @@
 import {
   addDays,
-  cascadeRanges,
   currentTargets,
   daysBetween,
   isoWeekday,
@@ -45,15 +44,6 @@ export function stepsForGoal(data: AppData, goalId: string): PlanStep[] {
 
 function levelRank(s: PlanStep): number {
   return s.level === 'quarter' ? 0 : s.level === 'month' ? 1 : 2;
-}
-
-export function childSteps(data: AppData, parentId: string): PlanStep[] {
-  return data.planSteps.filter((s) => s.parent_id === parentId).sort((a, b) => a.idx - b.idx);
-}
-
-/** The step of a level that contains a date (or the nearest one). */
-export function stepAt(steps: PlanStep[], date: ISODate): PlanStep | undefined {
-  return steps.find((s) => s.start_date <= date && s.end_date >= date) ?? (date < (steps[0]?.start_date ?? '') ? steps[0] : steps.at(-1));
 }
 
 /** Where a number goal starts: its baseline, else its first reading. */
@@ -114,27 +104,6 @@ export function fixedTasksOn(data: AppData, date: ISODate): { action: Action; mi
 
 // ---------- Building the breakdown ----------
 
-/** Create every 3-month, month and week step for a goal in a plan. Targets come from the goal's path. */
-export function opsCreateBreakdown(data: AppData, goal: Goal, plan: Plan): Op[] {
-  if (data.planSteps.some((s) => s.goal_id === goal.id && s.plan_id === plan.id)) return [];
-  const start = startPoint(data, goal, plan);
-  const path = currentTargets(data.goalTargets, goal.id).map((t) => ({ date: t.target_date, value: Number(t.target_value) }));
-  const target = (end: ISODate) => (start && (path.length || goal.target_value != null) ? round1(valueOnPath(start, path.length ? path : [{ date: goal.target_date ?? plan.end_date, value: Number(goal.target_value) }], end)) : null);
-  const steps: PlanStep[] = [];
-  for (const q of cascadeRanges(plan)) {
-    const qStep = makeStep(goal, plan, null, q.level, q.idx, q.title, q, target(q.end));
-    steps.push(qStep);
-    for (const m of q.children) {
-      const mStep = makeStep(goal, plan, qStep.id, m.level, m.idx, m.title, m, target(m.end));
-      steps.push(mStep);
-      for (const w of m.children) {
-        steps.push(makeStep(goal, plan, mStep.id, w.level, w.idx, w.title, w, target(w.end)));
-      }
-    }
-  }
-  return [{ kind: 'insert', collection: 'planSteps', rows: rows(steps) }];
-}
-
 /** The value a number goal's path reaches on a date (rounded), or null for other goal types. */
 export function suggestedTarget(data: AppData, goal: Goal, plan: Plan, end: ISODate): number | null {
   if (goal.type !== 'number') return null;
@@ -162,66 +131,6 @@ export function makeStep(goal: Goal, plan: Plan, parent: string | null, level: P
 }
 
 // ---------- Editing a level ----------
-
-export function opsUpdateStep(step: PlanStep, patch: Partial<Pick<PlanStep, 'title' | 'target_value' | 'target_note' | 'completed_at'>>): Op[] {
-  return [{ kind: 'update', collection: 'planSteps', id: step.id, patch }];
-}
-
-/** The value a step starts from: the target of whatever ended the day before, else the goal's start. */
-function valueBefore(data: AppData, goal: Goal, step: PlanStep, plan: Plan): number | null {
-  const dayBefore = addDays(step.start_date, -1);
-  const prev = data.planSteps.find((s) => s.goal_id === goal.id && s.level === step.level && s.end_date === dayBefore && s.target_value != null);
-  if (prev) return Number(prev.target_value);
-  const parent = step.parent_id ? data.planSteps.find((s) => s.id === step.parent_id) : null;
-  if (parent && parent.start_date === step.start_date) return valueBefore(data, goal, parent, plan);
-  return startPoint(data, goal, plan)?.value ?? null;
-}
-
-/**
- * Spread a step's target evenly over everything beneath it (its months and weeks),
- * straight-line from where the step starts. Only for "reach a number" goals.
- */
-export function opsRespread(data: AppData, goal: Goal, step: PlanStep, plan: Plan): Op[] {
-  if (goal.type !== 'number' || step.target_value == null) return [];
-  const from = valueBefore(data, goal, step, plan);
-  if (from == null) return [];
-  const span = daysBetween(addDays(step.start_date, -1), step.end_date) || 1;
-  const ops: Op[] = [];
-  const walk = (parentId: string) => {
-    for (const child of childSteps(data, parentId)) {
-      const t = daysBetween(addDays(step.start_date, -1), child.end_date) / span;
-      ops.push({ kind: 'update', collection: 'planSteps', id: child.id, patch: { target_value: round1(from + (Number(step.target_value) - from) * t) } });
-      walk(child.id);
-    }
-  };
-  walk(step.id);
-  return ops;
-}
-
-/** Keep the goal's path (Home chart, pace) in line with the monthly targets of the breakdown. */
-export function opsSyncPath(data: AppData, goal: Goal, plan: Plan, today: ISODate): Op[] {
-  if (goal.type !== 'number') return [];
-  const months = data.planSteps
-    .filter((s) => s.goal_id === goal.id && s.plan_id === plan.id && s.level === 'month' && s.target_value != null)
-    .sort((a, b) => (a.end_date < b.end_date ? -1 : 1));
-  if (months.length === 0) return [];
-  const points: PathPoint[] = months.map((m) => ({ date: m.end_date, value: Number(m.target_value) }));
-  const old = currentTargets(data.goalTargets, goal.id);
-  const same = old.length === points.length && old.every((t, i) => t.target_date === points[i]!.date && Number(t.target_value) === points[i]!.value);
-  if (same) return [];
-  const last = points.at(-1)!;
-  return [
-    ...old.map((t): Op => ({ kind: 'update', collection: 'goalTargets', id: t.id, patch: { superseded_at: nowISO() } })),
-    {
-      kind: 'insert',
-      collection: 'goalTargets',
-      rows: rows(points.map((p) => ({ id: newId(), goal_id: goal.id, target_date: p.date, target_value: p.value, effective_from: today, superseded_at: null }))),
-    },
-    ...(Number(goal.target_value) !== last.value || goal.target_date !== last.date
-      ? [{ kind: 'update', collection: 'goals', id: goal.id, patch: { target_value: last.value, target_date: last.date } } as Op]
-      : []),
-  ];
-}
 
 /** Apply ops to a copy of the data, so later builders see earlier changes. */
 export function withOps(data: AppData, ops: Op[]): AppData {

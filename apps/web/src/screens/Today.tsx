@@ -607,7 +607,6 @@ function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session
   const { data } = useStore();
   const action = view.action(session.action_id);
   const goals = view.goalsForAction(session.action_id).filter((g) => !g.archived_at && !g.completed_at);
-  const goal = goals[0];
   const s = session;
   const [dx, setDx] = useState(0);
   const drag = useRef<{ x: number; y: number; on: boolean; moved: boolean } | null>(null);

@@ -82,7 +82,7 @@ export function WelcomeBack({ days, onDone }: { days: number; onDone: () => void
         detail="Look at goals and adjust before starting again"
         onClick={() => {
           onDone();
-          navigate('/plans');
+          navigate('/goals');
         }}
       />
       <p className="small muted" style={{ margin: 0 }}>

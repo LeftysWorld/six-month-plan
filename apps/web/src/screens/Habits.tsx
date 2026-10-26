@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { addDays, habitDays, shortDate, weekStart, type Action, type ISODate, type Session } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView } from '../data/useView.ts';
 import { opsLogSession, opsRestoreSession } from '../data/ops.ts';
 import { blankHabit, habitSessions, habitWhen, habitsOf, opsCreateHabit, opsEditHabit, opsStopHabit, statsFor } from '../data/habits.ts';
 import type { TaskInput } from '../data/breakdown.ts';
@@ -163,7 +162,6 @@ function HabitCard({ action, when, onEdit, stopped = false }: { action: Action; 
 /** Add or change a habit: what, which days (or how many times a week), from when, until when. */
 function HabitSheet({ action, onClose }: { action: Action | null; onClose: () => void }) {
   const { data, today, commit } = useStore();
-  const view = useView();
   const toast = useToast();
   const existing = action ? data.schedules.filter((s) => s.action_id === action.id).sort((a, b) => (a.effective_from < b.effective_from ? 1 : -1))[0] : undefined;
   const [v, setV] = useState<TaskInput>(() =>

@@ -165,11 +165,6 @@ export function countsAsPlanned(session: Session): boolean {
   return session.status !== 'moved';
 }
 
-/** True when a session has been logged in any way. */
-export function isLogged(session: Session): boolean {
-  return session.status !== 'planned';
-}
-
 /** Minutes planned on each date (only dated, unlogged-or-logged sessions that still count). */
 export function plannedMinutesByDate(sessions: Session[], dates: ISODate[]): Record<ISODate, number> {
   const out: Record<ISODate, number> = Object.fromEntries(dates.map((d) => [d, 0]));
@@ -201,10 +196,6 @@ export function describeSchedule(schedule: ActionSchedule | null): string {
 export function sessionsPerWeek(schedule: ActionSchedule | null): number {
   if (!schedule) return 0;
   return schedule.rule === 'per_week' ? schedule.per_week ?? 0 : new Set(schedule.days).size;
-}
-
-export function weeksBetween(a: ISODate, b: ISODate): number {
-  return Math.floor(daysBetween(a, b) / 7);
 }
 
 function clamp01(n: number): number {

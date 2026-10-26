@@ -1,8 +1,6 @@
 import {
-  addDays,
   currentTargets,
   missingSessionsForWeek,
-  scheduleForWeek,
   weekStart,
   type Action,
   type ActionKind,
@@ -428,63 +426,6 @@ export function opsCreateAction(
   const withAction: AppData = { ...data, actions: [...data.actions, action], schedules: [...data.schedules, schedule] };
   ops.push(...opsEnsureWeek(withAction, weekStart(today)));
   return { ops, actionId: action.id };
-}
-
-export function opsUpdateAction(action: Action, patch: Partial<Action>): Op[] {
-  return [{ kind: 'update', collection: 'actions', id: action.id, patch }];
-}
-
-/** Change how often an action happens, from next Monday. History stays intact. */
-export function opsChangeSchedule(
-  data: AppData,
-  action: Action,
-  next: { rule: 'days' | 'per_week'; days: number[]; per_week: number | null },
-  today: ISODate,
-): Op[] {
-  const from = addDays(weekStart(today), 7);
-  const current = scheduleForWeek(data.schedules, action.id, from);
-  const fresh: ActionSchedule = {
-    id: newId(),
-    action_id: action.id,
-    rule: next.rule,
-    days: next.rule === 'days' ? next.days : [],
-    per_week: next.rule === 'per_week' ? next.per_week : null,
-    effective_from: from,
-    effective_to: null,
-  };
-  const ops: Op[] = [];
-  if (current && current.effective_from >= from) {
-    // Already changed for next week: adjust that pending change instead of stacking another.
-    ops.push({
-      kind: 'update',
-      collection: 'schedules',
-      id: current.id,
-      patch: { rule: fresh.rule, days: fresh.days, per_week: fresh.per_week },
-    });
-  } else {
-    if (current) {
-      ops.push({ kind: 'update', collection: 'schedules', id: current.id, patch: { effective_to: addDays(from, -1) } });
-    }
-    ops.push({ kind: 'insert', collection: 'schedules', rows: rows([fresh]) });
-  }
-  ops.push({
-    kind: 'insert',
-    collection: 'changeLog',
-    rows: rows([
-      {
-        id: newId(),
-        entity: 'action_schedule',
-        entity_id: action.id,
-        summary: `${action.title}: schedule changed`,
-        old_value: current ? { rule: current.rule, days: current.days, per_week: current.per_week } : null,
-        new_value: { rule: fresh.rule, days: fresh.days, per_week: fresh.per_week },
-        effective_from: from,
-        review_id: null,
-        created_at: nowISO(),
-      },
-    ]),
-  });
-  return ops;
 }
 
 export function opsArchiveAction(action: Action, archived: boolean): Op[] {

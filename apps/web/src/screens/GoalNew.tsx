@@ -19,7 +19,7 @@ const TYPES: { value: GoalType; title: string; sub: string }[] = [
  * Goals start in the backlog. Without a selected idea, goal setup isn't the way in:
  * send the person to the backlog (where new goal ideas are written down).
  */
-export function GoalNew({ ideaId = null }: { planId?: string | null; ideaId?: string | null }) {
+export function GoalNew({ ideaId = null }: { ideaId?: string | null }) {
   const { data } = useStore();
   const idea = ideaId ? data.ideas.find((i) => i.id === ideaId) : undefined;
   useEffect(() => {

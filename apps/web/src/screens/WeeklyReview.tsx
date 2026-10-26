@@ -430,7 +430,7 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
       // nothing to clean up
     }
     toast(kind === 'weekly' ? `Review saved. The ${shortDate(nextMonday)} week is planned.` : kind === 'retro' && newPlanId ? 'Retrospective saved. Your next plan is ready for goals.' : 'Review saved.');
-    navigate(newPlanId ? `/plans/${newPlanId}` : '/review');
+    navigate(newPlanId ? '/goals' : '/review');
   }
 
   const step = Math.min(draft.step, steps.length - 1);

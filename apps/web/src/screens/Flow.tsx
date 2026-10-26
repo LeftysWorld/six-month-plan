@@ -21,7 +21,7 @@ import {
   forecastFinish,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, minutesText } from '../data/derive.ts';
+import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { CHAIN_LEVELS, catchUpPlan, chainFor, isSet, opsAddExtra, opsEnsureStep, periodStatus, opsSetLevel, stepFor, type Chain, type ChainLevel } from '../data/chain.ts';
 import { GoalExtras, GoalManage, GoalRecord, WhyLine } from './GoalDetail.tsx';
@@ -33,7 +33,6 @@ import { href } from '../router.ts';
 import {
   applyFrom,
   blankTask,
-  fixedTasksOn,
   inputFromTask,
   isOnce,
   opsAddTask,
@@ -46,7 +45,7 @@ import {
   type TaskInput,
   type WeekTask,
 } from '../data/breakdown.ts';
-import { BackLink, Empty, Icon, PacePill, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
+import { BackLink, Empty, Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
 import { WorkoutPlanEditor, blankExercise } from '../components/Workout.tsx';
 import { goalTrack } from '../data/season.ts';

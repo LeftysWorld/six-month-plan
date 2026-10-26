@@ -1,4 +1,4 @@
-import { addDays, chainAt, daysBetween, progressFor, sessionCredit, shortDate, weekStart, type CascadeNode, type Goal, type ISODate, type PaceLabel, type Plan, type PlanStep, type Session } from '@six/core';
+import { addDays, chainAt, daysBetween, progressFor, shortDate, weekStart, type CascadeNode, type Goal, type ISODate, type PaceLabel, type Plan, type PlanStep, type Session } from '@six/core';
 import type { AppData, Op } from './model.ts';
 import { makeStep, suggestedTarget } from './breakdown.ts';
 import { fmt, type View } from './derive.ts';
@@ -91,11 +91,6 @@ export function opsStartChain(
     chain = { ...chain, [level]: { ...chain[level], step } };
   }
   return ops;
-}
-
-/** Levels of the current chain that still need a goal written down. */
-export function chainGaps(chain: Chain): ChainLevel[] {
-  return CHAIN_LEVELS.filter((l) => !isSet(chain[l]));
 }
 
 export interface CatchUp {
@@ -204,13 +199,6 @@ export function opsAddExtra(view: View, data: AppData, goal: Goal, today: ISODat
   return { ops: [{ kind: 'insert', collection: 'sessions', rows: sessions as unknown as ({ id: string } & Record<string, unknown>)[] }], days: [...picked].sort() };
 }
 
-/** This week's sessions for a goal: how many there are and how many are done. */
-export function weekTally(view: View, goal: Goal, today: ISODate): { done: number; total: number } {
-  const monday = weekStart(today);
-  const list = view.sessionsForGoal(goal.id).filter((s) => s.status !== 'moved' && (s.date ? weekStart(s.date) : s.week_start) === monday && s.origin !== 'unplanned');
-  return { done: Math.round(list.reduce((sum, s) => sum + sessionCredit(s), 0)), total: list.length };
-}
-
 /** How one period of the chain is going, in a few words, with a pace label. */
 export function periodStatus(view: View, data: AppData, goal: Goal, plan: Plan, link: ChainLink, today: ISODate): { text: string; label: PaceLabel } | null {
   const node = link.node;
@@ -235,8 +223,3 @@ function shortish(d: ISODate): string {
   return `${months[Number(d.slice(5, 7)) - 1]} ${Number(d.slice(8))}`;
 }
 
-/** The chain for the period after the current one ends (used when planning next week in the review). */
-export function nextWeekStart(today: ISODate): ISODate {
-  const dow = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
-  return addDays(today, 7 - dow);
-}

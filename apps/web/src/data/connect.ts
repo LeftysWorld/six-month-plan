@@ -9,7 +9,6 @@ import { opsLogSession } from './ops.ts';
  */
 
 const newId = () => crypto.randomUUID();
-type Row = { id: string } & Record<string, unknown>;
 
 /** Let another goal share an existing task. Its sessions already exist, so it shows on Today as before. */
 export function opsShareTask(data: AppData, actionId: string, goalId: string): Op[] {

@@ -11,14 +11,6 @@ export function planWeekNumber(plan: Plan, date: ISODate): number {
   return Math.floor(daysBetween(plan.start_date, date) / 7) + 1;
 }
 
-export function planTotalWeeks(plan: Plan): number {
-  return Math.max(1, Math.round((daysBetween(plan.start_date, plan.end_date) + 1) / 7));
-}
-
-export function planDayNumber(plan: Plan, date: ISODate): number {
-  return daysBetween(plan.start_date, date) + 1;
-}
-
 export function planTotalDays(plan: Plan): number {
   return daysBetween(plan.start_date, plan.end_date) + 1;
 }
@@ -107,11 +99,6 @@ export function valueOnPath(start: PathPoint, points: PathPoint[], date: ISODate
     }
   }
   return all[all.length - 1]!.value;
-}
-
-/** Weekly change the path asks for around `date` (negative = losing). */
-export function weeklyRateOnPath(start: PathPoint, points: PathPoint[], date: ISODate): number {
-  return valueOnPath(start, points, addDays(date, 7)) - valueOnPath(start, points, date);
 }
 
 // ---------- Breakdown: 6 months → 3 months → months → weeks ----------

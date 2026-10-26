@@ -94,11 +94,6 @@ export function dayFractionIn(timezone: string, now: Date = new Date()): number 
   return Math.min(1, Math.max(0, (hours - 6) / 16));
 }
 
-/** True when `date` falls within [from, to] inclusive; `to` may be open. */
-export function inRange(date: ISODate, from: ISODate, to?: ISODate | null): boolean {
-  return date >= from && (to == null || date <= to);
-}
-
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -111,16 +106,6 @@ export function shortDate(date: ISODate): string {
 /** "Fri" */
 export function weekdayName(date: ISODate): string {
   return WEEKDAYS[isoWeekday(date) - 1] ?? '';
-}
-
-/** "Friday, October 16" */
-export function longDate(date: ISODate): string {
-  return new Date(parseISO(date)).toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
 }
 
 export function monthName(monthIndex: number): string {

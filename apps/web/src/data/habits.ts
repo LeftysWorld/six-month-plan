@@ -1,4 +1,4 @@
-import { describeSchedule, habitStats, scheduleOn, shortDate, type Action, type ActionSchedule, type HabitStats, type ISODate, type Session } from '@six/core';
+import { describeSchedule, habitStats, shortDate, type Action, type ActionSchedule, type HabitStats, type ISODate, type Session } from '@six/core';
 import type { AppData, Op } from './model.ts';
 import { blankTask, opsEditTask, opsGenerateThisWeek, opsRemoveTask, scheduleFor, withOps, type TaskInput } from './breakdown.ts';
 import { runningSchedule } from './connect.ts';
@@ -88,9 +88,3 @@ export function opsStopHabit(data: AppData, action: Action, today: ISODate): Op[
   return opsRemoveTask(data, action, today);
 }
 
-/** The schedule in force on a day (for the grid: was it due?). */
-export function habitDueOn(data: AppData, actionId: string, date: ISODate): boolean {
-  const s = scheduleOn(data.schedules, actionId, date);
-  if (!s) return false;
-  return s.rule === 'per_week' || s.days.includes(((new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7) + 1);
-}

@@ -13,7 +13,6 @@ import { Login } from './screens/Login.tsx';
 import { QuickAdd, Today } from './screens/Today.tsx';
 import { Plans } from './screens/Plans.tsx';
 import { GoalNew } from './screens/GoalNew.tsx';
-import { ActionEdit } from './screens/ActionEdit.tsx';
 import { ReviewHub } from './screens/ReviewHub.tsx';
 import { WeeklyReview } from './screens/WeeklyReview.tsx';
 import { ReviewDetail, ReviewList } from './screens/ReviewPast.tsx';
@@ -175,25 +174,12 @@ function Shell(props: ShellProps) {
       break;
     case 'plans':
     case 'goals':
-      if (s0 === 'goals' && s1 === 'new') screen = <GoalNew planId={route.query.get('plan')} ideaId={route.query.get('idea')} />;
+      if (s0 === 'goals' && s1 === 'new') screen = <GoalNew ideaId={route.query.get('idea')} />;
       else if (s0 === 'goals' && s1 === 'backlog') screen = <Backlog />;
       else if (s0 === 'goals' && s1 === 'completed') screen = <Completed />;
       else if (s0 === 'goals' && s1 === 'group' && s2) screen = <GroupPage id={s2} />;
       else if (s0 === 'goals' && s1) screen = <Flow goalId={s1} />;
       else screen = <Plans />;
-      break;
-    case 'backlog':
-    case 'ideas':
-      screen = <Backlog />;
-      break;
-    case 'completed':
-      screen = <Completed />;
-      break;
-    case 'flow':
-      screen = <Flow goalId={s1 ?? ''} />;
-      break;
-    case 'actions':
-      screen = <ActionEdit id={s1 === 'new' ? null : s1 ?? null} goalId={route.query.get('goal')} />;
       break;
     case 'review':
       if (s1 === 'run') screen = <WeeklyReview kind={route.query.get('kind') ?? 'weekly'} />;
@@ -219,7 +205,7 @@ function Shell(props: ShellProps) {
       screen = <Today />;
   }
 
-  const tab = s0 === 'roadmap' ? 'roadmap' : s0 === 'calendar' ? 'calendar' : s0 === 'habits' ? 'habits' : s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'flow' || s0 === 'actions' || s0 === 'backlog' || s0 === 'ideas' || s0 === 'completed' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
+  const tab = s0 === 'roadmap' ? 'roadmap' : s0 === 'calendar' ? 'calendar' : s0 === 'habits' ? 'habits' : s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
 
   return (
     <div className="shell">

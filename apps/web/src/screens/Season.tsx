@@ -1,11 +1,11 @@
 import { useState, type MouseEvent } from 'react';
-import { daysBetween, isoWeekday, shortDate, weekDates, weekStart, type Goal, type GoalGroup, type ISODate, type PaceLabel, type Plan } from '@six/core';
+import { daysBetween, shortDate, weekDates, weekStart, type Goal, type GoalGroup, type ISODate, type PaceLabel, type Plan } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { type View } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { CHAIN_LEVELS, catchUpPlan, chainFor, isSet, type Chain, type ChainLevel, type CatchUp } from '../data/chain.ts';
 import type { AppData } from '../data/model.ts';
-import { firstCheckpoint, goalTrack, groupTrack, nextCheckpoint, nextReviewWord, nextSeasonDates, seasonsOf, type Seasons } from '../data/season.ts';
+import { firstCheckpoint, goalTrack, groupTrack, nextCheckpoint, nextReviewWord, nextSeasonDates, type Seasons } from '../data/season.ts';
 import { GroupSheet } from '../components/Connections.tsx';
 import { sharedTasksOf } from '../components/Connections.tsx';
 import type { DragApi, GoalDrag } from '../components/goalDrag.ts';
@@ -25,9 +25,13 @@ export interface GoalCardData {
   gaps: ChainLevel[];
   /** Something to do now: behind, a level not set, an overdue milestone or an old reading. */
   needs: boolean;
+  /** Why it needs you, in a few words (null when it doesn't). */
+  reason: string | null;
   /** Lower sorts first. */
   rank: number;
 }
+
+const LEVEL_WORD: Record<ChainLevel, string> = { quarter: '3-month', month: 'month', week: 'week' };
 
 /** Every goal in the plan with what it needs, goals that need you first. */
 export function goalCards(view: View, data: AppData, plan: Plan, today: ISODate): GoalCardData[] {
@@ -39,7 +43,7 @@ export function goalCards(view: View, data: AppData, plan: Plan, today: ISODate)
       const started = start <= today;
       const chain = chainFor(data, goal, plan, started ? today : start);
       // A goal waiting on another isn't judged yet: it sits at the bottom, asking nothing.
-      if (view.waitingOn(goal)) return { goal, chain, pace: 'none' as PaceLabel, fix: null, gaps: [], needs: false, rank: 5000 + i };
+      if (view.waitingOn(goal)) return { goal, chain, pace: 'none' as PaceLabel, fix: null, gaps: [], needs: false, reason: null, rank: 5000 + i };
       const pace = started ? view.goalPace(goal, plan).label : 'none';
       const fix = started ? catchUpPlan(view, data, goal, plan, today) : null;
       const gaps = CHAIN_LEVELS.filter((l) => !isSet(chain[l]));
@@ -48,7 +52,18 @@ export function goalCards(view: View, data: AppData, plan: Plan, today: ISODate)
       const stale = started && (age == null || age > 7);
       const needs = started && (!!fix || gaps.length > 0 || overdue || stale);
       const rank = (fix ? 0 : overdue ? 1 : gaps.length ? 2 : stale ? 3 : 10) * 100 + i;
-      return { goal, chain, pace, fix, gaps, needs, rank };
+      const reason = !needs
+        ? null
+        : fix
+          ? fix.text
+          : overdue
+            ? 'A date to hit has passed'
+            : gaps.length
+              ? `Set this ${gaps.map((l) => LEVEL_WORD[l]).join(', ')} goal`
+              : age == null
+                ? 'No reading yet'
+                : `Last reading ${age} days ago`;
+      return { goal, chain, pace, fix, gaps, needs, reason, rank };
     })
     .sort((a, b) => a.rank - b.rank);
 }
@@ -169,6 +184,11 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
               {t.waiting ? `After ${t.waiting} · ` : ''}
               {t.target} by {due}
             </span>
+          </span>
+        )}
+        {placed.card.reason && (
+          <span className="season-row-needs xsmall" style={{ color: 'var(--amber-ink)' }}>
+            {placed.card.reason}
           </span>
         )}
       </a>
