@@ -1,7 +1,7 @@
 import { isHabit } from '../data/habits.ts';
 import { TodayHabits } from './Habits.tsx';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { addDays, isoWeekday, minutesLeft, shortDate, weekDates, weekStart, weekdayName, type ISODate, type Session } from '@six/core';
+import { addDays, isoWeekday, minutesLeft, shortDate, weekDates, weekStart, weekdayName, type ISODate, type PlannedExercise, type Session } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, useView } from '../data/derive.ts';
 import { coachLine } from '../data/coach.ts';
@@ -9,12 +9,13 @@ import { checkInStreak, dismissRitual, ritualDue, type Streak } from '../data/ha
 import { parseQuickAdd } from '../data/parse.ts';
 import { blankTask, opsAddTask, withOps } from '../data/breakdown.ts';
 import { chainFor, opsEnsureStep, stepFor } from '../data/chain.ts';
-import { opsAddOneOff, opsEnsureWeek, opsLogSession, opsLogUnplanned, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
+import { opsAddOneOff, opsEnsureWeek, opsStartExtra, opsLogSession, opsLogUnplanned, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
 import { href } from '../router.ts';
 import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import { LogSheet } from './LogSheet.tsx';
-import { WorkoutCardPlan } from '../components/Workout.tsx';
+import { WorkoutCardPlan, WorkoutPlanEditor } from '../components/Workout.tsx';
 import { opsAddOnDate } from '../data/calendar.ts';
+import { DayDates } from './Calendar.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { FileThumb, useAddFiles } from '../components/Attachments.tsx';
 import { lastReading, measureLabel, measureOnToday, opsRecordReading, readingOn } from '../data/connect.ts';
@@ -27,13 +28,13 @@ const fullDay = (d: ISODate) => FULL_DAYS[isoWeekday(d) - 1] ?? '';
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const monoDate = (d: ISODate) => `${weekdayName(d).toUpperCase()} · ${Number(d.slice(8))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
 
-export function Today() {
+export function Today({ date }: { date?: ISODate } = {}) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
   const [open, setOpen] = useState<Session | null>(null);
   // The day being shown. Opens on today; tap a day, page weeks with ‹ ›, or use the arrow keys.
-  const [picked, setPicked] = useState<ISODate>(today);
+  const [picked, setPicked] = useState<ISODate>(date ?? today);
   const [, bump] = useState(0);
   const thisMonday = weekStart(today);
   const monday = weekStart(picked);
@@ -263,7 +264,14 @@ export function Today() {
     <div className="today-grid rise">
       <div className="stack today-main">
         <div className="topbar">
-          <span className="mono">{monoDate(day)}</span>
+          <span className="row-start" style={{ gap: 10 }}>
+            {date && (
+              <a className="link-btn small" href={href('/calendar')} style={{ padding: 0 }}>
+                ‹ Calendar
+              </a>
+            )}
+            <span className="mono">{monoDate(day)}</span>
+          </span>
           <a className="avatar" href={href('/settings')} aria-label="Settings">
             {initial}
           </a>
@@ -340,6 +348,8 @@ export function Today() {
         {isFuture && <span className="xsmall muted">Coming up. You can check these off on the day.</span>}
 
         {isToday && <TodayNumbers photoSessions={photoSessions} />}
+
+        <DayDates day={day} />
 
         {sessions.length === 0 && planned.length === 0 && (
           <div className="card empty">
@@ -1013,19 +1023,35 @@ function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
 }
 
 /**
- * "+ Add a task" on Today (or a coming day): something to do that day. On its own it's a one-off;
- * pick a goal and it's a one-day task of that goal. A one-off can be linked to a goal later from its
- * log sheet.
+ * "+ Add a task" on Today (or any other day): something to do that day. Two kinds, each with its
+ * own options:
+ * - General: a title, a goal or none, and about how long. With no goal it's a one-off; it can be
+ *   linked to a goal later from its log sheet.
+ * - Workout: do one of your workouts again that day, or make a new one with its exercises (sets,
+ *   reps, weight), for a goal or none. It logs like any workout.
  */
 function AddTaskOnDay({ day, label }: { day: string; label: string }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<'general' | 'workout'>('general');
   const [title, setTitle] = useState('');
   const [minutes, setMinutes] = useState(15);
   const [goalId, setGoalId] = useState('');
+  const [plan, setPlan] = useState<PlannedExercise[]>([]);
+  const [details, setDetails] = useState('');
   const goals = view.activeGoals;
+  const workouts = data.actions.filter((a) => !a.archived_at && a.kind === 'workout' && a.workout_plan?.length);
+  const onDay = day === today ? 'today' : weekdayName(day);
+  const reset = () => {
+    setTitle('');
+    setGoalId('');
+    setPlan([]);
+    setDetails('');
+    setMinutes(15);
+    setOpen(false);
+  };
   if (!open) {
     return (
       <button type="button" className="btn ghost" onClick={() => setOpen(true)}>
@@ -1033,43 +1059,103 @@ function AddTaskOnDay({ day, label }: { day: string; label: string }) {
       </button>
     );
   }
+  const workoutOk = kind !== 'workout' || plan.some((e) => e.name.trim());
+  const goalPicker = (
+    <select className="input" aria-label="Goal" value={goalId} onChange={(e) => setGoalId(e.target.value)} style={{ minWidth: 0 }}>
+      <option value="">No goal</option>
+      {goals.map((g) => (
+        <option key={g.id} value={g.id}>
+          For {g.title}
+        </option>
+      ))}
+    </select>
+  );
+  const minutesField = (
+    <label className="row-start small muted" style={{ gap: 6, flex: 'none', flexWrap: 'nowrap' }}>
+      <input className="input" type="number" min={0} step={5} aria-label="Minutes" value={minutes} onChange={(e) => setMinutes(Math.max(0, Number(e.target.value)))} style={{ width: 72 }} />
+      min
+    </label>
+  );
   return (
     <form
       className="card stack-sm add-task-today"
       aria-label={label}
       onSubmit={(e) => {
         e.preventDefault();
-        if (!title.trim()) return;
-        commit(opsAddOnDate(data, { title, date: day, goalId: goalId || null, minutes }, today));
+        if (!title.trim() || !workoutOk) return;
+        commit(opsAddOnDate(data, { title, date: day, goalId: goalId || null, minutes, ...(kind === 'workout' ? { workout: { plan, details } } : {}) }, today));
         const g = goalId ? view.goal(goalId) : undefined;
-        toast(`${title.trim()} added${day === today ? ' to today' : ` to ${weekdayName(day)}`}${g ? ` for ${g.title}` : ''}`);
-        setTitle('');
-        setGoalId('');
-        setOpen(false);
+        toast(`${title.trim()} added to ${onDay}${g ? ` for ${g.title}` : ''}`);
+        reset();
       }}
     >
-      <span className="label">{label}</span>
-      <input className="input" autoFocus aria-label="Task" placeholder="e.g. Call the bank, Pick up dry cleaning" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <div className="row-start" style={{ flexWrap: 'nowrap', gap: 8 }}>
-        <select className="input" aria-label="Goal" value={goalId} onChange={(e) => setGoalId(e.target.value)} style={{ minWidth: 0 }}>
-          <option value="">No goal</option>
-          {goals.map((g) => (
-            <option key={g.id} value={g.id}>
-              For {g.title}
-            </option>
-          ))}
-        </select>
-        <label className="row-start small muted" style={{ gap: 6, flex: 'none', flexWrap: 'nowrap' }}>
-          <input className="input" type="number" min={0} step={5} aria-label="Minutes" value={minutes} onChange={(e) => setMinutes(Math.max(0, Number(e.target.value)))} style={{ width: 72 }} />
-          min
-        </label>
+      <div className="row-between">
+        <span className="label">{label}</span>
+        <div className="seg" role="tablist" aria-label="Kind of task">
+          <button type="button" role="tab" aria-selected={kind === 'general'} onClick={() => setKind('general')}>
+            General
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={kind === 'workout'}
+            onClick={() => {
+              setKind('workout');
+              if (!minutes || minutes === 15) setMinutes(45);
+            }}
+          >
+            Workout
+          </button>
+        </div>
       </div>
-      <span className="xsmall muted">{goalId ? "Counts for the goal and shows on its page." : 'You can link it to a goal later: tap it, then Link to a goal.'}</span>
+
+      {kind === 'general' ? (
+        <>
+          <input className="input" autoFocus aria-label="Task" placeholder="e.g. Call the bank, Pick up dry cleaning" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <div className="row-start" style={{ flexWrap: 'nowrap', gap: 8 }}>
+            {goalPicker}
+            {minutesField}
+          </div>
+          <span className="xsmall muted">{goalId ? 'Counts for the goal and shows on its page.' : 'You can link it to a goal later: tap it, then Link to a goal.'}</span>
+        </>
+      ) : (
+        <>
+          {workouts.length > 0 && (
+            <div className="stack-sm">
+              <span className="xsmall muted">Do one of your workouts {onDay === 'today' ? 'today' : `on ${onDay}`}</span>
+              <div className="chips" role="group" aria-label="Your workouts">
+                {workouts.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    className="chip"
+                    onClick={() => {
+                      commit(opsStartExtra(data, a, day).ops);
+                      toast(`${a.title} added to ${onDay}`);
+                      reset();
+                    }}
+                  >
+                    {a.title}
+                  </button>
+                ))}
+              </div>
+              <span className="xsmall muted">Or a new workout:</span>
+            </div>
+          )}
+          <input className="input" autoFocus aria-label="Workout name" placeholder="e.g. Upper body, Leg day" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <WorkoutPlanEditor plan={plan} details={details} unit={data.profile.units} onChange={setPlan} />
+          <div className="row-start" style={{ flexWrap: 'nowrap', gap: 8 }}>
+            {goalPicker}
+            {minutesField}
+          </div>
+          <span className="xsmall muted">Logs like your other workouts: sets, reps and weight for each exercise.</span>
+        </>
+      )}
       <div className="btn-row">
-        <button className="btn primary" type="submit" disabled={!title.trim()}>
-          Add
+        <button className="btn primary" type="submit" disabled={!title.trim() || !workoutOk}>
+          {kind === 'workout' ? 'Add workout' : 'Add'}
         </button>
-        <button type="button" className="btn" onClick={() => setOpen(false)}>
+        <button type="button" className="btn" onClick={reset}>
           Cancel
         </button>
       </div>

@@ -1,9 +1,9 @@
-import { addDays, isoWeekday, scheduleOn, shortDate, slotsForWeek, weekStart, type Action, type ActionSchedule, type ISODate, type Session } from '@six/core';
+import { addDays, isoWeekday, scheduleOn, shortDate, slotsForWeek, weekStart, type Action, type ActionSchedule, type ISODate, type PlannedExercise, type Session } from '@six/core';
 import type { AppData, Op } from './model.ts';
 import type { View } from './derive.ts';
 import { blankTask, isOnce, opsGenerateThisWeek, scheduleFor, withOps } from './breakdown.ts';
 import { firstCheckpoint } from './season.ts';
-import { opsAddOneOff } from './ops.ts';
+import { opsAddOneOff, opsEnsureWeek } from './ops.ts';
 import { CHECKPOINT_NAME, checkpointsOf } from './dated.ts';
 
 /**
@@ -138,19 +138,42 @@ export function repeatingOn(data: AppData, date: ISODate): { goals: number; habi
  * Put something on a date: for a goal it's a one-day task of that goal (it shows on Today that day
  * and on the goal's page); with no goal it's a one-off.
  */
-export function opsAddOnDate(data: AppData, input: { title: string; date: ISODate; goalId: string | null; minutes?: number }, today: ISODate): Op[] {
+export function opsAddOnDate(
+  data: AppData,
+  input: { title: string; date: ISODate; goalId: string | null; minutes?: number; workout?: { plan: PlannedExercise[]; details?: string } },
+  today: ISODate,
+): Op[] {
   const title = input.title.trim();
   if (!title) return [];
-  if (!input.goalId) return opsAddOneOff({ title, minutes: input.minutes ?? 30, priority: false, date: input.date });
-  const action: Action = { id: crypto.randomUUID(), title, kind: 'check', planned_minutes: input.minutes ?? 30, planned_count: null, min_label: '', min_minutes: null, min_count: null, priority: false, step_id: null, archived_at: null };
+  // A general task with no goal is a one-off. A workout always gets a task behind it (its exercises
+  // live there), with or without a goal.
+  if (!input.goalId && !input.workout) return opsAddOneOff({ title, minutes: input.minutes ?? 30, priority: false, date: input.date });
+  const plan = input.workout?.plan.filter((e) => e.name.trim()) ?? [];
+  const action: Action = {
+    id: crypto.randomUUID(),
+    title,
+    kind: input.workout ? 'workout' : 'check',
+    planned_minutes: input.minutes ?? 30,
+    planned_count: null,
+    min_label: '',
+    min_minutes: null,
+    min_count: null,
+    priority: false,
+    step_id: null,
+    archived_at: null,
+    ...(input.workout && plan.length ? { workout_plan: plan } : {}),
+    ...(input.workout?.details?.trim() ? { details: input.workout.details.trim() } : {}),
+  };
   const task = { ...blankTask({ start_date: today, end_date: today } as never, today), title, when: 'once' as const, date: input.date };
   const schedule = scheduleFor(action.id, task, input.date);
   const ops: Op[] = [
     { kind: 'insert', collection: 'actions', rows: [action as unknown as { id: string } & Record<string, unknown>] },
     { kind: 'insert', collection: 'schedules', rows: [schedule as unknown as { id: string } & Record<string, unknown>] },
-    { kind: 'insert', collection: 'actionGoals', rows: [{ id: crypto.randomUUID(), action_id: action.id, goal_id: input.goalId }] },
+    ...(input.goalId ? [{ kind: 'insert' as const, collection: 'actionGoals' as const, rows: [{ id: crypto.randomUUID(), action_id: action.id, goal_id: input.goalId }] }] : []),
   ];
-  return [...ops, ...opsGenerateThisWeek(withOps(data, ops), today)];
+  // Make its session now, whichever week the day is in.
+  const later = weekStart(input.date) > weekStart(today) ? opsEnsureWeek(withOps(data, ops), weekStart(input.date)) : opsGenerateThisWeek(withOps(data, ops), today);
+  return [...ops, ...later];
 }
 
 /**

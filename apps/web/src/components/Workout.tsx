@@ -7,6 +7,7 @@ import { cleanPlan } from '../data/breakdown.ts';
 import { SessionFiles, useAddFiles } from './Attachments.tsx';
 import type { AppData, Op } from '../data/model.ts';
 import { Icon, Sheet, useToast } from './ui.tsx';
+import { LinkToGoal, needsGoalLink } from './LinkToGoal.tsx';
 
 /**
  * The workout task type: a plan of exercises (sets, reps, target weight) on the task, and a log
@@ -388,6 +389,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose }: { session: Se
 
   return (
     <Sheet title={session.title} onClose={onClose}>
+      {needsGoalLink(data, session) && <LinkToGoal session={session} />}
       <div className="stack-sm" style={{ marginTop: -8, gap: 8 }}>
         <div className="row-between small muted">
           <span>
@@ -701,37 +703,3 @@ export function WorkoutSheet({ session, plan: basePlan, onClose }: { session: Se
   );
 }
 
-/** "+ Add a workout": pick one of your workouts to do (again) today; it's added as an extra. */
-export function AddWorkoutToday({ onAdded }: { onAdded?: () => void }) {
-  const { data, today, commit } = useStore();
-  const toast = useToast();
-  const [open, setOpen] = useState(false);
-  const workouts = data.actions.filter((a) => !a.archived_at && a.kind === 'workout' && a.workout_plan?.length);
-  if (!workouts.length) return null;
-  return (
-    <div className="stack-sm">
-      <button type="button" className="btn ghost" onClick={() => setOpen(!open)}>
-        <Icon name="plus" size={18} stroke={2.2} /> {open ? 'Cancel' : 'Add a workout'}
-      </button>
-      {open && (
-        <div className="chips" role="group" aria-label="Pick a workout to do today">
-          {workouts.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              className="chip"
-              onClick={() => {
-                commit(opsStartExtra(data, a, today).ops);
-                toast(`${a.title} added to today`);
-                setOpen(false);
-                onAdded?.();
-              }}
-            >
-              {a.title}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}

@@ -14,7 +14,10 @@ const newId = () => crypto.randomUUID();
 /** Is this task a habit (no goal attached)? */
 export function isHabit(data: AppData, actionId: string | null): boolean {
   if (!actionId) return false;
-  return !data.actionGoals.some((ag) => ag.action_id === actionId);
+  if (data.actionGoals.some((ag) => ag.action_id === actionId)) return false;
+  // A one-day task with no goal (say, a workout added for a day) is a task, not a habit.
+  const schedules = data.schedules.filter((s) => s.action_id === actionId);
+  return !(schedules.length > 0 && schedules.every((s) => s.effective_from === s.effective_to));
 }
 
 /** Habits you have: tasks with no goal, not archived, newest last. Ones that have ended come after running ones. */

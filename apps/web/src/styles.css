@@ -1375,6 +1375,7 @@ a.rm-name:hover .rm-title { color: var(--accent-ink); }
 
 /* ---------- Calendar ---------- */
 .cal-layout { display: grid; gap: 14px; }
+.cal-hint { display: block; padding: 0 16px 8px; }
 @media (min-width: 1000px) { .cal-layout { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; } .cal-day { position: sticky; top: 24px; } }
 .cal { padding: 0; overflow: hidden; }
 .cal-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
