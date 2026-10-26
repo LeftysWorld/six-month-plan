@@ -2,7 +2,7 @@
  * Elliot's six months, Oct 26 2026 → Apr 26 2027, as a Six Months import file.
  *
  *   npx tsx apps/web/scripts/my-plan.ts > my-plan.json
- *   npx tsx apps/web/scripts/my-plan.ts --weight 236 --today 2026-10-26 > my-plan.json
+ *   npx tsx apps/web/scripts/my-plan.ts --weight 194.2 --goal 155 --today 2026-10-26 > my-plan.json
  *
  * Then Settings → Import from a file. It REPLACES everything in the app, so export first if there's
  * anything you want to keep. Change any line below and run it again; the file is built with the
@@ -27,10 +27,9 @@ const arg = (name: string, fallback: string) => {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1]! : fallback;
 };
 const TODAY = arg('today', '2026-10-26') as ISODate;
-/** Your weight today, in lb. The goal is 40 lb lighter at 1.5 lb a week. */
-const WEIGHT_NOW = Number(arg('weight', '240'));
-if (!process.argv.includes('--weight')) process.stderr.write('No --weight given: using 240 lb as today\'s weight. Run again with --weight <your weight> before importing.\n');
-const WEIGHT_GOAL = WEIGHT_NOW - 40;
+/** Your weight today and where you're going, in lb (194.2 → 155 is 39 lb at about 1.5 lb a week). */
+const WEIGHT_NOW = Number(arg('weight', '194.2'));
+const WEIGHT_GOAL = Number(arg('goal', '155'));
 
 const SEASON_NAME = 'Oct 26 – Apr 26';
 const JHU_PREREQS_DONE = '2026-11-13' as ISODate;
@@ -219,9 +218,9 @@ run(opsCreateGroup(data, 'AI', [jhu, aigp, iso, job]).ops);
 
 const weight = goal(
   {
-    title: 'Lose 40 lb',
+    title: `Down to ${WEIGHT_GOAL} lb`,
     type: 'number',
-    why: 'Strong, light, and clear-headed for everything else on this list.',
+    why: `Strong, light, and clear-headed for everything else on this list. ${Math.round(WEIGHT_NOW - WEIGHT_GOAL)} lb at 1.5 a week.`,
     doneMeans: '',
     unit: 'lb',
     measureName: 'Weight',
