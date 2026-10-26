@@ -375,6 +375,8 @@ function TaskSheet({
     set(patch);
   };
   const from = applyFrom(week, today);
+  const goalEnd = view.endFor(goal, plan);
+  const [pickEnd, setPickEnd] = useState(false);
   const month = data.planSteps.find((s) => s.id === week.parent_id);
   const quarter = month ? data.planSteps.find((s) => s.id === month.parent_id) : undefined;
   const throughOptions: [string, ISODate | null][] = [
@@ -382,6 +384,7 @@ function TaskSheet({
     ...(month && month.end_date > week.end_date ? [[`End of ${month.title}`, month.end_date] as [string, ISODate]] : []),
     ...(quarter && quarter.end_date > (month?.end_date ?? week.end_date) ? [[`End of ${quarter.title.toLowerCase()}`, quarter.end_date] as [string, ISODate]] : []),
     ...(plan.end_date > (quarter?.end_date ?? week.end_date) ? [['End of plan', plan.end_date] as [string, ISODate]] : []),
+    ...(goalEnd < plan.end_date && goalEnd > week.end_date && goalEnd !== month?.end_date && goalEnd !== quarter?.end_date ? [['When the goal is due', goalEnd] as [string, ISODate]] : []),
     ['No end date', null],
   ];
   if (!throughOptions.some(([, d]) => d === v.through)) throughOptions.push([`Through ${shortDate(v.through!)}`, v.through]);
@@ -390,7 +393,7 @@ function TaskSheet({
     (d) => d >= week.start_date && d <= week.end_date && (d >= from || d === originalDate),
   );
   const measureOk = v.kind !== 'measure' || (v.newMeasure ? v.newMeasure.name.trim().length > 0 : !!v.measurementTypeId);
-  const valid = v.title.trim().length > 0 && (v.kind !== 'workout' || (v.workoutPlan ?? []).some((e) => e.name.trim())) && (v.when !== 'days' || v.days.length > 0) && (v.when !== 'once' || dayChoices.includes(v.date)) && measureOk;
+  const valid = v.title.trim().length > 0 && (v.kind !== 'workout' || (v.workoutPlan ?? []).some((e) => e.name.trim())) && (v.when !== 'days' || v.days.length > 0) && (v.when !== 'once' || dayChoices.includes(v.date) || v.date >= from) && (v.when === 'once' || !v.through || v.through >= (v.start ?? from)) && measureOk;
 
   function save() {
     if (!valid) return;
@@ -502,27 +505,55 @@ function TaskSheet({
           </label>
         )}
         {v.when === 'once' && (
-          <div className="chips" role="group" aria-label="Day">
-            {dayChoices.map((d) => (
-              <button key={d} className="chip" aria-pressed={v.date === d} onClick={() => set({ date: d })}>
-                {d === today ? 'Today' : `${weekdayName(d)} ${d.slice(8)}`}
-              </button>
-            ))}
-            {dayChoices.length === 0 && <span className="small muted">No days left this week.</span>}
+          <div className="stack-sm">
+            <div className="chips" role="group" aria-label="Day">
+              {dayChoices.map((d) => (
+                <button key={d} className="chip" aria-pressed={v.date === d} onClick={() => set({ date: d })}>
+                  {d === today ? 'Today' : `${weekdayName(d)} ${d.slice(8)}`}
+                </button>
+              ))}
+            </div>
+            <label className="field">
+              Or any date (an exam, a class)
+              <input type="date" min={from} value={v.date} onChange={(e) => e.target.value && set({ date: e.target.value })} />
+            </label>
           </div>
         )}
       </div>
       {v.when !== 'once' && (
         <label className="field">
+          Starts
+          <input type="date" min={from} value={v.start ?? from} onChange={(e) => set({ start: e.target.value && e.target.value > from ? e.target.value : null })} />
+          <span className="xsmall muted" style={{ fontWeight: 400 }}>
+            Later for something that begins on a date, like coursework from the first class.
+          </span>
+        </label>
+      )}
+      {v.when !== 'once' && (
+        <label className="field">
           Repeat
-          <select value={v.through ?? ''} onChange={(e) => set({ through: e.target.value || null })}>
+          <select
+            value={pickEnd ? 'pick' : v.through ?? ''}
+            onChange={(e) => {
+              if (e.target.value === 'pick') {
+                setPickEnd(true);
+                const s0 = v.start ?? from;
+                if (!v.through || v.through < s0) set({ through: addDays(s0, 27) });
+                return;
+              }
+              setPickEnd(false);
+              set({ through: e.target.value || null });
+            }}
+          >
             {throughOptions.map(([label, d]) => (
               <option key={label} value={d ?? ''}>
                 {label}
                 {d ? ` (${shortDate(d)})` : ''}
               </option>
             ))}
+            <option value="pick">Until a date I pick…</option>
           </select>
+        {pickEnd && <input className="input" type="date" aria-label="Last day" min={v.start ?? from} value={v.through ?? ''} onChange={(e) => e.target.value && set({ through: e.target.value })} />}
         </label>
       )}
       {v.kind === 'workout' && <WorkoutPlanEditor plan={v.workoutPlan ?? []} details={v.details ?? ''} unit={data.profile.units} onChange={(p) => set({ workoutPlan: p })} />}
@@ -851,6 +882,13 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
   const [measuring, setMeasuring] = useState<Session | null>(null);
   const days = daysOfWeek(week);
   const tasks = tasksInRange(data, goal.id, dateRange(week), week.id);
+  // Tasks that start after this week (coursework from the first class, an exam day), soonest first.
+  const comingUp = view
+    .actionsForGoal(goal.id)
+    .map((a) => ({ action: a, schedule: data.schedules.filter((s) => s.action_id === a.id && s.effective_from > week.end_date).sort((x, y) => (x.effective_from < y.effective_from ? -1 : 1))[0] }))
+    .filter((x): x is { action: typeof x.action; schedule: NonNullable<typeof x.schedule> } => !!x.schedule && !tasks.some((t) => t.action.id === x.action.id))
+    .sort((a, b) => (a.schedule.effective_from < b.schedule.effective_from ? -1 : 1))
+    .slice(0, 4);
   const over = week.end_date < today;
   const weekText = isSet(chain.week) ? [chain.week.step?.target_value != null ? `${fmt(chain.week.step.target_value)} ${goal.unit ?? ''}`.trim() : '', chain.week.step?.target_note.trim() ?? ''].filter(Boolean).join(' · ') : '';
   const prevWeek = weeks.filter((w) => w.end_date < week.start_date).at(-1);
@@ -898,6 +936,19 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
         <span className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{weekText ? 'Edit' : 'Set it'}</span>
       </button>
       {tasks.length === 0 && <span className="small muted week-row">No daily tasks this week yet.</span>}
+      {comingUp.length > 0 && (
+        <div className="week-row coming-up">
+          <span className="xsmall muted">Coming up</span>
+          {comingUp.map(({ action, schedule }) => (
+            <span key={action.id} className="small">
+              {action.title}{' '}
+              <span className="xsmall muted">
+                · {isOnce(schedule) ? `${weekdayName(schedule.effective_from)} ${shortDate(schedule.effective_from)}` : `${describeSchedule(schedule).toLowerCase()} from ${shortDate(schedule.effective_from)}${schedule.effective_to ? ` to ${shortDate(schedule.effective_to)}` : ''}`}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
       {tasks.map((t) => {
         const also = view.otherGoalsForAction(t.action.id, goal.id);
         const done = days.filter((d) => ['done', 'part'].includes(stateOf(t.action.id, d))).length;

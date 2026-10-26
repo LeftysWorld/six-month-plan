@@ -224,7 +224,8 @@ export function GoalRecord({ goal }: { goal: Goal }) {
   const types = data.measurementTypes.filter((t) => !t.archived_at && (t.goal_id === goal.id || t.id === goal.measurement_type_id));
   return (
     <>
-      {(goal.type === 'finish' || milestones.length > 0) && (
+      {/* Every goal can have milestones: checkpoints inside it (class begins, exam booked, module 5). */}
+      {(
         <div className="card stack-sm">
           <div className="row-between">
             <span className="label">Milestones</span>

@@ -1,3 +1,5 @@
+import { isHabit } from '../data/habits.ts';
+import { TodayHabits } from './Habits.tsx';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { addDays, isoWeekday, minutesLeft, shortDate, weekDates, weekStart, weekdayName, type ISODate, type Session } from '@six/core';
 import { useStore } from '../data/store.tsx';
@@ -72,10 +74,11 @@ export function Today() {
   // On today, photo tasks (a progress photo) sit with your numbers instead of as task cards.
   const allSessions = view.sessionsOn(day);
   const isCheckInPhoto = (s: Session) => day === today && view.action(s.action_id)?.kind === 'photo';
-  const sessions = allSessions.filter((s) => !isCheckInPhoto(s));
+  // Habits have their own section below, so they don't count toward the task total.
+  const sessions = allSessions.filter((s) => !isCheckInPhoto(s) && !isHabit(data, s.action_id));
   const photoSessions = allSessions.filter(isCheckInPhoto);
   const done = sessions.filter((s) => s.status !== 'planned');
-  const tray = view.unplacedThisWeek();
+  const tray = view.unplacedThisWeek().filter((s) => !isHabit(data, s.action_id));
   const trayGroups = [...new Map(tray.map((s) => [s.action_id ?? s.id, s])).values()].map((s) => ({
     first: s,
     count: tray.filter((t) => (t.action_id ?? t.id) === (s.action_id ?? s.id)).length,
@@ -347,11 +350,13 @@ export function Today() {
 
         {planned.length + done.length > 0 && (
           <div className="task-cards">
-            {[...planned, ...done].map((s) => (
+            {[...planned, ...done].filter((s) => !isHabit(data, s.action_id)).map((s) => (
               <TaskCard key={s.id} session={s} hint={hintFor(s)} onToggle={() => toggle(s)} onOpen={() => openSession(s)} swipe={!isFuture && s.status === 'planned'} />
             ))}
           </div>
         )}
+
+        <TodayHabits day={day} />
 
         {isToday && <AddWorkoutToday />}
 

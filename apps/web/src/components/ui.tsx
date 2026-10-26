@@ -65,6 +65,20 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   list: <path d="M8 6.5h12M8 12h12M8 17.5h12M4 6.5h.01M4 12h.01M4 17.5h.01" />,
+  calendar: (
+    <>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="3" />
+      <path d="M3.5 10h17M8 3v4M16 3v4" />
+      <path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01" />
+    </>
+  ),
+  habit: (
+    <>
+      <path d="M20 12a8 8 0 1 1-2.4-5.7" />
+      <path d="M20 4.5V9h-4.5" />
+      <path d="M8.5 12l2.5 2.5 4.5-5" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 20, stroke = 2 }: { name: keyof typeof paths | string; size?: number; stroke?: number }) {

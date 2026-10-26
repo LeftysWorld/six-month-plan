@@ -8,3 +8,4 @@ export * from './review.ts';
 export * from './backlog.ts';
 export * from './workout.ts';
 export * from './steps.ts';
+export * from './habits.ts';

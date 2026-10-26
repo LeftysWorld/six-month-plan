@@ -1298,3 +1298,101 @@ a.rm-name:hover .rm-title { color: var(--accent-ink); }
   /* Names sit above bars here, so links would cross them; each row says what it starts after. */
   .rm-arrows { display: none; }
 }
+
+.coming-up { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+
+/* Milestones on a goal's bar, and each goal's start on its group's row. */
+.rm-ms { position: absolute; top: calc(50% - 15px); width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--c); box-shadow: 0 0 0 1.5px var(--surface); pointer-events: auto; }
+.rm-ms.done { background: var(--c); }
+.rm-start-mark { position: absolute; top: 50%; width: 3px; height: 14px; margin-left: -1.5px; transform: translateY(-50%); border-radius: 2px; background: var(--c); box-shadow: 0 0 0 2px var(--surface); }
+.lg-start { width: 3px; height: 12px; border-radius: 2px; background: var(--accent); margin: 0 3px; }
+.lg-ms { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--accent); }
+
+/* Six tabs on a phone: icons only, the current one highlighted. */
+@media (max-width: 480px) {
+  .nav { padding: 5px; }
+  .nav a { min-width: 40px; height: 50px; }
+  .nav a[aria-current='page'] { padding: 0 12px; }
+  .nav a[aria-current='page'] .nav-label { display: none; }
+}
+
+/* ---------- Habits ---------- */
+.habit-list { display: grid; gap: 12px; }
+@media (min-width: 900px) { .habit-list { grid-template-columns: 1fr 1fr; } }
+.habit-card { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; }
+.habit-card.stopped { opacity: 0.6; }
+.habit-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.habit-name { display: flex; flex-direction: column; gap: 2px; border: 0; background: none; padding: 0; font: inherit; text-align: left; color: var(--ink); cursor: pointer; min-width: 0; }
+.habit-name b { font-size: 16px; font-weight: 650; letter-spacing: -0.01em; }
+.habit-name:hover b { color: var(--accent-ink); }
+.habit-check { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; border: 0; background: none; padding: 0; font: inherit; color: var(--muted); cursor: pointer; flex: none; min-width: 64px; }
+.habit-check .ring { width: 34px; height: 34px; }
+.habit-check.on { color: var(--accent-ink); }
+.habit-stats { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12.5px; color: var(--muted); }
+.habit-stats b { font-size: 16px; color: var(--ink); margin-right: 2px; }
+.habit-grid { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 3px; }
+.habit-week { display: grid; grid-template-rows: repeat(7, 1fr); gap: 3px; }
+.hd { aspect-ratio: 1; border-radius: 3px; background: var(--fill); max-height: 16px; }
+.hd.done { background: var(--accent); }
+.hd.part { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.hd.missed { background: var(--amber-soft); box-shadow: inset 0 0 0 1px var(--amber-line); }
+.hd.skipped { background: var(--fill-strong); }
+.hd.planned { background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
+.hd.none.future { background: transparent; }
+.hd.today { box-shadow: 0 0 0 1.5px var(--ink); }
+.today-habits { display: flex; flex-direction: column; gap: 4px; padding: 14px 18px; }
+.today-habit { display: flex; align-items: center; gap: 12px; min-height: 44px; border-top: 1px solid var(--line-2); }
+.today-habit:first-of-type { border-top: 0; }
+.today-habit .ring { width: 24px; height: 24px; cursor: pointer; flex: none; }
+
+/* ---------- Calendar ---------- */
+.cal-layout { display: grid; gap: 14px; }
+@media (min-width: 1000px) { .cal-layout { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; } .cal-day { position: sticky; top: 24px; } }
+.cal { padding: 0; overflow: hidden; }
+.cal-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.cal-month { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; min-width: 140px; text-align: center; }
+.cal-chip { min-height: 34px; padding: 0 12px; font-size: 13px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal-dow { padding: 8px 8px 6px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-2); }
+.cal-cell { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 3px; min-height: 104px; padding: 6px 6px 8px; border: 0; border-right: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); background: transparent; font: inherit; text-align: left; color: var(--ink); cursor: pointer; min-width: 0; }
+.cal-cell:nth-child(7n + 7) { border-right: 0; }
+.cal-cell:hover { background: var(--fill); }
+.cal-cell.out { color: var(--faint); background: color-mix(in srgb, var(--fill) 50%, transparent); }
+.cal-cell.picked { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent-ink); }
+.cal-num { align-self: flex-start; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 4px; border-radius: 12px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cal-cell.today .cal-num { background: var(--accent-ink); color: #fff; }
+.cal-items { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cal-pill { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 2px 5px; border-radius: 5px; background: color-mix(in srgb, var(--c) 12%, transparent); font-size: 11.5px; line-height: 1.3; color: var(--ink); }
+.cal-pill.done { color: var(--muted); }
+.cal-pill.done .cal-pill-text { text-decoration: line-through; }
+.cal-pill.k-season { background: var(--accent-soft); }
+.cal-pill-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-more { font-size: 11px; color: var(--muted); padding-left: 4px; }
+.cal-dots { display: none; gap: 3px; flex-wrap: wrap; }
+.cal-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+.cal-dot.done { opacity: 0.4; }
+.cal-dot.k-task, .cal-dot.k-oneoff { border-radius: 1.5px; }
+.cal-rep { margin-top: auto; font-size: 10.5px; color: var(--muted); }
+.kmark { flex: none; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--accent)); }
+.kmark.k-task, .kmark.k-oneoff { border-radius: 2px; }
+.kmark.k-milestone { background: transparent; box-shadow: inset 0 0 0 2px var(--c, var(--accent)); }
+.kmark.k-start { width: 3px; height: 10px; border-radius: 2px; }
+.kmark.k-finish { width: 8px; height: 8px; border-radius: 1.5px; transform: rotate(45deg); }
+.kmark.k-season { background: var(--accent); width: 10px; height: 3px; border-radius: 2px; }
+.kmark.k-done { background: var(--c); }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--muted); }
+.cal-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.cal-legend .kmark { --c: var(--accent); }
+.cal-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line-2); min-height: 48px; }
+.cal-row .ring { width: 24px; height: 24px; }
+.cal-row-mark { display: inline-flex; width: 24px; justify-content: center; flex: none; }
+.cal-add { padding-top: 10px; border-top: 1px solid var(--line); }
+.cal-add select.input { min-width: 0; }
+@media (max-width: 700px) {
+  .cal-cell { min-height: 58px; padding: 4px; }
+  .cal-items, .cal-rep { display: none; }
+  .cal-dots { display: flex; padding-left: 3px; }
+  .cal-dow { padding: 6px 4px; text-align: center; }
+  .cal-num { align-self: center; }
+  .cal-dots { justify-content: center; }
+}

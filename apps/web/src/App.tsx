@@ -25,6 +25,8 @@ import { Flow } from './screens/Flow.tsx';
 import { Backlog } from './screens/Backlog.tsx';
 import { Completed } from './screens/Completed.tsx';
 import { Roadmap } from './screens/Roadmap.tsx';
+import { Calendar } from './screens/Calendar.tsx';
+import { Habits } from './screens/Habits.tsx';
 import { GroupPage } from './screens/GroupPage.tsx';
 
 const MODE_KEY = 'six.mode';
@@ -155,6 +157,8 @@ function Shell(props: ShellProps) {
       else if (k === 'g') navigate('/goals');
       else if (k === 'b') navigate('/goals/backlog');
       else if (k === 'm') navigate('/roadmap');
+      else if (k === 'c') navigate('/calendar');
+      else if (k === 'h') navigate('/habits');
       else if (k === 'r') navigate('/review');
     };
     window.addEventListener('keydown', onKey);
@@ -201,6 +205,12 @@ function Shell(props: ShellProps) {
     case 'roadmap':
       screen = <Roadmap />;
       break;
+    case 'calendar':
+      screen = <Calendar />;
+      break;
+    case 'habits':
+      screen = <Habits />;
+      break;
     case 'settings':
       screen = <Settings {...props} />;
       break;
@@ -208,7 +218,7 @@ function Shell(props: ShellProps) {
       screen = <Today />;
   }
 
-  const tab = s0 === 'roadmap' ? 'roadmap' : s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'flow' || s0 === 'actions' || s0 === 'backlog' || s0 === 'ideas' || s0 === 'completed' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
+  const tab = s0 === 'roadmap' ? 'roadmap' : s0 === 'calendar' ? 'calendar' : s0 === 'habits' ? 'habits' : s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'flow' || s0 === 'actions' || s0 === 'backlog' || s0 === 'ideas' || s0 === 'completed' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
 
   return (
     <div className="shell">
@@ -218,6 +228,8 @@ function Shell(props: ShellProps) {
           <NavLink to="/today" icon="today" label="Today" current={tab === 'today'} />
           <NavLink to="/goals" icon="plans" label="Goals" current={tab === 'goals'} />
           <NavLink to="/roadmap" icon="roadmap" label="Roadmap" current={tab === 'roadmap'} />
+          <NavLink to="/calendar" icon="calendar" label="Calendar" current={tab === 'calendar'} />
+          <NavLink to="/habits" icon="habit" label="Habits" current={tab === 'habits'} />
           <NavLink to="/review" icon="review" label="Review" current={tab === 'review'} />
         </nav>
         <button type="button" className="dock-add" aria-label="Add a task, log something or save a goal idea" onClick={() => setAdding(true)}>

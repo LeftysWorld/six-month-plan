@@ -227,10 +227,10 @@ function CountsFor({ actionId, cue }: { actionId: string; cue?: string }) {
           <span key={g.id} className="dot" style={{ background: g.color }} />
         ))}
         <span>
-          Counts for: {goals.map((g) => g.title).join(' + ')}
+          {goals.length ? `Counts for: ${goals.map((g) => g.title).join(' + ')}` : 'Habit · not for a goal'}
           {cue ? ` · ${cue}` : ''}
         </span>
-        {view.activeGoals.length > 1 && (
+        {goals.length > 0 && view.activeGoals.length > 1 && (
           <button className="link-btn small" onClick={() => setEditing(!editing)} style={{ padding: '0 4px' }}>
             {editing ? 'Done' : 'Change'}
           </button>

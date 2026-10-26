@@ -20,6 +20,7 @@ import {
   type ISODate,
   type Measurement,
   type MeasurementType,
+  type Milestone,
   type NumberGoalStatus,
   type PaceLabel,
   type PathPoint,
@@ -121,6 +122,11 @@ export class View {
     if (!goal.after_goal_id || goal.completed_at) return null;
     const before = this.goal(goal.after_goal_id);
     return before && !before.completed_at && !before.archived_at ? before : null;
+  }
+
+  /** A goal's milestones, soonest first. */
+  milestonesOf(goalId: string): Milestone[] {
+    return this.data.milestones.filter((m) => m.goal_id === goalId).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
   }
 
   /** Goals that start after this one. */

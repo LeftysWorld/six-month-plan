@@ -114,13 +114,17 @@ export function buildDemoData(): AppData {
     effective_from: start,
     superseded_at: null,
   }));
+  // JHU: prework now, class begins on a date, then coursework every day after that.
+  const classBegins = addDays(today, 19);
   data.milestones = [
+    { id: id(), goal_id: jhu.id, title: 'Prework packet submitted', due_date: addDays(today, -3), completed_at: `${addDays(today, -4)}T20:00:00.000Z` },
+    { id: id(), goal_id: jhu.id, title: 'Class begins', due_date: classBegins, completed_at: null },
     ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((n) => ({
       id: id(),
       goal_id: jhu.id,
       title: `Module ${n}`,
-      due_date: addDays(start, n * 14),
-      completed_at: n === 1 ? new Date().toISOString() : null,
+      due_date: addDays(classBegins, n * 12),
+      completed_at: null,
     })),
     { id: id(), goal_id: guitar.id, title: 'Record song 1 start to finish', due_date: addDays(start, 42), completed_at: null },
     ...['Domain I', 'Domain II', 'Book the exam', 'Domain III', 'Domain IV', 'Practice exam at 80%+'].map((title, i) => ({
@@ -155,7 +159,11 @@ export function buildDemoData(): AppData {
   const splitsA = action({ title: 'Splits stretching', kind: 'minutes', planned_minutes: 20 });
   const apps = action({ title: 'Tailored applications', kind: 'count', planned_minutes: 45, planned_count: 3, min_label: '1 application', min_count: 1, priority: true });
   const study = action({ title: 'JHU coursework', kind: 'study', planned_minutes: 60, min_label: '15 minutes', min_minutes: 15, priority: true });
-  data.actions = [workout, guitarA, splitsA, apps, study];
+  const prework = action({ title: 'JHU prework', kind: 'study', planned_minutes: 45, min_label: '15 minutes', min_minutes: 15, priority: true });
+  // Habits: tasks with no goal.
+  const cleanHouse = action({ title: 'Clean house', kind: 'minutes', planned_minutes: 15 });
+  const readA = action({ title: 'Read before bed', kind: 'minutes', planned_minutes: 20 });
+  data.actions = [workout, guitarA, splitsA, apps, study, prework, cleanHouse, readA];
   data.actionGoals = [
     { id: id(), action_id: workout.id, goal_id: strength.id },
     { id: id(), action_id: workout.id, goal_id: weight.id },
@@ -163,22 +171,27 @@ export function buildDemoData(): AppData {
     { id: id(), action_id: splitsA.id, goal_id: splits.id },
     { id: id(), action_id: apps.id, goal_id: career.id },
     { id: id(), action_id: study.id, goal_id: jhu.id },
+    { id: id(), action_id: prework.id, goal_id: jhu.id },
   ];
-  const sched = (a: Action, rule: 'days' | 'per_week', days: number[], perWeek: number | null): ActionSchedule => ({
+  const sched = (a: Action, rule: 'days' | 'per_week', days: number[], perWeek: number | null, from = start, to: string | null = null): ActionSchedule => ({
     id: id(),
     action_id: a.id,
     rule,
     days,
     per_week: perWeek,
-    effective_from: start,
-    effective_to: null,
+    effective_from: from,
+    effective_to: to,
   });
   data.schedules = [
     sched(workout, 'per_week', [], 5),
     sched(guitarA, 'per_week', [], 7),
     sched(splitsA, 'days', [2, 4, 6], null),
     sched(apps, 'days', [1, 2, 3, 4, 5], null),
-    sched(study, 'days', [1, 2, 3, 4, 6], null),
+    // Coursework starts the day class begins; prework runs until the day before.
+    sched(study, 'days', [1, 2, 3, 4, 5, 6, 7], null, classBegins),
+    sched(prework, 'days', [1, 2, 3, 4, 5], null, start, addDays(classBegins, -1)),
+    sched(cleanHouse, 'days', [1, 2, 3, 4, 5, 6, 7], null),
+    sched(readA, 'per_week', [], 4),
   ];
 
   // ---- Sessions: generate each week, then log the past ----
@@ -190,6 +203,9 @@ export function buildDemoData(): AppData {
     [splitsA.id]: ['done', 'skipped', 'minimum', 'skipped', 'done'],
     [apps.id]: ['done', 'done', 'done', 'partial', 'done', 'done', 'done', 'done'],
     [study.id]: ['done', 'done', 'done', 'done', 'minimum', 'done'],
+    [prework.id]: ['done', 'done', 'done', 'done', 'minimum', 'done'],
+    [cleanHouse.id]: ['done', 'done', 'skipped', 'done', 'done', 'done', 'done', 'skipped', 'done', 'done'],
+    [readA.id]: ['done', 'done', 'skipped', 'done'],
   };
   const counters: Record<string, number> = {};
   const sessions: Session[] = [];
@@ -312,6 +328,8 @@ export function buildDemoData(): AppData {
     [guitar, { title: 'Record a baseline video', kind: 'check', minutes: 15, when: 'once', date: within(addDays(today, 2), guitarWeek), cue: 'After dinner, in the music corner' }],
     [weight, { title: 'Meal prep for the week', kind: 'minutes', minutes: 60, when: 'days', days: [7], through: chainFor(data, weight, plan, today).quarter.node.end }],
     [career, { title: 'Coffee chat with a product manager', kind: 'check', minutes: 30, when: 'once', date: within(addDays(today, 3), weekOf(career)) }],
+    // A one-day task on a set date: the exam itself.
+    [aigp, { title: 'Take the AIGP exam', kind: 'check', minutes: 180, when: 'once', date: aigp.target_date! }],
     [aigp, { title: 'AIGP study block', kind: 'minutes', minutes: 30, when: 'days', days: [1, 3, 5], through: aigp.target_date!, cue: 'Before any job applications' }],
   ];
   for (const [g, patch] of demoTasks) {

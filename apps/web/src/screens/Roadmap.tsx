@@ -273,6 +273,16 @@ export function Roadmap() {
             </>
           )}
         </div>
+        {view.milestonesOf(r.goal.id).map((m) => (
+          <span
+            key={m.id}
+            className={`rm-ms${m.completed_at ? ' done' : ''}`}
+            style={{ left: `${pct(m.due_date)}%`, ['--c' as string]: r.goal.color }}
+            title={`${m.title} · ${m.completed_at ? 'done' : shortDate(m.due_date)}`}
+            role="img"
+            aria-label={`Milestone ${m.title}, ${m.completed_at ? 'done' : `due ${shortDate(m.due_date)}`}`}
+          />
+        ))}
         {dragging && (
           <span className="rm-drag-tip" style={{ left: `${Math.min(80, Math.max(0, left))}%` }}>
             {shortDate(w.start)} → {shortDate(w.end)} · {daysBetween(w.start, w.end) + 1} days
@@ -297,6 +307,16 @@ export function Roadmap() {
         <span className="rm-span" style={{ left: `${left}%`, width: `${width}%` }}>
           <span className="rm-span-fill" style={{ width: `${r.prog}%` }} />
         </span>
+        {row.goals.map((g) => (
+          <span
+            key={`s-${g.goal.id}`}
+            className="rm-start-mark"
+            style={{ left: `${pct(shown(g).start)}%`, ['--c' as string]: g.goal.color }}
+            title={`${g.goal.title} · starts ${shortDate(shown(g).start)}`}
+            role="img"
+            aria-label={`${g.goal.title}: starts ${shortDate(shown(g).start)}`}
+          />
+        ))}
         {row.goals.map((g, i) => (
           <span
             key={g.goal.id}
@@ -426,7 +446,13 @@ export function Roadmap() {
               <span className="lg-bar next" /> Up next
             </span>
             <span>
+              <span className="lg-start" /> A goal starts
+            </span>
+            <span>
               <span className="lg-diamond" /> A goal's finish, in its group
+            </span>
+            <span>
+              <span className="lg-ms" /> Milestone
             </span>
             <span>
               <svg width="20" height="10" aria-hidden="true">

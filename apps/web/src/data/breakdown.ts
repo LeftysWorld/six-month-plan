@@ -243,6 +243,8 @@ export interface TaskInput {
   perWeek: number;
   /** Last day the task repeats; null = keeps going with no end date (ignored for one-day tasks). */
   through: ISODate | null;
+  /** First day a repeating task runs, when that's later than the day it's added (e.g. a class that starts Nov 14). */
+  start?: ISODate | null;
   priority: boolean;
   minLabel: string;
   /** "After coffee, at my desk": when the task happens (optional). */
@@ -273,7 +275,9 @@ function measureFor(data: AppData, input: TaskInput, goalId: string): { id: stri
   return { id: input.measurementTypeId ?? null, ops: [] };
 }
 
-function scheduleFor(actionId: string, input: TaskInput, from: ISODate): ActionSchedule {
+export function scheduleFor(actionId: string, input: TaskInput, from0: ISODate): ActionSchedule {
+  // A repeating task can start later than the day it's added.
+  const from = input.start && input.start > from0 ? input.start : from0;
   if (input.when === 'once') {
     return { id: newId(), action_id: actionId, rule: 'days', days: [isoWeekday(input.date)], per_week: null, effective_from: input.date, effective_to: input.date };
   }
@@ -284,12 +288,12 @@ function scheduleFor(actionId: string, input: TaskInput, from: ISODate): ActionS
     days: input.when === 'days' ? [...input.days].sort((a, b) => a - b) : [],
     per_week: input.when === 'per_week' ? input.perWeek : null,
     effective_from: from,
-    effective_to: input.through,
+    effective_to: input.through && input.through < from ? from : input.through,
   };
 }
 
 /** Create this week's missing sessions so a new or changed task shows up on Today right away. */
-function opsGenerateThisWeek(data: AppData, today: ISODate): Op[] {
+export function opsGenerateThisWeek(data: AppData, today: ISODate): Op[] {
   const missing = missingSessionsForWeek(data.actions, data.schedules, data.sessions, weekStart(today), newId);
   return missing.length ? [{ kind: 'insertIgnore', collection: 'sessions', rows: rows(missing) }] : [];
 }
@@ -434,6 +438,7 @@ export function inputFromTask(t: WeekTask, week: PlanStep): TaskInput {
     perWeek: t.schedule.per_week ?? 3,
     // Keep an ongoing task ongoing: editing must never quietly give it an end date.
     through: once ? week.end_date : t.schedule.effective_to,
+    start: once ? null : t.schedule.effective_from > week.start_date ? t.schedule.effective_from : null,
     priority: t.action.priority,
     minLabel: t.action.min_label,
     cue: t.action.cue ?? '',

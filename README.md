@@ -4,7 +4,7 @@ A personal web app for a six-month plan: goals at the top, today's list at the b
 
 ## What's in it
 
-Four places, one job each: **Today** to do, **Goals** to see and shape, **Roadmap** to see and move dates, **Review** to reflect.
+Six tabs, one job each: **Today** to do, **Goals** to see and shape, **Roadmap** to see and move dates, **Calendar** to see what's on which day, **Habits** for things you keep doing without a goal, **Review** to reflect. On a phone the tab bar shows icons only, with the current tab highlighted.
 
 - **Today** (opens here): this week's days, a big done count, a one-line coach note, and one list of task cards (to do first, then logged). Tap the round button on a card to check it off (with Undo), tap the card for the log sheet (done, partial, minimum kept, skip, obstacles, minutes spent, move to another day), or swipe left on a phone to finish it.
   - **Check-in streak** that survives real life: logging any one thing counts, 2 freezes cover missed days, every 7 check-ins earns a freeze back, and a missed day can be earned back by logging 2 things the next day ("never miss twice").
@@ -39,6 +39,18 @@ Four places, one job each: **Today** to do, **Goals** to see and shape, **Roadma
   - **Change dates right on the roadmap**: drag a bar's ends to move its start or finish, or drag the whole bar to shift both (a tip shows the dates as you drag). Tap a bar (or press Enter on it) for exact dates and what it starts after. Dates stay inside the goal's season or own clock; a number goal's finish follows its path, so only its start moves here. Every change is the goal's own date (its page, pace and reviews follow), is written to its change history, and can be undone from the message.
   - **This season / Next season**, and **Timeline / List** (the same dates as a list, each with a Dates button).
   - The goal page's edit sheet has the same **Starts** date.
+  - **Milestones on the bars**: every goal's milestones show as small ticks on its bar (filled when done), and the group's row marks where each of its goals starts. Every goal can have milestones (Progress record → Milestones), not just finish goals: "Class begins", "Exam day", "Module 3".
+- **Calendar** (its own tab, or press C): a month at a glance with everything that happens on a date. One-day tasks (an exam, a class), one-offs, milestones, goals starting or due on their own dates, goals completed, and the season's start, 3-month checkpoint and end. On a phone each day shows dots; on a computer, short labels.
+  - Tap a day for its list: check things off right there (milestones and tasks), open the goal, or **Add on this day**: type what it is and pick **For <goal>** (a one-day task for that goal) or **Not for a goal** (a one-off).
+  - **Repeating** shows a count of the goal tasks and habits that repeat on each day, kept off by default so dated things stand out.
+- **Habits** (its own tab, or press H): things you keep doing for their own sake, not for a goal, like *Clean house* every day or *Read before bed* 4 times a week.
+  - Each habit has a check for today, its **streak** (days, or weeks for times-a-week habits; a skip doesn't break it, and today doesn't until the day is over), its best streak, how often it got done in the last 30 days, and a 15-week grid.
+  - **New habit**: set days or times a week, a start date, about how long, an optional last day, and when or where. Tap a habit's name to edit it or **Stop this habit** (its history stays; **Show stopped habits** lists it).
+  - Habits also show on **Today** in their own **Habits** section (check them off there), and **All habits** takes you to the tab. They aren't counted in Today's task total.
+- **Tasks with dates**: in a goal's task editor,
+  - **Starts** lets a repeating task begin later, like coursework that starts the day class begins. Until then the goal's week shows it under **Coming up** with its dates.
+  - **Repeat** runs it to the end of the week, month, 3 months or plan, **When the goal is due** (for goals that finish early), **No end date**, or **Until a date I pick…**, like prework that stops the day before class.
+  - **One day** tasks can be on any date (**Or any date**), not just this week, for a test or a class. They show on the Calendar.
 - **Goals that add up to one outcome**: some goals aren't six-month goals on their own (a course, an exam, a certification), but together they make one. Put them in a group and give the group an outcome ("Qualified for AI product and governance work"): when you make the group, or later under **Edit group**, or with **+ What do these goals add up to?** on its card.
   - The group card and page then show the outcome with **one progress bar** for all its goals (each counts equally; a finished goal counts fully), "1 of 3 goals done", and where an even pace would be. **By … you'll have** lists the outcome as one line instead of each goal.
   - **Finish by** (in a goal's edit sheet, for goals that aren't numbers): an earlier end than the season's, for a course or an exam that ends sooner. The goal's track and pace run to that date.
@@ -58,7 +70,7 @@ Four places, one job each: **Today** to do, **Goals** to see and shape, **Roadma
 - **Times-a-week tasks** ("5 times a week") show on Today's list once a day, with how many you've done ("2 of 5 this week"); checking one off puts it on today. **A task happens at most once a day**: missed days can't be made up on a single day, so once it's done today it's gone until tomorrow. Moving a task (log sheet, morning plan, evening wrap-up) only offers days that don't already have it; otherwise the choice is to skip.
 - **Workouts log like every other task**: check them off, or tap the card for the log sheet (done, partial, minutes, note, photos). There are no exercise, sets or reps screens, and no countdown or focus timer. Workout tasks still feed the workouts-per-week chart on Progress.
 - **Reminders** (see below): a morning push and an evening "keep your streak" push when the site is installed on your home screen, or a calendar feed. Open tasks also show in the browser tab title and on the home-screen icon.
-- **On a computer**: two-column layouts and keyboard shortcuts (N add, T Today, G Goals, B backlog, M Roadmap, R Review, ← → change day).
+- **On a computer**: two-column layouts and keyboard shortcuts (N add, T Today, G Goals, B backlog, M Roadmap, C Calendar, H Habits, R Review, ← → change day).
 - **Settings**: name, time zone, units, appearance (match device, dark, light), reminders, minutes available per weekday, export JSON/CSV, start from scratch.
 - **Demo mode** runs entirely in the browser with example data. Works offline: changes queue up and save when the connection returns.
 
