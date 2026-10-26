@@ -13,6 +13,13 @@ const BACKLOG_MIGRATION = 'supabase/migrations/20261026000000_goal_backlog.sql';
 const OUTCOMES_MIGRATION = 'supabase/migrations/20261105000000_group_outcomes.sql';
 
 /** Columns added by the group-outcomes migration. */
+const START_MIGRATION = 'supabase/migrations/20261106000000_goal_start_dates.sql';
+
+/** The goal start-date column (roadmap). */
+function isMissingStart(message: string): boolean {
+  return /'start_date' column of 'goals'|goals\.start_date/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+}
+
 function isMissingOutcomes(message: string): boolean {
   return /after_goal_id|'outcome'|goal_groups\.outcome|\boutcome\b/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
 }
@@ -74,6 +81,9 @@ const NUMERIC_FIELDS: Record<string, string[]> = {
 /** A network failure is worth retrying; a database refusal is not. */
 function toSaveError(error: { message: string; code?: string } | null): SaveError | null {
   if (!error) return null;
+  if (isMissingStart(error.message)) {
+    return new SaveError(`${error.message}. Run ${START_MIGRATION} in the Supabase SQL Editor, then reload.`, false);
+  }
   if (isMissingOutcomes(error.message)) {
     return new SaveError(`${error.message}. Run ${OUTCOMES_MIGRATION} in the Supabase SQL Editor, then reload.`, false);
   }
@@ -196,6 +206,12 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
         const probe = await sb.from('goals').select('after_goal_id').limit(1);
         if (probe.error && isMissingOutcomes(probe.error.message)) {
           schemaWarning = `Your database needs the group outcomes update. In Supabase → SQL Editor, run ${OUTCOMES_MIGRATION}, then reload.`;
+        }
+      }
+      if (!schemaWarning) {
+        const probe = await sb.from('goals').select('start_date').limit(1);
+        if (probe.error && /start_date/.test(probe.error.message)) {
+          schemaWarning = `Your database needs the roadmap update. In Supabase → SQL Editor, run ${START_MIGRATION}, then reload.`;
         }
       }
       const { data: profile, error } = await sb.from('profiles').select('*').eq('user_id', userId).maybeSingle();

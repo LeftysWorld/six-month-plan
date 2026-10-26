@@ -128,11 +128,41 @@ export class View {
     return this.data.goals.filter((g) => g.after_goal_id === goalId && !g.archived_at && !g.completed_at);
   }
 
-  /** Where a goal's own run starts: its window's start, or the day the goal it waited on was completed. */
+  /**
+   * Where a goal's own run starts: the latest of its window's start, its own start date, and the
+   * day the goal it waited on was completed (never past the window's end).
+   */
   startFor(goal: Goal, plan: Plan): ISODate {
     const before = goal.after_goal_id ? this.goal(goal.after_goal_id) : undefined;
     const done = before?.completed_at?.slice(0, 10);
-    return done && done > plan.start_date ? done : plan.start_date;
+    const start = [plan.start_date, goal.start_date ?? '', done ?? ''].sort().at(-1)!;
+    return start > plan.end_date ? plan.end_date : start;
+  }
+
+  /** Where a goal ends: its finish-by date inside its window, else the window's end (never before it starts). */
+  endFor(goal: Goal, plan: Plan): ISODate {
+    const end = goal.target_date && goal.target_date <= plan.end_date ? goal.target_date : plan.end_date;
+    const start = this.startFor(goal, plan);
+    return end < start ? start : end;
+  }
+
+  /**
+   * A goal's dates as planned, for the roadmap: its start and end, and for a goal still waiting on
+   * another, the earliest it can start (the day after that one is due to end).
+   */
+  plannedWindow(goal: Goal, plan: Plan): { start: ISODate; end: ISODate; waitsFrom: ISODate | null } {
+    let start = this.startFor(goal, plan);
+    const before = this.waitingOn(goal);
+    let waitsFrom: ISODate | null = null;
+    if (before) {
+      const bp = this.planForGoal(before);
+      if (bp) {
+        waitsFrom = addDays(this.endFor(before, bp), 1);
+        if (waitsFrom > start) start = waitsFrom > plan.end_date ? plan.end_date : waitsFrom;
+      }
+    }
+    const end0 = this.endFor(goal, plan);
+    return { start, end: end0 < start ? start : end0, waitsFrom };
   }
 
   plansForGoal(goalId: string): Plan[] {

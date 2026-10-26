@@ -65,6 +65,8 @@ export interface Goal {
   group_id?: string | null;
   /** Starts after this goal is complete ("Up next" until then). Missing on older databases. */
   after_goal_id?: string | null;
+  /** When work on it starts, if later than its window's start (set on the roadmap). Missing on older databases. */
+  start_date?: ISODate | null;
 }
 
 /** A named group of goals that work together, made by dragging one goal onto another (like a phone folder). */

@@ -49,6 +49,7 @@ import { BackLink, Empty, Icon, PacePill, Sheet, WEEKDAY_NAMES, useToast } from 
 import { LogSheet } from './LogSheet.tsx';
 import { WorkoutPlanEditor, blankExercise } from '../components/Workout.tsx';
 import { goalTrack } from '../data/season.ts';
+import { afterChoices } from '../data/dates.ts';
 import { matchingTasks, opsRecordReading, opsShareTask, opsUnshareTask, shareCandidates } from '../data/connect.ts';
 import { ConnectionStrip, ShareTaskSheet } from '../components/Connections.tsx';
 
@@ -209,26 +210,12 @@ function ForecastLine({ goal, plan, by }: { goal: Goal; plan: Plan; by: ISODate 
   );
 }
 
-/** Goals this one could start after: others in its window that don't (directly or not) wait on it. */
-function afterChoices(goals: Goal[], goal: Goal): Goal[] {
-  const waitsOnMe = (g: Goal): boolean => {
-    const seen = new Set<string>();
-    let cur: Goal | undefined = g;
-    while (cur?.after_goal_id && !seen.has(cur.id)) {
-      if (cur.after_goal_id === goal.id) return true;
-      seen.add(cur.id);
-      cur = goals.find((x) => x.id === cur!.after_goal_id);
-    }
-    return false;
-  };
-  return goals.filter((g) => g.id !== goal.id && !waitsOnMe(g));
-}
-
 function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: () => void }) {
   const { data, commit } = useStore();
   const view = useView();
   const toast = useToast();
   const [finishBy, setFinishBy] = useState(goal.target_date ?? '');
+  const [startOn, setStartOn] = useState(goal.start_date ?? '');
   const [after, setAfter] = useState(goal.after_goal_id ?? '');
   const choices = afterChoices(view.goalsForPlan(plan.id), goal);
   const [title, setTitle] = useState(goal.title);
@@ -254,6 +241,13 @@ function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: (
       <label className="field">
         Done means
         <input value={done} onChange={(e) => setDone(e.target.value)} placeholder="How you'll know it's done" />
+      </label>
+      <label className="field">
+        Starts <span style={{ fontWeight: 400 }}>(optional)</span>
+        <input type="date" value={startOn} min={plan.start_date} max={finishBy || plan.end_date} onChange={(e) => setStartOn(e.target.value)} />
+        <span className="xsmall muted" style={{ fontWeight: 400 }}>
+          Empty means it starts with {plan.solo ? 'its clock' : 'the season'} ({shortDate(plan.start_date)}). You can also drag it on the Roadmap.
+        </span>
       </label>
       {goal.type !== 'number' && (
         <label className="field">
@@ -287,6 +281,8 @@ function GoalSheet({ goal, plan, onClose }: { goal: Goal; plan: Plan; onClose: (
           const extra: Partial<Goal> = {};
           if (goal.type !== 'number' && (finishBy || null) !== (goal.target_date ?? null)) extra.target_date = finishBy || null;
           if ((after || null) !== (goal.after_goal_id ?? null)) extra.after_goal_id = after || null;
+          const storedStart = startOn && startOn > plan.start_date ? startOn : null;
+          if (storedStart !== (goal.start_date ?? null)) extra.start_date = storedStart;
           let ops = opsUpdateGoal(goal, { title: title.trim() || goal.title, why: why.trim(), done_means: done.trim(), ...(goal.type === 'number' ? { target_value: target } : {}), ...extra });
           if (goal.type === 'number' && target !== goal.target_value) {
             const now = new Date().toISOString();
