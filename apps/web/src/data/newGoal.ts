@@ -107,7 +107,8 @@ export function opsMakeGoal(data: AppData, plan: Plan, input: NewGoalInput, toda
   // Its first daily task.
   if (input.task && input.task.title.trim() && input.task.days.length) {
     const week = chainFor(next, goal, plan, start).week.step!;
-    const taskOps = opsAddTask(next, goal, week, { ...blankTask(week, today), title: input.task.title.trim(), when: 'days', days: input.task.days, minutes: input.task.minutes, through: null, start: start > today ? start : null }, today);
+    // A task with minutes is logged in minutes; one without is a plain check-off.
+    const taskOps = opsAddTask(next, goal, week, { ...blankTask(week, today), title: input.task.title.trim(), kind: input.task.minutes > 0 ? 'minutes' : 'check', when: 'days', days: input.task.days, minutes: input.task.minutes, through: null, start: start > today ? start : null }, today);
     all.push(...taskOps);
     next = withOps(next, taskOps);
   }
