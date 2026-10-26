@@ -8,7 +8,7 @@
  * anything you want to keep. Change any line below and run it again; the file is built with the
  * same code the app uses when you make a goal by hand, so what you get is what the UI would have made.
  */
-import { addDays, type ISODate } from '@six/core';
+import { addDays, type ISODate, type PlannedExercise } from '@six/core';
 import { applyOp, emptyData, type AppData, type Op } from '../src/data/model.ts';
 import { View } from '../src/data/derive.ts';
 import { blankTask, opsAddTask, withOps } from '../src/data/breakdown.ts';
@@ -214,6 +214,56 @@ tasks(job, [{ title: 'One networking message or coffee chat', kind: 'check', min
 
 run(opsCreateGroup(data, 'AI', [jhu, aigp, iso, job]).ops);
 
+// ---------- The workouts (5-Day Upper Body Plan, Mon–Fri, weights only, knee-safe) ----------
+
+const WARMUP = 'Before every session (5 min): 2 × 15 band pull-aparts or light cable face pulls · 10 shoulder dislocates · one or two feeder sets of the first exercise at ~50%.\nEnd each set with 1–2 reps in the tank (0–1 on the last set of curls, raises, pushdowns). Lower for ~2 s, full stretch. Stay at a weight until every set hits the top of the range, then add 5 lb per dumbbell (one plate on a machine) and drop to the bottom of the range.';
+const ex = (name: string, sets: number, reps: string, weight: string, rest: string, note = '', per_side = false): PlannedExercise => {
+  const [lo, hi] = reps.split('–').map(Number);
+  const single = /^(\d+(?:\.\d+)?)$/.exec(weight);
+  return { name, sets, reps_min: lo!, reps_max: hi ?? lo!, ...(per_side ? { per_side: true } : {}), weight: single ? Number(single[1]) : null, weight_note: single ? '' : weight, rest, note };
+};
+const WORKOUTS: [number, string, PlannedExercise[]][] = [
+  [1, 'Chest & Back A', [
+    ex('Flat DB Bench Press', 3, '8–12', '50', '2–3 min'),
+    ex('Lat Pulldown', 4, '8–12', '100', '2–3 min', 'Elbows down to your back pockets. Full stretch at the top.'),
+    ex('Incline DB Press', 3, '8–12', '35', '2 min', 'Upper chest. Rest the full 2 min.'),
+    ex('Chest-Supported DB Row', 3, '8–12', '35', '90 sec'),
+    ex('Straight-Arm Cable Pulldown', 3, '12–15', '35', '60 sec', 'Arms nearly straight, sweep bar to thighs. Lats only.'),
+    ex('Seated Lateral Raise', 3, '12–15', '12.5', '60 sec', 'Lead with the elbows, stop at shoulder height. Last set can go close to failure.'),
+  ]],
+  [2, 'Shoulders & Arms A', [
+    ex('Seated DB Shoulder Press', 3, '8–12', '35', '2 min'),
+    ex('Seated Lateral Raise', 4, '12–15', '12.5', '60 sec', 'Lead with the elbows, stop at shoulder height.'),
+    ex('Seated DB Curl', 3, '10–12', '25', '90 sec'),
+    ex('Cable Triceps Pushdown', 4, '12–15', '57.5', '60 sec'),
+    ex('Seated Hammer Curl', 3, '10–12', '20', '60 sec', 'Builds the brachialis, which pushes the biceps up.'),
+    ex('Sit-Up Bench Crunch (knee test)', 3, '12–15', 'bodyweight', '45 sec', 'Flat or lowest decline. Curl ribs toward hips, short range. First set at bodyweight: any knee pain where the feet hook in, stop and skip it.'),
+  ]],
+  [3, 'Chest & Back B', [
+    ex('Seated Cable Row', 4, '6–10', '100', '2–3 min', 'Heavier, lower reps: your back-strength lift. Chest up, pause at the belly.'),
+    ex('Machine Chest Press', 3, '10–12', '50', '2 min'),
+    ex('Single-Arm DB Row', 3, '8–12', '40', '90 sec', 'Chest on incline bench, no knee on the bench. Pull your elbow toward your hip.', true),
+    ex('Low-Incline DB Fly', 3, '12–15', '20–25 lb', '60 sec', 'Bench one notch up from flat. Slight elbow bend, lower to a deep chest stretch, hug the weights together.'),
+    ex('Hammer Strength Back Extension', 4, '10–15', 'bodyweight', '90 sec', 'Round down slowly, squeeze up until straight, no arching past that. Hold a plate on your chest once 15 reps are easy.'),
+  ]],
+  [4, 'Shoulders & Arms B', [
+    ex('Seated DB Arnold Press', 3, '8–12', '35', '2 min'),
+    ex('Seated Rear-Delt Fly', 3, '12–15', '10–15 lb', '60 sec', 'Chest on incline bench or the reverse pec deck.'),
+    ex('Seated Incline DB Curl', 3, '10–12', '15', '90 sec', 'Arms hang behind you; biceps work in a stretch.'),
+    ex('Seated Overhead Triceps Extension', 4, '10–15', '35', '90 sec', 'Let the dumbbell sink deep behind your head.'),
+    ex('Cable Lateral Raise', 3, '12–15', 'light, find it', '60 sec', 'One arm at a time, next to the stack.', true),
+    ex('Sit-Up Bench Crunch (knee test)', 3, '12–15', 'bodyweight', '45 sec', 'First set at bodyweight: any knee pain, stop and skip it.'),
+  ]],
+  [5, 'Chest & Back C', [
+    ex('Wide-Grip Lat Pulldown', 4, '10–12', '90', '2 min', 'Lats first while you are fresh.'),
+    ex('Incline DB Press', 3, '8–12', '35', '2 min'),
+    ex('Flat DB Bench Press', 2, '8–12', '50', '2 min', 'Same weight as Monday; when Monday goes up, this goes up too.'),
+    ex('Single-Arm Cable Pulldown', 3, '10–12', 'find it', '60 sec', 'Seated, one handle. Elbow down to your side, then let the arm stretch all the way up.', true),
+    ex('Arm Superset: Cable Curl + Overhead Cable Triceps Extension', 2, '12–15', 'find it', '90 sec after each round', 'One set of curls, then right away one set of extensions (sit on a bench, back to the stack). Rest, repeat.'),
+    ex('Hammer Strength Glute/Ham Hip Extension (knee test)', 3, '10–12', 'bodyweight', '90 sec', 'Hips on the pad, legs straight. Bend at the hips, squeeze glutes and hamstrings to come up. Not the knee-bending glute-ham raise.'),
+  ]],
+];
+
 // ---------- Group: Body ----------
 
 const weight = goal(
@@ -227,7 +277,7 @@ const weight = goal(
     baseline: WEIGHT_NOW,
     target: WEIGHT_GOAL,
     targetDate: plan.end_date,
-    weekGoal: 'No alcohol, keto every day, five workouts, weigh in every morning',
+    weekGoal: 'No alcohol, keto every day, all five workouts (week 4 of the plan), weigh in every morning',
     task: null,
   },
   GOAL_COLORS[1]!,
@@ -237,7 +287,8 @@ const weight = goal(
   const measureId = g.measurement_type_id!;
   tasks(weight, [
     { title: 'Weigh in', kind: 'measure', minutes: 0, days: [1, 2, 3, 4, 5, 6, 7], measurementTypeId: measureId, cue: 'First thing, after the bathroom' },
-    { title: 'Workout', kind: 'workout', minutes: 60, days: [1, 2, 3, 4, 5], priority: true },
+    // The 5-Day Upper Body Plan (Oct 13 version), one workout a day Mon–Fri, each with its exercises.
+    ...WORKOUTS.map(([day, title, plan]): Extra => ({ title, kind: 'workout', minutes: 60, days: [day], priority: true, workoutPlan: plan, details: WARMUP })),
     { title: 'No alcohol', kind: 'check', minutes: 0, days: [1, 2, 3, 4, 5, 6, 7] },
     { title: 'Keto / carnivore eating', kind: 'check', minutes: 0, days: [1, 2, 3, 4, 5, 6, 7], minLabel: 'No sugar, no bread' },
   ]);
