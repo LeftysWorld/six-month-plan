@@ -3,7 +3,8 @@ import { addDays, isoWeekday, shortDate, type ISODate } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/derive.ts';
 import { KIND_TEXT, calendarItems, dayTitle, opsAddOnDate, repeatingOn, type CalItem, type CalKind } from '../data/calendar.ts';
-import { opsLogSession, opsToggleMilestone } from '../data/ops.ts';
+import { opsAddMilestone, opsLogSession, opsToggleMilestone } from '../data/ops.ts';
+import { MilestoneSheet } from '../components/MilestoneSheet.tsx';
 import { href, navigate } from '../router.ts';
 import { Icon, useToast } from '../components/ui.tsx';
 
@@ -39,6 +40,8 @@ export function Calendar() {
   const [month, setMonth] = useState(monthOf(today));
   const [picked, setPicked] = useState<ISODate>(today);
   const [repeating, setRepeating] = useState(false);
+  const [editingMs, setEditingMs] = useState<string | null>(null);
+  const msEditing = editingMs ? data.milestones.find((x) => x.id === editingMs) : undefined;
   const first = `${month}-01`;
   const gridStart = addDays(first, 1 - isoWeekday(first));
   const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
@@ -152,9 +155,9 @@ export function Calendar() {
             })}
           </div>
           <div className="cal-legend" aria-label="Key">
-            {(['task', 'milestone', 'start', 'finish', 'season'] as CalKind[]).map((k) => (
+            {(['task', 'milestone', 'checkpoint', 'start', 'finish', 'season'] as CalKind[]).map((k) => (
               <span key={k}>
-                <KindMark kind={k} /> {k === 'task' ? 'One day' : k === 'start' ? 'Goal starts' : k === 'finish' ? 'Goal due' : k === 'season' ? 'Season' : 'Milestone'}
+                <KindMark kind={k} /> {k === 'task' ? 'One day' : k === 'start' ? 'Goal starts' : k === 'finish' ? 'Goal due' : k === 'season' ? 'Season' : k === 'checkpoint' ? '3-month, month, week goal' : 'Date to hit'}
               </span>
             ))}
           </div>
@@ -179,14 +182,25 @@ export function Calendar() {
                   <KindMark kind={x.kind} />
                 </span>
               )}
-              <a className="grow stack-sm" href={x.to ? href(x.to) : undefined} style={{ gap: 1, color: 'var(--ink)', textDecoration: 'none', minWidth: 0 }}>
-                <span className="small strong" style={{ textDecoration: x.done ? 'line-through' : undefined, color: x.done ? 'var(--muted)' : undefined }}>
-                  {x.title}
-                </span>
-                <span className="xsmall muted">
-                  {KIND_TEXT[x.kind]} · {x.sub}
-                </span>
-              </a>
+              {x.milestoneId ? (
+                <button type="button" className="grow stack-sm cal-row-btn" onClick={() => setEditingMs(x.milestoneId!)} aria-label={`Change ${x.title}`} style={{ gap: 1, minWidth: 0 }}>
+                  <span className="small strong" style={{ textDecoration: x.done ? 'line-through' : undefined, color: x.done ? 'var(--muted)' : undefined }}>
+                    {x.title}
+                  </span>
+                  <span className="xsmall muted">
+                    {KIND_TEXT[x.kind]} · {x.sub} · tap to change
+                  </span>
+                </button>
+              ) : (
+                <a className="grow stack-sm" href={x.to ? href(x.to) : undefined} style={{ gap: 1, color: 'var(--ink)', textDecoration: 'none', minWidth: 0 }}>
+                  <span className="small strong" style={{ textDecoration: x.done ? 'line-through' : undefined, color: x.done ? 'var(--muted)' : undefined }}>
+                    {x.title}
+                  </span>
+                  <span className="xsmall muted">
+                    {KIND_TEXT[x.kind]} · {x.sub}
+                  </span>
+                </a>
+              )}
             </div>
           ))}
           {(() => {
@@ -202,6 +216,7 @@ export function Calendar() {
           <AddOnDay date={picked} />
         </section>
       </div>
+      {msEditing && <MilestoneSheet milestone={msEditing} onClose={() => setEditingMs(null)} />}
     </div>
   );
 }
@@ -218,32 +233,51 @@ function AddOnDay({ date }: { date: ISODate }) {
   const toast = useToast();
   const [title, setTitle] = useState('');
   const [goalId, setGoalId] = useState('');
-  if (date < today) return null;
+  const [as, setAs] = useState<'task' | 'date'>('task');
+  // Past days take only dates to hit (a milestone you reached then); tasks are for today on.
+  const past = date < today;
+  const asDate = !!goalId && (as === 'date' || past);
   const goals = view.activeGoals;
   return (
     <form
       className="stack-sm cal-add"
       onSubmit={(e) => {
         e.preventDefault();
-        const ops = opsAddOnDate(data, { title, date, goalId: goalId || null }, today);
-        if (!ops.length) return;
+        if (past && !goalId) return;
+        const ops = asDate ? opsAddMilestone(goalId, title, date) : opsAddOnDate(data, { title, date, goalId: goalId || null }, today);
+        if (!ops.length || !title.trim()) return;
         commit(ops);
-        toast(`${title.trim()} added on ${shortDate(date)}`);
+        toast(asDate ? `${title.trim()}: a date for ${view.goal(goalId)?.title}. It's on the roadmap too.` : `${title.trim()} added on ${shortDate(date)}`);
         setTitle('');
       }}
     >
-      <span className="label">Add on {shortDate(date)}</span>
-      <input className="input" aria-label="What" placeholder="e.g. AIGP exam, JHU class" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <span className="label">{past ? `Add a date on ${shortDate(date)}` : `Add on ${shortDate(date)}`}</span>
+      <input className="input" aria-label="What" placeholder={asDate ? 'e.g. JHU course starts, Weigh 200 lb' : 'e.g. AIGP exam, JHU class'} value={title} onChange={(e) => setTitle(e.target.value)} />
+      {goalId && !past && (
+        <div className="seg" role="tablist" aria-label="Add as">
+          <button type="button" role="tab" aria-selected={as === 'task'} onClick={() => setAs('task')}>
+            A task to do that day
+          </button>
+          <button type="button" role="tab" aria-selected={as === 'date'} onClick={() => setAs('date')}>
+            A date to hit
+          </button>
+        </div>
+      )}
+      {goalId && (
+        <span className="xsmall muted">
+          {asDate ? 'A date inside the goal, on the roadmap and its page (class begins, weigh 200 lb).' : 'Shows on Today that day, with a check, and on the goal\'s page.'}
+        </span>
+      )}
       <div className="row-start" style={{ flexWrap: 'nowrap' }}>
         <select className="input" aria-label="For" value={goalId} onChange={(e) => setGoalId(e.target.value)}>
-          <option value="">Not for a goal (one-off)</option>
+          {past ? <option value="">Pick a goal</option> : <option value="">Not for a goal (one-off)</option>}
           {goals.map((g) => (
             <option key={g.id} value={g.id}>
               For {g.title}
             </option>
           ))}
         </select>
-        <button className="btn small" type="submit" disabled={!title.trim()} style={{ flex: 'none', minHeight: 44 }}>
+        <button className="btn small" type="submit" disabled={!title.trim() || (past && !goalId)} style={{ flex: 'none', minHeight: 44 }}>
           Add
         </button>
       </div>

@@ -59,3 +59,26 @@ test('the calendar shows milestones, goal starts and things added on a date', ()
   const exam = d.actions.find((a) => a.title === 'AIGP exam')!;
   assert.equal(isHabit(d, exam.id), false);
 });
+
+test('dates inside a goal: milestones change and undo; set 3-month, month and week goals show as checkpoints', async () => {
+  const { checkpointsOf, opsUpdateMilestone, opsDeleteMilestone, opsRestoreMilestone } = await import('../src/data/dated.ts');
+  let d = base();
+  d.goals[0]!.unit = 'lb';
+  const ms = d.milestones[0]!;
+  d = run(d, opsUpdateMilestone(ms, { title: ' JHU course starts ', due_date: '2026-11-16' }));
+  assert.deepEqual([d.milestones[0]!.title, d.milestones[0]!.due_date], ['JHU course starts', '2026-11-16']);
+  assert.equal(opsUpdateMilestone(d.milestones[0]!, { title: 'JHU course starts' }).length, 0, 'no change, no op');
+  d = run(d, opsRestoreMilestone(d, ms));
+  assert.equal(d.milestones[0]!.due_date, '2026-11-14', 'undo puts the date back');
+  const gone = run(d, opsDeleteMilestone(ms));
+  assert.equal(gone.milestones.length, 0);
+  assert.equal(run(gone, opsRestoreMilestone(gone, ms)).milestones.length, 1, 'undo brings it back');
+
+  const step = (id: string, level: 'quarter' | 'month' | 'week', end: string, note: string, value: number | null = null) => ({ id, goal_id: 'jhu', plan_id: 'plan', parent_id: null, level, idx: 0, title: '', start_date: '2026-10-19', end_date: end, target_value: value, target_note: note, completed_at: null });
+  d.planSteps = [step('q', 'quarter', '2027-01-17', 'Modules 1–6', 197), step('m', 'month', '2026-11-15', ''), step('w0', 'week', '2026-10-25', 'old week'), step('w1', 'week', '2026-11-01', 'Module 2 quiz')];
+  const cps = checkpointsOf(d, d.goals[0]!, '2026-10-26');
+  assert.deepEqual(cps.map((c) => [c.level, c.date, c.text]), [['week', '2026-11-01', 'Module 2 quiz'], ['quarter', '2027-01-17', '197 lb · Modules 1–6']], 'unset steps and past weeks left out');
+  assert.equal(checkpointsOf(d, d.goals[0]!).length, 3, 'the calendar keeps past weeks');
+  const items = calendarItems(new View(d, TODAY, 0.5), '2026-10-19', '2027-04-19');
+  assert.ok((items.get('2027-01-17') ?? []).some((i) => i.kind === 'checkpoint' && i.title === '3-month goal: 197 lb · Modules 1–6'));
+});

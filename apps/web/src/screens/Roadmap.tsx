@@ -1,11 +1,13 @@
-import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { addDays, daysBetween, shortDate, type Goal, type GoalGroup, type ISODate, type Plan } from '@six/core';
+import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { addDays, daysBetween, shortDate, weekStart, type Goal, type GoalGroup, type ISODate, type Milestone, type Plan } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView, type View } from '../data/derive.ts';
 import { goalTrack, groupTrack, seasonsOf } from '../data/season.ts';
 import { afterChoices, clampDates, dateLimits, opsRestoreDates, opsSetGoalDates } from '../data/dates.ts';
 import { href, navigate } from '../router.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
+import { MilestoneSheet } from '../components/MilestoneSheet.tsx';
+import { CHECKPOINT_NAME, checkpointsOf, opsRestoreMilestone, opsUpdateMilestone, type Checkpoint } from '../data/dated.ts';
 
 /**
  * The roadmap: every goal of a season on one timeline, from its start to its finish, grouped the
@@ -13,6 +15,10 @@ import { Icon, Sheet, useToast } from '../components/ui.tsx';
  * milestone (◆); "starts after" shows as an arrow. Dates change right here: drag a bar's ends (or
  * the whole bar), or tap it for exact dates. Changes are the goals' own dates, so the goal pages,
  * pace and reviews follow.
+ *
+ * Dates inside a goal show on its bar: milestones above it (dates you add: tap + Date, or an empty
+ * part of a row; drag one to move it, tap it to change it) and the 3-month, month and week goals you've
+ * set below it (when each is due). The same dates show on the calendar and the goal's page.
  */
 
 interface GoalRow {
@@ -111,6 +117,17 @@ interface Drag {
   moved: boolean;
 }
 
+interface MsDrag {
+  id: string;
+  x0: number;
+  dayPx: number;
+  date0: ISODate;
+  date: ISODate;
+  moved: boolean;
+}
+
+type MsSheet = { milestone?: Milestone; goalIds?: string[]; goalId?: string; date?: ISODate };
+
 export function Roadmap() {
   const { data, today, commit } = useStore();
   const view = useView();
@@ -121,6 +138,9 @@ export function Roadmap() {
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<GoalRow | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [msDrag, setMsDrag] = useState<MsDrag | null>(null);
+  const [msSheet, setMsSheet] = useState<MsSheet | null>(null);
+  const [cpSheet, setCpSheet] = useState<{ cp: Checkpoint; goal: Goal } | null>(null);
   const season = which === 'next' ? seasons.next : seasons.current;
   const { rows, lo, hi } = buildRows(view, season);
   const span = Math.max(1, daysBetween(lo, hi));
@@ -219,16 +239,111 @@ export function Roadmap() {
     toast(`${r.goal.title}: ${shortDate(res.start)} – ${shortDate(res.end)}${res.clamped ? ' (kept inside its window)' : ''}`, () => commit([...opsRestoreDates(before), { kind: 'update', collection: 'goals', id: before.id, patch: { after_goal_id: before.after_goal_id ?? null } }]));
   }
 
+  // Milestones: drag to move (a day at a time), tap to change; arrow keys move them too.
+  function msDown(e: ReactPointerEvent, m: Milestone) {
+    if (e.button !== 0) return;
+    const track = (e.currentTarget as HTMLElement).closest('.rm-track') as HTMLElement | null;
+    if (!track) return;
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setMsDrag({ id: m.id, x0: e.clientX, dayPx: track.getBoundingClientRect().width / span, date0: m.due_date, date: m.due_date, moved: false });
+  }
+  function msMove(e: ReactPointerEvent, m: Milestone) {
+    if (!msDrag || msDrag.id !== m.id) return;
+    const dx = e.clientX - msDrag.x0;
+    if (!msDrag.moved && Math.abs(dx) < 4) return;
+    let date = addDays(msDrag.date0, Math.round(dx / msDrag.dayPx));
+    if (date < lo) date = lo;
+    if (date > hi) date = hi;
+    setMsDrag({ ...msDrag, date, moved: true });
+  }
+  function moveMilestone(m: Milestone, date: ISODate) {
+    const ops = opsUpdateMilestone(m, { due_date: date });
+    if (!ops.length) return;
+    commit(ops);
+    toast(`${m.title} moved to ${shortDate(date)}`, () => commit(opsRestoreMilestone(data, m)));
+  }
+  function msUp(m: Milestone) {
+    const d = msDrag;
+    setMsDrag(null);
+    if (!d || d.id !== m.id) return;
+    if (!d.moved) setMsSheet({ milestone: m });
+    else moveMilestone(m, d.date);
+  }
+  /** Tap an empty part of a goal's row to add a date there. */
+  function addAt(e: ReactMouseEvent<HTMLDivElement>, goal: Goal) {
+    const t = e.target as HTMLElement;
+    if (t !== e.currentTarget && !t.classList.contains('rm-grid') && !t.classList.contains('rm-today')) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    const date = addDays(lo, Math.round(((e.clientX - box.left) / box.width) * span));
+    setMsSheet({ goalId: goal.id, goalIds: [goal.id], date });
+  }
+
+  const msTicks = (goal: Goal) =>
+    view.milestonesOf(goal.id).map((m) => {
+      const date = msDrag?.id === m.id && msDrag.moved ? msDrag.date : m.due_date;
+      if (date < lo || date > hi) return null;
+      const moving = msDrag?.id === m.id && msDrag.moved;
+      return (
+        <button
+          key={m.id}
+          type="button"
+          className={`rm-ms${m.completed_at ? ' done' : ''}${moving ? ' moving' : ''}`}
+          style={{ left: `${pct(date)}%`, ['--c' as string]: goal.color }}
+          title={`${m.title} · ${m.completed_at ? 'done · ' : ''}${shortDate(date)}`}
+          aria-label={`${m.title}, ${goal.title}, ${m.completed_at ? 'done, ' : ''}${shortDate(date)}. Drag or use arrow keys to move, Enter to change`}
+          onPointerDown={(e) => msDown(e, m)}
+          onPointerMove={(e) => msMove(e, m)}
+          onPointerUp={() => msUp(m)}
+          onPointerCancel={() => setMsDrag(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setMsSheet({ milestone: m });
+            }
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+              e.preventDefault();
+              moveMilestone(m, addDays(m.due_date, e.key === 'ArrowLeft' ? -1 : 1));
+            }
+          }}
+        >
+          {moving && <span className="rm-ms-tip">{m.title} · {shortDate(date)}</span>}
+        </button>
+      );
+    });
+
+  const cpMarks = (goal: Goal) =>
+    checkpointsOf(data, goal, weekStart(today))
+      .filter((cp) => cp.date >= lo && cp.date <= hi)
+      .map((cp) => (
+        <button
+          key={cp.id}
+          type="button"
+          className={`rm-cp l-${cp.level}${cp.done ? ' done' : ''}`}
+          style={{ left: `${pct(cp.date)}%`, ['--c' as string]: goal.color }}
+          title={`${CHECKPOINT_NAME[cp.level]} · by ${shortDate(cp.date)}: ${cp.text}`}
+          aria-label={`${CHECKPOINT_NAME[cp.level]} for ${goal.title}, by ${shortDate(cp.date)}: ${cp.text}`}
+          onClick={(e) => (e.stopPropagation(), setCpSheet({ cp, goal }))}
+        />
+      ));
+
   const shown = (r: GoalRow) => (drag?.goalId === r.goal.id && drag.moved ? { start: drag.start, end: drag.end } : { start: r.start, end: r.end });
 
   const goalLabel = (r: GoalRow) => {
     const w = shown(r);
     return (
       <div className="rm-label">
-        <a href={href(`/goals/${r.goal.id}`)} className="rm-name" title={`Open ${r.goal.title}`}>
-          <span className="dot" style={{ background: r.goal.color, opacity: r.waiting ? 0.45 : 1 }} />
-          <span className="rm-title">{r.goal.title}</span>
-        </a>
+        <span className="rm-name-row">
+          <a href={href(`/goals/${r.goal.id}`)} className="rm-name" title={`Open ${r.goal.title}`}>
+            <span className="dot" style={{ background: r.goal.color, opacity: r.waiting ? 0.45 : 1 }} />
+            <span className="rm-title">{r.goal.title}</span>
+          </a>
+          {!r.done && (
+            <button type="button" className="rm-add" onClick={() => setMsSheet({ goalId: r.goal.id, goalIds: [r.goal.id] })} aria-label={`Add a date to ${r.goal.title}`} title="Add a date">
+              <Icon name="plus" size={12} stroke={2.6} /> Date
+            </button>
+          )}
+        </span>
         <span className="rm-meta">
           {shortDate(w.start)} – {shortDate(w.end)} · <span className={r.status.startsWith('Behind') || /behind/.test(r.status) ? 'warn' : ''}>{r.waiting ? `Up next · after ${r.waiting}` : r.status}</span>
         </span>
@@ -243,7 +358,7 @@ export function Roadmap() {
     const dragging = drag?.goalId === r.goal.id && drag.moved;
     const locked = r.goal.type === 'number';
     return (
-      <div className="rm-track">
+      <div className={`rm-track${r.done ? '' : ' addable'}`} onClick={(e) => !r.done && addAt(e, r.goal)} title={r.done ? undefined : 'Tap an empty spot to add a date'}>
         {months.map((m) => (
           <span key={m} className="rm-grid" style={{ left: `${pct(m)}%` }} />
         ))}
@@ -273,16 +388,8 @@ export function Roadmap() {
             </>
           )}
         </div>
-        {view.milestonesOf(r.goal.id).map((m) => (
-          <span
-            key={m.id}
-            className={`rm-ms${m.completed_at ? ' done' : ''}`}
-            style={{ left: `${pct(m.due_date)}%`, ['--c' as string]: r.goal.color }}
-            title={`${m.title} · ${m.completed_at ? 'done' : shortDate(m.due_date)}`}
-            role="img"
-            aria-label={`Milestone ${m.title}, ${m.completed_at ? 'done' : `due ${shortDate(m.due_date)}`}`}
-          />
-        ))}
+        {msTicks(r.goal)}
+        {cpMarks(r.goal)}
         {dragging && (
           <span className="rm-drag-tip" style={{ left: `${Math.min(80, Math.max(0, left))}%` }}>
             {shortDate(w.start)} → {shortDate(w.end)} · {daysBetween(w.start, w.end) + 1} days
@@ -328,6 +435,7 @@ export function Roadmap() {
             aria-label={`${g.goal.title}: ${g.done ? 'done' : 'finishes'} ${shortDate(shown(g).end)}`}
           />
         ))}
+        {closed[row.group.id] && row.goals.filter((g) => !g.done).flatMap((g) => msTicks(g.goal))}
       </div>
     );
   };
@@ -358,6 +466,12 @@ export function Roadmap() {
         ) : (
           <span className="small muted">{season ? `${season.name}` : ''}</span>
         )}
+        <div className="row-start" style={{ gap: 8 }}>
+        {season && rows.length > 0 && (
+          <button className="btn small" onClick={() => setMsSheet({ goalIds: rows.flatMap((r) => (r.kind === 'group' ? r.goals : [r])).filter((r) => !r.done).map((r) => r.goal.id) })}>
+            <Icon name="plus" size={14} stroke={2.4} /> Add a date
+          </button>
+        )}
         <div className="seg" role="tablist" aria-label="View">
           <button role="tab" aria-selected={mode === 'timeline'} onClick={() => setMode('timeline')}>
             <Icon name="roadmap" size={15} /> Timeline
@@ -365,6 +479,7 @@ export function Roadmap() {
           <button role="tab" aria-selected={mode === 'list'} onClick={() => setMode('list')}>
             <Icon name="list" size={15} /> List
           </button>
+        </div>
         </div>
       </div>
 
@@ -375,7 +490,7 @@ export function Roadmap() {
         <section className="card rm" aria-label="Timeline">
           <div className="rm-head">
             <div className="rm-label rm-label-head">
-              <span className="xsmall muted">Drag a bar or its ends to change dates. Tap it for exact dates.</span>
+              <span className="xsmall muted">Drag a bar or its ends to change dates; tap it for exact dates. Tap an empty spot or + Date to add a date.</span>
             </div>
             <div className="rm-axis">
               {months.map((m) => (
@@ -452,7 +567,10 @@ export function Roadmap() {
               <span className="lg-diamond" /> A goal's finish, in its group
             </span>
             <span>
-              <span className="lg-ms" /> Milestone
+              <span className="lg-ms" /> A date you added (drag to move)
+            </span>
+            <span>
+              <span className="lg-cp" /> 3-month, month or week goal due
             </span>
             <span>
               <svg width="20" height="10" aria-hidden="true">
@@ -480,24 +598,34 @@ export function Roadmap() {
                   </span>
                 </div>
                 {row.goals.map((g) => (
-                  <ListRow key={g.goal.id} r={g} onEdit={() => setEditing(g)} />
+                  <ListRow key={g.goal.id} r={g} onEdit={() => setEditing(g)} onDate={(m) => setMsSheet(m ? { milestone: m } : { goalId: g.goal.id, goalIds: [g.goal.id] })} onCheckpoint={(cp) => setCpSheet({ cp, goal: g.goal })} />
                 ))}
               </div>
             ) : (
-              <ListRow key={row.goal.id} r={row} onEdit={() => setEditing(row)} />
+              <ListRow key={row.goal.id} r={row} onEdit={() => setEditing(row)} onDate={(m) => setMsSheet(m ? { milestone: m } : { goalId: row.goal.id, goalIds: [row.goal.id] })} onCheckpoint={(cp) => setCpSheet({ cp, goal: row.goal })} />
             ),
           )}
         </section>
       )}
 
+      {msSheet && <MilestoneSheet {...msSheet} onClose={() => setMsSheet(null)} />}
+      {cpSheet && <CheckpointSheet cp={cpSheet.cp} goal={cpSheet.goal} onClose={() => setCpSheet(null)} />}
       {editing && <DatesSheet row={editing} onClose={() => setEditing(null)} onSave={(s, e, after) => (save(editing, s, e, after), setEditing(null))} />}
     </div>
   );
 }
 
-function ListRow({ r, onEdit }: { r: GoalRow; onEdit: () => void }) {
+function ListRow({ r, onEdit, onDate, onCheckpoint }: { r: GoalRow; onEdit: () => void; onDate: (m: Milestone | null) => void; onCheckpoint: (cp: Checkpoint) => void }) {
+  const { data, today } = useStore();
+  const view = useView();
   const days = daysBetween(r.start, r.end) + 1;
+  // Every date inside the goal, in order: yours and its 3-month, month and week goals.
+  const dated = [
+    ...view.milestonesOf(r.goal.id).map((m) => ({ key: m.id, date: m.due_date, label: m.title, done: !!m.completed_at, open: () => onDate(m), cp: false })),
+    ...checkpointsOf(data, r.goal, weekStart(today)).map((cp) => ({ key: cp.id, date: cp.date, label: `${CHECKPOINT_NAME[cp.level]}: ${cp.text}`, done: cp.done, open: () => onCheckpoint(cp), cp: true })),
+  ].sort((a, b) => (a.date < b.date ? -1 : 1));
   return (
+    <div className="rm-list-item">
     <div className="rm-list-row">
       <span className="dot" style={{ background: r.goal.color, opacity: r.waiting ? 0.45 : 1 }} />
       <a className="grow stack-sm" href={href(`/goals/${r.goal.id}`)} style={{ gap: 1, color: 'var(--ink)', textDecoration: 'none' }}>
@@ -507,11 +635,52 @@ function ListRow({ r, onEdit }: { r: GoalRow; onEdit: () => void }) {
         </span>
       </a>
       {!r.done && (
+        <button className="btn small" onClick={() => onDate(null)} aria-label={`Add a date to ${r.goal.title}`}>
+          + Date
+        </button>
+      )}
+      {!r.done && (
         <button className="btn small" onClick={onEdit}>
           Dates
         </button>
       )}
     </div>
+    {dated.length > 0 && (
+      <div className="rm-list-dates">
+        {dated.map((x) => (
+          <button key={x.key} type="button" className={`rm-date-chip${x.done ? ' done' : ''}${x.cp ? ' cp' : ''}`} style={{ ['--c' as string]: r.goal.color }} onClick={x.open}>
+            <span className={x.cp ? 'lg-cp' : 'lg-ms'} style={{ borderColor: r.goal.color, background: x.done ? r.goal.color : undefined }} />
+            <span className="mono">{shortDate(x.date)}</span> {x.label}
+          </button>
+        ))}
+      </div>
+    )}
+    </div>
+  );
+}
+
+/** A 3-month, month or week goal: what it says and when it's due. Its text is changed on the goal's page. */
+function CheckpointSheet({ cp, goal, onClose }: { cp: Checkpoint; goal: Goal; onClose: () => void }) {
+  return (
+    <Sheet title={CHECKPOINT_NAME[cp.level]} onClose={onClose}>
+      <span className="row-start small muted" style={{ gap: 6, marginTop: -8 }}>
+        <span className="dot" style={{ background: goal.color }} /> {goal.title} · due {shortDate(cp.date)}
+        {cp.done ? ' · done' : ''}
+      </span>
+      <p style={{ margin: 0, fontSize: 17 }}>{cp.text}</p>
+      <span className="xsmall muted">Its date is the end of its {cp.level === 'quarter' ? '3 months' : cp.level}. Change what it says on the goal's page, under The plan.</span>
+      <div className="btn-row">
+        <button
+          className="btn primary"
+          onClick={() => {
+            onClose();
+            navigate(`/goals/${goal.id}`);
+          }}
+        >
+          Open goal
+        </button>
+      </div>
+    </Sheet>
   );
 }
 

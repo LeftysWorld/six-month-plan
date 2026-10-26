@@ -17,6 +17,7 @@ import {
 } from '../data/ops.ts';
 import { navigate } from '../router.ts';
 import { Icon, NumberInput, useToast } from '../components/ui.tsx';
+import { MilestoneSheet } from '../components/MilestoneSheet.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
 import { GoalFiles } from '../components/Attachments.tsx';
 import { GoalGroupCard } from '../components/Connections.tsx';
@@ -220,6 +221,8 @@ export function GoalRecord({ goal }: { goal: Goal }) {
   const stepTo = goal.target_date ?? plan?.end_date ?? today;
   const actions = view.actionsForGoal(goal.id, true);
   const actionIds = new Set(actions.map((a) => a.id));
+  const [editingMs, setEditingMs] = useState<string | null>(null);
+  const msEditing = editingMs ? data.milestones.find((x) => x.id === editingMs) : undefined;
   const milestones = data.milestones.filter((m) => m.goal_id === goal.id).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
   const types = data.measurementTypes.filter((t) => !t.archived_at && (t.goal_id === goal.id || t.id === goal.measurement_type_id));
   return (
@@ -258,7 +261,7 @@ export function GoalRecord({ goal }: { goal: Goal }) {
               </div>
             </form>
           )}
-          {milestones.length === 0 && !splitting && <span className="small muted">No milestones yet. Split it into steps (modules, chapters, domains) or add them one by one.</span>}
+          {milestones.length === 0 && !splitting && <span className="small muted">No milestones yet: dates inside this goal, like class begins or weigh 200 lb by Jan 1. Split it into steps (modules, chapters, domains) or add them one by one. They show on the roadmap and the calendar.</span>}
           {milestones.map((m) => (
             <div key={m.id} className="list-row">
               <button
@@ -270,13 +273,13 @@ export function GoalRecord({ goal }: { goal: Goal }) {
                   {m.completed_at && <Icon name="check" size={12} stroke={3.2} />}
                 </span>
               </button>
-              <div className="grow">
+              <button type="button" className="grow cal-row-btn" onClick={() => setEditingMs(m.id)} aria-label={`Change ${m.title}`}>
                 <div style={{ textDecoration: m.completed_at ? 'line-through' : undefined, color: m.completed_at ? 'var(--muted)' : undefined }}>{m.title}</div>
                 <div className="xsmall muted">
                   {shortDate(m.due_date)}
                   {!m.completed_at && m.due_date < today ? ' · past due' : ''}
                 </div>
-              </div>
+              </button>
             </div>
           ))}
           <form
@@ -299,6 +302,7 @@ export function GoalRecord({ goal }: { goal: Goal }) {
         </div>
       )}
 
+      {msEditing && <MilestoneSheet milestone={msEditing} onClose={() => setEditingMs(null)} />}
       <GoalFiles actionIds={actionIds} />
       <Measurements goal={goal} types={types} onAdd={(msg) => toast(/^(Stopped|Already|Renamed|Showing|Hidden)/.test(msg) ? msg : `Added ${msg}`)} />
     </>

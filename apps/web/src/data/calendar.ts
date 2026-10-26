@@ -4,6 +4,7 @@ import type { View } from './derive.ts';
 import { blankTask, isOnce, opsGenerateThisWeek, scheduleFor, withOps } from './breakdown.ts';
 import { firstCheckpoint } from './season.ts';
 import { opsAddOneOff } from './ops.ts';
+import { CHECKPOINT_NAME, checkpointsOf } from './dated.ts';
 
 /**
  * The calendar: everything that happens on a date. One-day tasks (an exam, a class), one-offs,
@@ -12,7 +13,7 @@ import { opsAddOneOff } from './ops.ts';
  * how many run each day.
  */
 
-export type CalKind = 'task' | 'oneoff' | 'milestone' | 'start' | 'finish' | 'done' | 'season';
+export type CalKind = 'task' | 'oneoff' | 'milestone' | 'checkpoint' | 'start' | 'finish' | 'done' | 'season';
 
 export interface CalItem {
   id: string;
@@ -35,7 +36,8 @@ const GREY = '#9AA49E';
 export const KIND_TEXT: Record<CalKind, string> = {
   task: 'One day',
   oneoff: 'One-off',
-  milestone: 'Milestone',
+  milestone: 'Date',
+  checkpoint: 'Due',
   start: 'Starts',
   finish: 'Due',
   done: 'Done',
@@ -85,6 +87,13 @@ export function calendarItems(view: View, from: ISODate, to: ISODate): Map<ISODa
     if (!goal || goal.archived_at) continue;
     add({ id: `m-${m.id}`, date: m.due_date, kind: 'milestone', title: m.title, sub: goal.title, color: goal.color, done: !!m.completed_at, to: `/goals/${goal.id}`, milestoneId: m.id });
   }
+  // When each 3-month, month and week goal you've written down is due.
+  for (const goal of data.goals) {
+    if (goal.archived_at || goal.completed_at) continue;
+    for (const cp of checkpointsOf(data, goal)) {
+      add({ id: `c-${cp.id}`, date: cp.date, kind: 'checkpoint', title: `${CHECKPOINT_NAME[cp.level]}: ${cp.text}`, sub: goal.title, color: goal.color, done: cp.done, to: `/goals/${goal.id}` });
+    }
+  }
   // Goals starting or finishing on their own dates (not just with the season), and goals finished.
   for (const goal of data.goals) {
     if (goal.archived_at) continue;
@@ -105,7 +114,7 @@ export function calendarItems(view: View, from: ISODate, to: ISODate): Map<ISODa
     add({ id: `pc-${plan.id}`, date: firstCheckpoint(plan), kind: 'season', title: '3-month checkpoint', sub: plan.name, color: 'var(--accent)', done: false, to: '/review' });
     add({ id: `pe-${plan.id}`, date: plan.end_date, kind: 'season', title: `${plan.name} ends`, sub: 'Season', color: 'var(--accent)', done: false, to: '/review' });
   }
-  const order: CalKind[] = ['season', 'finish', 'start', 'milestone', 'task', 'oneoff', 'done'];
+  const order: CalKind[] = ['season', 'finish', 'start', 'milestone', 'checkpoint', 'task', 'oneoff', 'done'];
   for (const list of out.values()) list.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.title.localeCompare(b.title));
   return out;
 }
