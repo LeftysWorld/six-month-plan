@@ -1,3 +1,4 @@
+import { PROJECT_DECISION_TEXT } from '../components/ProjectReview.tsx';
 import { previousReview, shortDate, type Review } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, useView } from '../data/derive.ts';
@@ -105,6 +106,32 @@ export function ReviewDetail({ id }: { id: string }) {
                 {goalName(d.goal_id)}
               </span>
               <b>{DECISION[d.decision]}</b>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(r.project_notes?.length ?? 0) > 0 && (
+        <div className="card stack-sm">
+          <span className="label">Projects</span>
+          {r.project_notes!.map((n) => (
+            <div key={n.goal_id} className="stack-sm" style={{ gap: 2, paddingTop: 6 }}>
+              <span className="small strong">{goalName(n.goal_id)}</span>
+              {n.moved && <span className="xsmall">Moved: {n.moved}</span>}
+              {n.next && <span className="xsmall">Next: {n.next}</span>}
+              {n.blocked && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>Blocked: {n.blocked}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(r.project_decisions?.length ?? 0) > 0 && (
+        <div className="card stack-sm">
+          <span className="label">Stage gate</span>
+          {r.project_decisions!.map((d) => (
+            <div key={d.goal_id} className="row-between small">
+              <span>{goalName(d.goal_id)}</span>
+              <b>{PROJECT_DECISION_TEXT[d.decision]}</b>
             </div>
           ))}
         </div>

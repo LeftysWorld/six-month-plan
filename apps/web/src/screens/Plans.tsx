@@ -14,6 +14,7 @@ import { useGoalDrag } from '../components/goalDrag.ts';
 import { nextSeasonDates, seasonsOf } from '../data/season.ts';
 import { GroupRowsCard, LooseCard, SeasonHorizon, SeasonOutcomes, SeasonStats, dropHint, placeGoals } from './Season.tsx';
 import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
+import { ProjectAlerts } from '../components/ProjectsCard.tsx';
 
 /** Create a batch: a shared window several goals can be committed to (defaults to six months from today). */
 export function PlanForm({ onDone }: { onDone?: () => void }) {
@@ -190,6 +191,8 @@ export function Plans() {
         </div>
       )}
 
+      <ProjectAlerts />
+
       {placed.length === 0 && (
         <div className="card tight small stack-sm" style={{ color: 'var(--ink-2)' }}>
           <span>
@@ -248,9 +251,10 @@ export function Plans() {
 function setupSteps(view: View, data: AppData, today: ISODate): { title: string; detail: string; action: string; to: string } | null {
   const goals = view.activeGoals;
   if (goals.length === 0) return null; // The empty state already says this.
-  const noTasks = goals.find((g) => g.type !== 'number' && view.actionsForGoal(g.id).length === 0);
+  // A goal with projects does its work through them (each project has its own tasks).
+  const noTasks = goals.find((g) => g.type !== 'number' && !view.hasProjects(g.id) && view.actionsForGoal(g.id).length === 0);
   if (noTasks) return { title: `Add daily tasks for ${noTasks.title}`, detail: 'Daily tasks on the goal page land on your Today list.', action: 'Add tasks', to: `/goals/${noTasks.id}` };
-  const actionIds = new Set(goals.flatMap((g) => view.actionsForGoal(g.id, true).map((a) => a.id)));
+  const actionIds = new Set(goals.flatMap((g) => view.familyGoalIds(g.id).flatMap((id) => view.actionsForGoal(id, true).map((a) => a.id))));
   const checkedIn = data.sessions.some((x) => x.action_id && actionIds.has(x.action_id) && x.status !== 'planned' && x.status !== 'moved');
   const started = goals.some((g) => (view.planForGoal(g)?.start_date ?? today) <= today);
   if (!checkedIn && started) return { title: 'Do your first check-in', detail: 'Tick one thing off on Today. That starts your streak.', action: 'Open Today', to: '/today' };

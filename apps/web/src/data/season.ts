@@ -76,6 +76,13 @@ export function goalTrack(view: View, goal: Goal, plan: Plan): Track {
   const target = goal.type === 'number' && goal.target_value != null ? `${fmt(goal.target_value)} ${goal.unit ?? ''}`.trim() : goal.done_means.trim() || goal.title;
   const word = (fallback: string) => (!started ? 'Planned' : label === 'ahead' ? 'Ahead' : label === 'behind' ? 'Behind' : label === 'on_track' ? 'On pace' : fallback);
 
+  // A goal with projects: the average share done across its projects, against where their
+  // milestones (or time) say it should be.
+  const roll = view.rollupFor(goal, plan);
+  if (roll) {
+    const status = !started ? 'Planned' : roll.atRisk ? `${roll.atRisk} at risk` : word('Too early');
+    return { prog: clamp(roll.fraction * 100), exp: started ? clamp(roll.expectedFraction * 100) : 0, now: `${roll.done} of ${roll.count} project${roll.count === 1 ? '' : 's'} done`, target, by, label: roll.label, status, started };
+  }
   if (goal.type === 'number') {
     const n = pace?.number;
     const start = n?.start.value ?? goal.baseline_value;

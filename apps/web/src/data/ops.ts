@@ -533,7 +533,15 @@ export function opsRemoveAttachment(attachment: Attachment): Op[] {
  */
 export function opsDeleteGoal(data: AppData, goal: Goal): { ops: Op[]; files: string[] } {
   const ops: Op[] = [];
+  const childFiles: string[] = [];
   const del = (collection: CollectionKey, id: string) => ops.push({ kind: 'delete', collection, id });
+  // A goal's projects go with it (each with its own tasks, logs and files), and so do its RAID lines.
+  for (const child of data.goals.filter((g) => g.parent_id === goal.id)) {
+    const sub = opsDeleteGoal(data, child);
+    ops.push(...sub.ops);
+    childFiles.push(...sub.files);
+  }
+  for (const r of (data.raidItems ?? []).filter((x) => x.goal_id === goal.id)) del('raidItems', r.id);
   const links = data.actionGoals.filter((ag) => ag.goal_id === goal.id);
   const own = new Set(links.filter((ag) => data.actionGoals.filter((x) => x.action_id === ag.action_id).length === 1).map((ag) => ag.action_id));
   for (const ag of links) del('actionGoals', ag.id);
@@ -565,5 +573,5 @@ export function opsDeleteGoal(data: AppData, goal: Goal): { ops: Op[]; files: st
   // Leaving its group first means a group left with one goal goes away too.
   ops.push(...opsRemoveFromGroup(data, goal.id));
   del('goals', goal.id);
-  return { ops, files: attachments.map((a) => a.path) };
+  return { ops, files: [...childFiles, ...attachments.map((a) => a.path)] };
 }

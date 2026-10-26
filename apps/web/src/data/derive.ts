@@ -10,6 +10,11 @@ import {
   missingSessionsForWeek,
   numberGoalStatus,
   progressFor,
+  projectStats,
+  rollup,
+  isProject,
+  type ProjectStats,
+  type Rollup,
   quarterRange,
   scheduleOn,
   weekStart,
@@ -20,6 +25,7 @@ import {
   type ISODate,
   type Measurement,
   type MeasurementType,
+  type Milestone,
   type NumberGoalStatus,
   type PaceLabel,
   type PathPoint,
@@ -114,8 +120,68 @@ export class View {
   }
 
   plansForGoal(goalId: string): Plan[] {
+    // A project runs in its goal's window: it moves when the goal moves.
+    const parent = this.goal(goalId)?.parent_id;
+    if (parent && parent !== goalId) return this.plansForGoal(parent);
     const ids = new Set(this.data.planGoals.filter((pg) => pg.goal_id === goalId).map((pg) => pg.plan_id));
     return this.data.plans.filter((p) => ids.has(p.id));
+  }
+
+  // ---------- Projects ----------
+
+  /** A goal's projects, in start order (dropped ones last). Archived projects are left out. */
+  projectsOf(goalId: string, includeDropped = true): Goal[] {
+    return this.data.goals
+      .filter((g) => g.parent_id === goalId && !g.archived_at && (includeDropped || !g.dropped_at))
+      .sort((a, b) => Number(!!a.dropped_at) - Number(!!b.dropped_at) || (a.start_date ?? a.target_date ?? '9') .localeCompare(b.start_date ?? b.target_date ?? '9') || a.title.localeCompare(b.title));
+  }
+
+  /** Every project that isn't archived, across all goals. */
+  get allProjects(): Goal[] {
+    return this.data.goals.filter((g) => isProject(g) && !g.archived_at);
+  }
+
+  hasProjects(goalId: string): boolean {
+    return this.data.goals.some((g) => g.parent_id === goalId && !g.archived_at && !g.dropped_at);
+  }
+
+  /** A goal's name, or "Project · Goal" for a project. */
+  goalLabel(goal: Goal): string {
+    const parent = this.parentOf(goal);
+    return parent ? `${goal.title} · ${parent.title}` : goal.title;
+  }
+
+  parentOf(goal: Goal | undefined): Goal | undefined {
+    return goal?.parent_id ? this.goal(goal.parent_id) : undefined;
+  }
+
+  milestonesOf(goalId: string): Milestone[] {
+    return this.data.milestones.filter((m) => m.goal_id === goalId).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
+  }
+
+  private statsCache = new Map<string, ProjectStats>();
+
+  /** Phase, pace, forecast, variance and buffer for one project (cached for this moment). */
+  projectStats(project: Goal): ProjectStats {
+    const hit = this.statsCache.get(project.id);
+    if (hit) return hit;
+    const plan = this.planForGoal(project);
+    const fallback = { start: plan?.start_date ?? this.today, end: plan?.end_date ?? addDays(this.today, 90) };
+    const stats = projectStats(project, this.milestonesOf(project.id), this.data.goals, this.today, fallback);
+    this.statsCache.set(project.id, stats);
+    return stats;
+  }
+
+  /** A goal's progress from its projects (null when it has none). */
+  rollupFor(goal: Goal, plan: Plan | null = this.planForGoal(goal)): Rollup | null {
+    const projects = this.projectsOf(goal.id);
+    if (!projects.length || projects.every((p) => p.dropped_at)) return null;
+    return rollup(projects.map((p) => this.projectStats(p)), this.tooEarly(plan));
+  }
+
+  /** Session ids' tasks for a goal and its projects together (a goal's whole program). */
+  familyGoalIds(goalId: string): string[] {
+    return [goalId, ...this.projectsOf(goalId).map((p) => p.id)];
   }
 
   actionsForGoal(goalId: string, includeArchived = false): Action[] {
@@ -246,6 +312,24 @@ export class View {
   /** Pace for one goal over a period (practice goals) or overall (number and finish goals). */
   goalPace(goal: Goal, plan: Plan | null, range?: DateRange): GoalPace {
     const early = this.tooEarly(plan);
+    if (isProject(goal)) {
+      const s = this.projectStats(goal);
+      const progress = { planned: s.total, expected: s.expected, actual: s.done, label: s.label };
+      return { goal, label: s.label, summary: s.total ? `${s.done} of ${s.total} milestones` : 'No milestones yet', progress, number: null };
+    }
+    // A goal with projects is measured by them: the program rolls up. Over a period (a weekly
+    // review's week) it's the work done on the goal and its projects in that period.
+    const roll = this.rollupFor(goal, plan);
+    if (roll) {
+      if (range) {
+        const ids = new Set(this.data.actionGoals.filter((ag) => this.familyGoalIds(goal.id).includes(ag.goal_id)).map((ag) => ag.action_id));
+        const sessions = this.data.sessions.filter((x) => x.action_id && ids.has(x.action_id));
+        const progress = progressFor(sessions, range, { today: this.today, dayFraction: 0, tooEarly: early });
+        return { goal, label: progress.planned ? progress.label : roll.label, summary: progress.planned ? `${fmt(progress.actual, 0)} done, ${fmt(progress.expected, 0)} expected by now` : rollupText(roll), progress, number: null };
+      }
+      const pct = (n: number) => Math.round(n * 100);
+      return { goal, label: roll.label, summary: rollupText(roll), progress: { planned: 100, expected: pct(roll.expectedFraction), actual: pct(roll.fraction), label: roll.label }, number: null };
+    }
     const fallbackStart = plan?.start_date ?? this.today;
     if (goal.type === 'number') {
       const status = numberGoalStatus(goal, this.pathFor(goal), this.measurementsFor(goal.measurement_type_id), this.today, fallbackStart, early);
@@ -298,7 +382,7 @@ export class View {
     const opts = { today: this.today, dayFraction: this.dayFraction };
     const early = this.tooEarly(plan);
     const goals = this.goalsForPlan(plan.id);
-    const goalIds = new Set(goals.map((g) => g.id));
+    const goalIds = new Set(goals.flatMap((g) => this.familyGoalIds(g.id)));
     const actionIds = new Set(this.data.actionGoals.filter((ag) => goalIds.has(ag.goal_id)).map((ag) => ag.action_id));
     const inPlan = (s: Session) => !s.action_id || actionIds.has(s.action_id);
     const milestones = this.data.milestones.filter((m) => goalIds.has(m.goal_id));
@@ -353,6 +437,13 @@ export class View {
 export function useView(): View {
   const { data, today, dayFraction } = useStore();
   return useMemo(() => new View(data, today, dayFraction), [data, today, dayFraction]);
+}
+
+/** "1 of 3 projects done · 1 at risk" */
+export function rollupText(r: Rollup): string {
+  const parts = [`${r.done} of ${r.count} project${r.count === 1 ? '' : 's'} done`];
+  if (r.atRisk) parts.push(`${r.atRisk} at risk`);
+  return parts.join(' · ');
 }
 
 export function fmt(n: number | null | undefined, digits = 1): string {

@@ -598,7 +598,7 @@ function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session
   const label =
     s.status === 'planned' ? `Mark ${s.title} done` : `${s.title}, ${s.status === 'minimum' ? 'minimum kept' : s.status}. Tap to undo`;
 
-  let meta: string | null = [action?.cue ? action.cue : null, goals.map((g) => g.title).join(' + ') || null].filter(Boolean).join(' · ') || null;
+  let meta: string | null = [action?.cue ? action.cue : null, goals.map((g) => view.goalLabel(g)).join(' + ') || null].filter(Boolean).join(' · ') || null;
   if (s.status === 'minimum') meta = `Minimum kept${action?.min_label ? ` · ${action.min_label}` : ''}`;
   if (s.status === 'partial') meta = s.planned_count ? `Partial · ${s.actual_count ?? 0} of ${s.planned_count}` : 'Partial';
   if (s.status === 'skipped') meta = s.obstacles.length ? `Skipped · ${s.obstacles.join(', ')}` : 'Skipped';

@@ -50,6 +50,9 @@ import { WorkoutPlanEditor, blankExercise } from '../components/Workout.tsx';
 import { goalTrack } from '../data/season.ts';
 import { matchingTasks, opsRecordReading, opsShareTask, opsUnshareTask, shareCandidates } from '../data/connect.ts';
 import { ConnectionStrip, ShareTaskSheet } from '../components/Connections.tsx';
+import { DecisionLog, ProjectsCard } from '../components/ProjectsCard.tsx';
+import { NewProjectSheet } from '../components/Projects.tsx';
+import { ProjectPage } from './ProjectPage.tsx';
 
 /**
  * One page per goal: the goal chain, top to bottom, then this week's daily tasks.
@@ -64,8 +67,11 @@ export function Flow({ goalId }: { goalId: string }) {
   const plans = goal ? view.plansForGoal(goal.id) : [];
   const plan = plans.find((p) => p.start_date <= today && p.end_date >= today) ?? plans[0] ?? null;
   const [editing, setEditing] = useState<ChainLevel | 'goal' | null>(null);
+  const [addingProject, setAddingProject] = useState(false);
 
   if (!goal) return <Empty title="Goal not found." />;
+  // A project has its own page: the same tasks and logging, plus its brief, burn-up and RAID log.
+  if (goal.parent_id && !plan) return <ProjectPage project={goal} thisWeek={null} />;
   if (!plan) {
     return (
       <div className="stack">
@@ -89,6 +95,16 @@ export function Flow({ goalId }: { goalId: string }) {
       : `Own clock · day ${Math.max(1, Math.min(daysBetween(plan.start_date, today) + 1, daysBetween(plan.start_date, plan.end_date) + 1))} of ${daysBetween(plan.start_date, plan.end_date) + 1}`
     : plan.name;
   const ink = !t.started ? 'var(--muted)' : t.label === 'behind' ? 'var(--amber-ink)' : t.label === 'ahead' ? 'var(--blue-ink)' : 'var(--ink-2)';
+  const hasProjects = view.projectsOf(goal.id).length > 0;
+
+  if (goal.parent_id) {
+    return (
+      <>
+        <ProjectPage project={goal} thisWeek={<ThisWeekCard goal={goal} plan={plan} chain={chain} week={week} weeks={weeks} onEditWeek={() => setEditing('week')} onToast={toast} />} />
+        {editing && editing !== 'goal' && <ChainSheet goal={goal} plan={plan} chain={chain} level={editing} onClose={() => setEditing(null)} />}
+      </>
+    );
+  }
 
   return (
     <div className="stack rise">
@@ -118,16 +134,28 @@ export function Flow({ goalId }: { goalId: string }) {
       <div className="goal-page">
         <div className="goal-page-main">
           <ProgressCard goal={goal} plan={plan} chain={chain} onSetWeek={() => setEditing('week')} />
+          {hasProjects && <ProjectsCard goal={goal} plan={plan} />}
           <ThisWeekCard goal={goal} plan={plan} chain={chain} week={week} weeks={weeks} onEditWeek={() => setEditing('week')} onToast={toast} />
           <PlanCard goal={goal} plan={plan} chain={chain} onEdit={setEditing} />
+          {!hasProjects && (
+            <button type="button" className="add-project-hint" onClick={() => setAddingProject(true)}>
+              <Icon name="road" size={16} stroke={2} />
+              <span>
+                <b>Reached through a course, an exam or a build?</b>
+                <span>Add it as a project: its own dates, milestones and brief. The goal’s progress then comes from its projects.</span>
+              </span>
+            </button>
+          )}
         </div>
         <aside className="goal-page-side">
           <GoalRecord goal={goal} />
           <GoalGroupCard goal={goal} />
+          <DecisionLog goal={goal} />
           <GoalManage goal={goal} />
         </aside>
       </div>
 
+      {addingProject && <NewProjectSheet goal={goal} onClose={() => setAddingProject(false)} />}
       {editing === 'goal' && <GoalSheet goal={goal} plan={plan} onClose={() => setEditing(null)} />}
       {editing && editing !== 'goal' && <ChainSheet goal={goal} plan={plan} chain={chain} level={editing} onClose={() => setEditing(null)} />}
     </div>
@@ -783,6 +811,8 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
   const [measuring, setMeasuring] = useState<Session | null>(null);
   const days = daysOfWeek(week);
   const tasks = tasksInRange(data, goal.id, dateRange(week), week.id);
+  // A goal with projects: their tasks this week, named, so an empty week here isn't misleading.
+  const projectTasks = view.projectsOf(goal.id, false).flatMap((p) => tasksInRange(data, p.id, dateRange(week)).map((t) => ({ title: t.action.title, project: p.title })));
   const over = week.end_date < today;
   const weekText = isSet(chain.week) ? [chain.week.step?.target_value != null ? `${fmt(chain.week.step.target_value)} ${goal.unit ?? ''}`.trim() : '', chain.week.step?.target_note.trim() ?? ''].filter(Boolean).join(' · ') : '';
   const prevWeek = weeks.filter((w) => w.end_date < week.start_date).at(-1);
@@ -829,7 +859,14 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
         {weekText ? <span className="week-goal-text">{weekText}</span> : <span className="week-goal-text muted">What should be true by {shortDate(week.end_date)}?</span>}
         <span className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{weekText ? 'Edit' : 'Set it'}</span>
       </button>
-      {tasks.length === 0 && <span className="small muted week-row">No daily tasks this week yet.</span>}
+      {tasks.length === 0 &&
+        (projectTasks.length ? (
+          <span className="small muted week-row">
+            The work for this goal is in its projects this week: {projectTasks.map((t) => `${t.title} (${t.project})`).join(', ')}. Tasks added here serve the goal as a whole.
+          </span>
+        ) : (
+          <span className="small muted week-row">No daily tasks this week yet.</span>
+        ))}
       {tasks.map((t) => {
         const also = view.otherGoalsForAction(t.action.id, goal.id);
         const done = days.filter((d) => ['done', 'part'].includes(stateOf(t.action.id, d))).length;

@@ -25,6 +25,8 @@ export interface Profile {
   evening_reminder?: boolean;
   /** Secret token for the read-only calendar feed. */
   calendar_token?: string | null;
+  /** How many projects can be active at once, across all goals (a Kanban WIP limit). Missing on older databases (4). */
+  project_wip_limit?: number | null;
 }
 
 /**
@@ -63,6 +65,76 @@ export interface Goal {
   completion_note?: string;
   /** The group it's in (a goal is in one group at most). Missing on older databases. */
   group_id?: string | null;
+
+  // ---- Projects. A project is a goal row with a parent goal: temporary work with a finish line
+  // that, together with its sibling projects, delivers the parent's six-month outcome.
+  // All of these are missing on older databases.
+  /** The goal this project serves. Null for a goal. */
+  parent_id?: string | null;
+  /** When the project is planned to start (its target end is target_date). */
+  start_date?: ISODate | null;
+  /** When it truly must be done. The gap between target_date and deadline is the buffer. */
+  deadline?: ISODate | null;
+  /** The start date is an outside commitment (a course start, a booked exam) and never moves on its own. */
+  fixed_start?: boolean | null;
+  /** The deadline is an outside commitment. */
+  fixed_deadline?: boolean | null;
+  /** Projects that must finish before this one starts (finish-to-start). */
+  depends_on?: string[] | null;
+  /** When the project was started (it's active from then). */
+  started_at?: string | null;
+  /** When it was dropped (it stops counting toward its goal). */
+  dropped_at?: string | null;
+  /** Dates saved when it started, to measure slips against. */
+  baseline_start?: ISODate | null;
+  baseline_end?: ISODate | null;
+  /** Scope: what's in and what's out, one item per line. */
+  scope_in?: string | null;
+  scope_out?: string | null;
+  /** Definition of done: ticked before it closes. */
+  dod?: DodItem[] | null;
+  /** "It's the end and this failed. Why?" One reason per line. */
+  premortem?: string | null;
+  /** "Stop or re-plan if…", decided up front. */
+  kill_criteria?: string | null;
+  /** Close-out answers (lessons learned). */
+  closeout?: Closeout | null;
+  /** Benefits check: the question to ask later, when, and the answer. */
+  benefit_question?: string | null;
+  benefit_check_on?: ISODate | null;
+  benefit_result?: string | null;
+}
+
+export interface DodItem {
+  text: string;
+  done: boolean;
+}
+
+export interface Closeout {
+  worked: string;
+  didnt: string;
+  /** What to carry into the next project: the lesson shown when you plan another. */
+  carry: string;
+  closed_on: ISODate;
+}
+
+export type RaidKind = 'risk' | 'assumption' | 'issue' | 'decision';
+
+/**
+ * One line in a project's (or goal's) RAID log: a risk ("if… then…" with a response), an
+ * assumption you're betting on, an issue in the way, or a decision with why it was made.
+ * Dependencies are the projects' depends_on links, so they aren't stored here.
+ */
+export interface RaidItem {
+  id: string;
+  goal_id: string;
+  kind: RaidKind;
+  title: string;
+  /** Risk: the response. Assumption: how you'll check it. Issue: the fix. Decision: why. */
+  detail: string;
+  status: 'open' | 'closed';
+  created_at: string;
+  closed_at: string | null;
 }
 
 /** A named group of goals that work together, made by dragging one goal onto another (like a phone folder). */
@@ -115,6 +187,10 @@ export interface Milestone {
   title: string;
   due_date: ISODate;
   completed_at: string | null;
+  /** When it was added (a burn-up's scope line). Missing on older databases. */
+  created_at?: string | null;
+  /** What it produced: a note or a link (the treatment, the repo, the certificate). */
+  deliverable?: string | null;
 }
 
 export interface Action {
@@ -279,7 +355,21 @@ export interface Review {
   carry_forward?: string;
   minutes_planned?: number;
   minutes_done?: number;
+  /** Weekly review: one status line per active project. */
+  project_notes?: ProjectNote[];
+  /** 3-month checkpoint (stage gate): what was decided for each project. */
+  project_decisions?: { goal_id: string; decision: ProjectDecision }[];
 }
+
+export interface ProjectNote {
+  goal_id: string;
+  moved: string;
+  next: string;
+  blocked: string;
+}
+
+/** Stage gate: close a finished project, keep going, re-plan it, drop it, or start a waiting one. */
+export type ProjectDecision = 'close' | 'continue' | 'replan' | 'drop' | 'start' | 'wait';
 
 export interface ChangeLogEntry {
   id: string;

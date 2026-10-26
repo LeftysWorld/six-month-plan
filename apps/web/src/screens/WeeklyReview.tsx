@@ -21,6 +21,7 @@ import {
   type DateRange,
   type Goal,
   type GoalDecision,
+  type ProjectDecision,
   type GoalResult,
   type ISODate,
   type Plan,
@@ -32,6 +33,7 @@ import {
 import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, useView, type View } from '../data/derive.ts';
 import type { AppData, Op, ReviewPayload } from '../data/model.ts';
+import { ProjectStatusLines, ProjectsMonthCheck, StageGate, defaultDecision, notesForReview, opsApplyGate, reviewProjects, type NoteDraft } from '../components/ProjectReview.tsx';
 import { opsArchiveAction, opsArchiveGoal, opsCompleteGoal, opsCompleteReview, opsCreatePlan, opsLinkGoalToPlan, opsReplacePath, opsUpdateGoal } from '../data/ops.ts';
 import { catchUp, catchUpPlan, chainFor, isSet, opsSetLevel, type ChainLevel } from '../data/chain.ts';
 import { withOps } from '../data/breakdown.ts';
@@ -87,6 +89,10 @@ interface Draft {
   nextValues: Record<string, number | null>;
   decisions: Record<string, GoalDecision>;
   adjust: Record<string, Adjust>;
+  /** Weekly: one status line per active project. */
+  projectNotes: NoteDraft;
+  /** 3-month checkpoint: the stage-gate call for each project. */
+  projectDecisions: Record<string, ProjectDecision>;
   newPlan: { on: boolean; name: string; start: ISODate; end: ISODate; carry: Record<string, boolean> };
 }
 
@@ -150,6 +156,8 @@ function freshDraft(data: AppData, kind: ReviewKind, period: DateRange, plan: Pl
     nextValues: {},
     decisions: {},
     adjust: {},
+    projectNotes: {},
+    projectDecisions: {},
     newPlan: { on: true, name: 'My next six months', start, end: addDays(start, 182), carry: {} },
   };
 }
@@ -195,6 +203,7 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
   // Connected goals sit next to each other, so the gym is reviewed beside the weight trend.
   const goals = view.groupConnected(isWeekly ? view.activeGoals : plan ? view.goalsForPlan(plan.id) : []);
   const planOf = (g: Goal): Plan | null => (isWeekly ? view.planForGoal(g) : plan);
+  const projects = reviewProjects(view, goals);
   const goalPlans = goals.map(planOf).filter((p): p is Plan => !!p);
   const trendPlan: Plan | null = isWeekly ? ([...goalPlans].sort((a, b) => (a.start_date < b.start_date ? -1 : 1))[0] ?? null) : plan;
   const lookEnd = period.end < today ? period.end : today;
@@ -335,6 +344,8 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
         commitment_kept: prev?.change_next ? draft.commitment : null,
         goal_results: results,
         goal_decisions: kind === 'quarter' ? Object.entries(draft.decisions).map(([goal_id, decision]) => ({ goal_id, decision })) : [],
+        project_notes: kind === 'weekly' ? notesForReview(projects, draft.projectNotes ?? {}) : [],
+        project_decisions: kind === 'quarter' ? projects.map((p) => ({ goal_id: p.id, decision: draft.projectDecisions?.[p.id] ?? defaultDecision(view, p) })) : [],
         carry_forward: kind === 'retro' ? draft.carryForward.trim() : '',
         minutes_planned: tally.minutesPlanned,
         minutes_done: tally.minutesDone,
@@ -380,6 +391,8 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
           if (decision === 'drop') add(opsDropGoal(next, view, g, nextMonday));
           if (decision === 'adjust') add(opsAdjustGoal(next, view, g, plan, draft.adjust[g.id] ?? {}, today));
         }
+        // The stage gate for projects: close, continue, re-plan, drop; start the ones approved.
+        add(opsApplyGate(next, view, projects, draft.projectDecisions ?? {}, today));
       }
       for (const f of nextFields) {
         if (kind === 'quarter' && draft.decisions[f.goal.id] === 'drop') continue;
@@ -557,6 +570,8 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
         </>
       )}
 
+      {step === 0 && kind === 'weekly' && <ProjectStatusLines projects={projects} notes={draft.projectNotes ?? {}} onChange={(projectNotes) => set({ projectNotes })} />}
+
       {step === 1 && (
         <Reflect kind={kind} period={period} draft={draft} set={set} suggestions={suggestions} nextMonday={nextMonday} catchUpFor={catchUpFor} />
       )}
@@ -715,12 +730,14 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
           ) : (
             <div className="card small">This was the plan's last month. The plan retrospective comes next.</div>
           )}
+          <ProjectsMonthCheck projects={projects} />
         </>
       )}
 
       {step === 2 && kind === 'quarter' && plan && (
         <>
           <Decide goals={goals} fields={nextFields} draft={draft} set={set} view={view} plan={plan} nextMonday={nextMonday} />
+          <StageGate projects={projects} decisions={draft.projectDecisions ?? {}} onChange={(projectDecisions) => set({ projectDecisions })} />
           <SelectedIdeas when="Dropping or finishing a goal makes room for one of these." />
         </>
       )}

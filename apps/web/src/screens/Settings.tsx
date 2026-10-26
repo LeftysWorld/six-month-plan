@@ -299,6 +299,21 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
         <span className="xsmall muted">Minutes per day</span>
       </div>
 
+      <div className="section-label">Projects</div>
+      <div className="card stack-sm">
+        <label className="field">
+          Projects active at once
+          <select value={p.project_wip_limit ?? 4} onChange={(e) => commit(opsProfile({ project_wip_limit: Number(e.target.value) }))}>
+            {[2, 3, 4, 5, 6].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="xsmall muted">A limit on work in progress, across every goal. Starting one more asks why and writes it in the decision log; finishing keeps each project moving.</span>
+      </div>
+
       <div className="section-label">Your data</div>
       <div className="card stack-sm">
         <div className="small">

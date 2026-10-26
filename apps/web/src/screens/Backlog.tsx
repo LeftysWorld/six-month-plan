@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
 import {
+  addDays,
   ageInDays,
   column,
   daysBetween,
@@ -21,26 +22,28 @@ import { opsAddIdea, opsDeleteIdea, opsEditIdea, opsMoveIdea, opsRestoreIdea, op
 import { commitTarget, opsCommitIdea, opsCommitOwnClock, startPeriods } from '../data/commit.ts';
 import { withOps } from '../data/breakdown.ts';
 import type { Op } from '../data/model.ts';
+import { opsIdeaToProject } from '../data/projects.ts';
 import { href, navigate } from '../router.ts';
 import { GOAL_COLORS, Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 
 /** Backlog → Goals → Completed: the flow of a goal, left to right (shown on all three pages). */
-export function GoalsSwitch({ current }: { current: 'backlog' | 'goals' | 'completed' }) {
+export function GoalsSwitch({ current }: { current: 'backlog' | 'goals' | 'roadmap' | 'completed' }) {
   const { data } = useStore();
   const view = useView();
   const goals = view.activeGoals.length;
   const waiting = data.ideas.filter((i) => i.status === 'backlog' || i.status === 'selected').length;
-  const done = data.goals.filter((g) => g.completed_at && !g.archived_at).length;
-  const archived = data.goals.filter((g) => g.archived_at).length;
+  const done = data.goals.filter((g) => g.completed_at && !g.archived_at && !g.parent_id).length;
+  const archived = data.goals.filter((g) => g.archived_at && !g.parent_id).length;
   const tab = (key: typeof current, to: string, label: string, count: number) => (
     <a href={href(to)} aria-current={current === key ? 'page' : undefined}>
       {label} <span className="count">{count}</span>
     </a>
   );
   return (
-    <nav className="seg goals-switch" aria-label="Backlog, goals or completed">
+    <nav className="seg goals-switch" aria-label="Backlog, goals, roadmap or completed">
       {tab('backlog', '/goals/backlog', 'Backlog', waiting)}
       {tab('goals', '/goals', 'Goals', goals)}
+      {tab('roadmap', '/goals/roadmap', 'Roadmap', view.allProjects.filter((p) => !p.completed_at && !p.dropped_at).length)}
       {tab('completed', '/goals/completed', archived ? 'Done & archived' : 'Completed', done + archived)}
     </nav>
   );
@@ -461,6 +464,7 @@ function IdeaRow({
   const [title, setTitle] = useState(idea.title);
   const [note, setNote] = useState(idea.note);
   const [done, setDone] = useState(idea.done_means ?? '');
+  const [asProject, setAsProject] = useState(false);
   const isSelected = idea.status === 'selected';
   const age = ageInDays(idea);
   const gaps = readinessGaps(idea);
@@ -606,13 +610,79 @@ function IdeaRow({
                 Back to backlog
               </button>
             )}
+            <button className="btn small" type="button" onClick={() => setAsProject(true)}>
+              Make it a project…
+            </button>
             <button className="btn small danger" type="button" onClick={discard}>
               Discard
             </button>
           </div>
         </form>
       )}
+      {asProject && <IdeaToProjectSheet idea={idea} onClose={() => setAsProject(false)} />}
     </li>
+  );
+}
+
+/**
+ * Not every idea is a six-month goal: a course or an exam is often a project that moves a goal.
+ * Pick the goal and its dates; the idea becomes a not-started project under it (and leaves the backlog).
+ */
+function IdeaToProjectSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
+  const { data, today, commit } = useStore();
+  const view = useView();
+  const toast = useToast();
+  const goals = view.activeGoals;
+  const [goalId, setGoalId] = useState(goals[0]?.id ?? '');
+  const [start, setStart] = useState(today);
+  const [end, setEnd] = useState(addDays(today, 56));
+  const goal = goals.find((g) => g.id === goalId);
+  return (
+    <Sheet title={`${idea.title} as a project`} onClose={onClose}>
+      <p className="xsmall muted" style={{ margin: '-6px 0 0' }}>
+        A project is work with a finish line that moves a goal (a course, an exam, a build). It runs inside its goal's window and doesn't take a Selected slot.
+      </p>
+      {goals.length === 0 ? (
+        <span className="small muted">Commit a goal first; projects sit under goals.</span>
+      ) : (
+        <>
+          <div className="stack-sm">
+            <span className="xsmall muted">Which goal does it move?</span>
+            <div className="chips" role="radiogroup" aria-label="Goal">
+              {goals.map((g) => (
+                <button key={g.id} type="button" role="radio" aria-checked={g.id === goalId} aria-pressed={g.id === goalId} className="chip" style={{ minHeight: 34 }} onClick={() => setGoalId(g.id)}>
+                  <span className="dot" style={{ width: 7, height: 7, background: g.color, marginRight: 6 }} />
+                  {g.title}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid-2">
+            <label className="field">
+              Starts
+              <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+            </label>
+            <label className="field">
+              Target end
+              <input type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} />
+            </label>
+          </div>
+          <button
+            className="btn primary"
+            disabled={!goal || end < start}
+            onClick={() => {
+              const { ops, id } = opsIdeaToProject(data, idea, goal!, { start, end });
+              commit(ops);
+              toast(`${idea.title} is now a project under ${goal!.title}`);
+              onClose();
+              navigate(`/goals/${id}`);
+            }}
+          >
+            Make it a project
+          </button>
+        </>
+      )}
+    </Sheet>
   );
 }
 

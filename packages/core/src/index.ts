@@ -7,3 +7,4 @@ export * from './suggest.ts';
 export * from './review.ts';
 export * from './backlog.ts';
 export * from './workout.ts';
+export * from './projects.ts';

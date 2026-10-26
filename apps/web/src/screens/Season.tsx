@@ -9,6 +9,7 @@ import { sharedTasksOf } from '../components/Connections.tsx';
 import type { DragApi, GoalDrag } from '../components/goalDrag.ts';
 import { href } from '../router.ts';
 import { Icon } from '../components/ui.tsx';
+import { ProjectChips } from '../components/ProjectsCard.tsx';
 
 /**
  * The Goals page's building blocks: the horizon of two seasons, the season's numbers, "By … you'll
@@ -157,6 +158,7 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
                 {t.target} by {due}
               </span>
             </span>
+            <ProjectChips goal={goal} />
           </>
         ) : (
           <span className="season-row-foot">

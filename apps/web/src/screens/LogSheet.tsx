@@ -219,7 +219,8 @@ function CountsFor({ actionId, cue }: { actionId: string; cue?: string }) {
   const [editing, setEditing] = useState(false);
   const goals = view.goalsForAction(actionId).filter((g) => !g.archived_at);
   const ids = goals.map((g) => g.id);
-  const choices = [...goals.filter((g) => g.completed_at), ...view.activeGoals];
+  const liveProjects = view.allProjects.filter((p) => !p.completed_at && !p.dropped_at && view.activeGoals.some((g) => g.id === p.parent_id));
+  const choices = [...goals.filter((g) => g.completed_at), ...view.activeGoals, ...liveProjects];
   return (
     <div className="stack-sm" style={{ marginTop: -8 }}>
       <div className="row-start small muted" style={{ gap: 6 }}>
@@ -227,7 +228,7 @@ function CountsFor({ actionId, cue }: { actionId: string; cue?: string }) {
           <span key={g.id} className="dot" style={{ background: g.color }} />
         ))}
         <span>
-          Counts for: {goals.map((g) => g.title).join(' + ')}
+          Counts for: {goals.map((g) => view.goalLabel(g)).join(' + ')}
           {cue ? ` · ${cue}` : ''}
         </span>
         {view.activeGoals.length > 1 && (
@@ -257,7 +258,7 @@ function CountsFor({ actionId, cue }: { actionId: string; cue?: string }) {
                 }}
               >
                 <span className="dot" style={{ width: 7, height: 7, background: g.color }} />
-                {g.title}
+                {view.goalLabel(g)}
               </button>
             );
           })}

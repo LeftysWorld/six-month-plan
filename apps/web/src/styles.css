@@ -1214,3 +1214,102 @@ button.week-day:active { transform: scale(0.9); }
 .plan-ex-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .plan-ex-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .plan-ex-grid .field input { padding-left: 8px; padding-right: 8px; }
+
+/* ---------- Projects ---------- */
+/* The project lane (a light Gantt) and the burn-up: SVG drawn to the card's width. Text uses ink
+   tokens, never a goal colour; marks carry the colour. */
+.lane, .burnup { position: relative; width: 100%; overflow: hidden; }
+.lane svg, .burnup svg { display: block; overflow: visible; touch-action: pan-y; }
+.lane-axis { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; fill: var(--muted); }
+.lane-title { font-size: 12.5px; font-weight: 600; letter-spacing: -0.005em; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.lane-head { font-size: 11.5px; font-weight: 600; fill: var(--muted); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.lane-state { font-weight: 450; fill: var(--muted); }
+.lane-today { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; fill: var(--accent-ink); }
+.lane-label { font-size: 11.5px; font-weight: 600; fill: var(--ink-2); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.lane-tip { position: absolute; z-index: 2; display: flex; flex-direction: column; gap: 1px; max-width: 240px; padding: 8px 10px; border-radius: 12px; background: var(--toast-bg); color: #fff; font-size: 12px; line-height: 1.35; pointer-events: none; box-shadow: var(--shadow-2); }
+.lane-tip span { color: rgba(255, 255, 255, 0.78); }
+.lane-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--muted); }
+.lane-legend span { display: inline-flex; align-items: center; gap: 5px; }
+
+.fact-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.fact { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 14px; background: var(--fill); min-width: 0; }
+.fact b { font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+
+.project-rows { display: flex; flex-direction: column; }
+.project-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none; min-height: 52px; }
+.project-row:first-child { border-top: 0; }
+.project-row:hover .strong { color: var(--accent-ink); }
+.project-row > svg { color: var(--faint); flex: none; }
+
+.project-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-left: 16px; }
+.project-chip { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11.5px; font-weight: 550; background: var(--fill); color: var(--ink-2); white-space: nowrap; }
+.project-chip .chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.project-chip.not_started .chip-dot { background: var(--faint); }
+.project-chip.at_risk { background: var(--amber-soft); color: var(--amber-ink); }
+.project-chip.done { background: var(--blue-soft); color: var(--blue-ink); }
+.project-chip.waiting { color: var(--muted); }
+
+.project-alerts { display: flex; flex-direction: column; gap: 8px; }
+.project-alert { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 18px; border: 1px solid var(--line); background: var(--card); color: var(--ink); text-decoration: none; }
+.project-alert.warn { background: var(--amber-soft); border-color: var(--amber-line); }
+.project-alert.warn > svg:first-child { color: var(--amber-ink); }
+.project-alert.info > svg:first-child { color: var(--accent-ink); }
+.project-alert > svg:last-child { color: var(--faint); flex: none; }
+
+.add-project-hint { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: var(--radius); border: 1px dashed var(--border-strong); background: transparent; font: inherit; text-align: left; color: var(--ink-2); cursor: pointer; }
+.add-project-hint:hover { border-color: var(--accent-ink); color: var(--ink); }
+.add-project-hint > svg { flex: none; margin-top: 1px; color: var(--accent-ink); }
+.add-project-hint > span { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
+.add-project-hint b { font-size: 14px; font-weight: 600; color: var(--ink); }
+
+.brief-block { display: flex; flex-direction: column; gap: 5px; padding-top: 10px; border-top: 1px solid var(--line-2); }
+.brief-k { font-size: 12px; font-weight: 600; color: var(--muted); }
+.brief-block.scope { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.brief-block.scope ul { margin: 4px 0 0; padding-left: 16px; font-size: 13.5px; display: flex; flex-direction: column; gap: 2px; }
+.check-row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; min-height: 32px; }
+.check-row input { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--accent-ink); flex: none; }
+.fixed-mark { display: inline-flex; vertical-align: -1px; margin-left: 3px; color: var(--ink-2); }
+.dep-line { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); text-decoration: none; min-height: 28px; }
+.dep-line:hover { color: var(--accent-ink); }
+.deliverable { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; max-width: 100%; margin-top: 2px; padding: 3px 9px; border-radius: 999px; border: 0; background: var(--fill); color: var(--ink-2); font: inherit; font-size: 12px; cursor: pointer; }
+.deliverable span, .deliverable a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.raid-tabs button { padding: 0 8px; font-size: 12.5px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.raid-n { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--fill-strong); font-size: 10.5px; }
+.raid-tabs button[aria-selected='true'] .raid-n { background: rgba(255, 255, 255, 0.22); }
+.raid-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line-2); }
+
+.wip-meter { display: flex; gap: 4px; }
+.wip-meter > span { flex: 1; height: 8px; border-radius: 4px; background: var(--track); }
+.wip-meter > span.on { background: var(--accent); }
+.wip-meter > span.full { background: var(--amber-bar); }
+
+.lessons { border-radius: 14px; background: var(--fill); padding: 10px 12px; }
+.lessons summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
+.lesson { display: flex; flex-direction: column; gap: 1px; padding-top: 8px; }
+
+/* Roadmap */
+.roadmap-cols { display: grid; gap: 14px; }
+@media (min-width: 900px) { .roadmap-cols { grid-template-columns: 1fr 1fr; align-items: start; } }
+.roadmap-head { display: flex; align-items: baseline; gap: 10px; }
+.roadmap-head .mono { color: var(--accent-ink); }
+.roadmap-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none; min-height: 48px; }
+.roadmap-item:first-of-type { border-top: 0; }
+
+/* Review: one status line per project */
+.project-note { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid var(--line); }
+.project-note:first-of-type { border-top: 0; }
+.project-note-fields { display: grid; gap: 6px; }
+@media (min-width: 640px) { .project-note-fields { grid-template-columns: 1fr 1fr 1fr; } }
+.gate-row { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); }
+.gate-row:first-of-type { border-top: 0; }
+
+.wip-chip { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.wip-chip:hover { color: var(--ink); }
+.wip-meter.small-meter { width: 56px; }
+.wip-meter.small-meter > span { height: 6px; }
+@media (max-width: 520px) {
+  .goals-switch { overflow-x: auto; scrollbar-width: none; }
+  .goals-switch::-webkit-scrollbar { display: none; }
+  .goals-switch a { padding: 0 11px; }
+}

@@ -12,9 +12,9 @@ import { GoalsSwitch } from './Backlog.tsx';
 export function Completed() {
   const { data } = useStore();
   const goals = data.goals
-    .filter((g) => g.completed_at && !g.archived_at)
+    .filter((g) => g.completed_at && !g.archived_at && !g.parent_id)
     .sort((a, b) => (a.completed_at! < b.completed_at! ? 1 : -1));
-  const archived = data.goals.filter((g) => g.archived_at).sort((a, b) => (a.archived_at! < b.archived_at! ? 1 : -1));
+  const archived = data.goals.filter((g) => g.archived_at && !g.parent_id).sort((a, b) => (a.archived_at! < b.archived_at! ? 1 : -1));
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   return (
     <div className="stack rise">

@@ -16,6 +16,7 @@ import type {
   PlanGoal,
   PlanStep,
   Profile,
+  RaidItem,
   Review,
   Session,
   WeekPlan,
@@ -49,6 +50,8 @@ export interface AppData {
   goalLinks: GoalLink[];
   /** Named groups of goals. A goal points at its group with group_id. */
   groups: GoalGroup[];
+  /** Risks, assumptions, issues and decisions for projects and goals. */
+  raidItems: RaidItem[];
 }
 
 export type CollectionKey = Exclude<keyof AppData, 'profile'>;
@@ -75,6 +78,7 @@ export const TABLES: Record<CollectionKey, string> = {
   attachments: 'attachments',
   goalLinks: 'goal_links',
   groups: 'goal_groups',
+  raidItems: 'raid_items',
 };
 
 export const COLLECTIONS = Object.keys(TABLES) as CollectionKey[];
@@ -121,6 +125,7 @@ export function emptyData(): AppData {
     attachments: [],
     goalLinks: [],
     groups: [],
+    raidItems: [],
   };
 }
 

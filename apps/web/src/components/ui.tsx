@@ -49,6 +49,16 @@ const paths: Record<string, ReactNode> = {
   up: <path d="M12 19V5M6 11l6-6 6 6" />,
   alert: <path d="M12 7v6M12 17h.01" />,
   sync: <path d="M4 12a8 8 0 0 1 14-5M20 12a8 8 0 0 1-14 5M18 3v4h-4M6 21v-4h4" />,
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="9.5" rx="2.5" />
+      <path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3" />
+    </>
+  ),
+  link: <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />,
+  flag: <path d="M5.5 21V4M5.5 4.5h11l-2 4 2 4h-11" />,
+  pause: <path d="M9 6v12M15 6v12" />,
+  road: <path d="M4 18h3l3-6 3 3 3-7h4M4 6h4" />,
 };
 
 export function Icon({ name, size = 20, stroke = 2 }: { name: keyof typeof paths | string; size?: number; stroke?: number }) {

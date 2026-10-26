@@ -10,6 +10,12 @@ export const supabaseConfigured = Boolean(url && anonKey);
 
 const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql, 20261025000000_review_overhaul.sql, 20261026000000_goal_backlog.sql, 20261027000000_completed_goals_and_readiness.sql, 20261028000000_idea_prep.sql, 20261029000000_batches_and_own_clocks.sql, 20261030000000_attachments.sql, 20261031000000_connected_goals.sql and 20261101000000_goal_groups.sql';
 const BACKLOG_MIGRATION = 'supabase/migrations/20261026000000_goal_backlog.sql';
+const PROJECTS_MIGRATION = 'supabase/migrations/20261105000000_projects.sql';
+
+/** Columns and tables added by the projects migration. */
+function isMissingProjects(message: string): boolean {
+  return /parent_id|raid_items|project_notes|project_decisions|project_wip_limit|depends_on|started_at|dropped_at|baseline_start|baseline_end|scope_in|scope_out|'dod'|\bdod\b|premortem|kill_criteria|closeout|benefit_question|benefit_check_on|benefit_result|fixed_start|fixed_deadline|'deadline'|goals\.deadline|'start_date' column of 'goals'|deliverable|milestones\.created_at/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+}
 
 /** Set when the database is missing a newer migration; the app shows it as a banner. */
 export let schemaWarning: string | null = null;
@@ -68,6 +74,9 @@ const NUMERIC_FIELDS: Record<string, string[]> = {
 /** A network failure is worth retrying; a database refusal is not. */
 function toSaveError(error: { message: string; code?: string } | null): SaveError | null {
   if (!error) return null;
+  if (isMissingProjects(error.message)) {
+    return new SaveError(`${error.message}. Run ${PROJECTS_MIGRATION} in the Supabase SQL Editor, then reload.`, false);
+  }
   if (isMissingBreakdown(error.message)) {
     return new SaveError(`${error.message}. Run ${BREAKDOWN_MIGRATION} in the Supabase SQL Editor, then reload.`, false);
   }
@@ -144,6 +153,11 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
               schemaWarning ??= `Your database needs the attachments update. In Supabase → SQL Editor, run supabase/migrations/20261030000000_attachments.sql, then reload.`;
               return [];
             }
+            // A database without the projects update still loads; projects just can't be saved yet.
+            if (key === 'raidItems' && (isMissingProjects(e.message) || isMissingBreakdown(e.message))) {
+              schemaWarning ??= `Your database needs the projects update. In Supabase → SQL Editor, run ${PROJECTS_MIGRATION}, then reload.`;
+              return [];
+            }
             if (key === 'ideas' && isMissingBreakdown(e.message)) {
               schemaWarning ??= `Your database needs the goal backlog update. In Supabase → SQL Editor, run ${BACKLOG_MIGRATION}, then reload.`;
               return [];
@@ -183,6 +197,12 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
           schemaWarning = `Your database needs the batches update. In Supabase → SQL Editor, run supabase/migrations/20261029000000_batches_and_own_clocks.sql, then reload.`;
         }
       }
+      if (!schemaWarning) {
+        const probe = await sb.from('goals').select('parent_id').limit(1);
+        if (probe.error && isMissingProjects(probe.error.message)) {
+          schemaWarning = `Your database needs the projects update. In Supabase → SQL Editor, run ${PROJECTS_MIGRATION}, then reload.`;
+        }
+      }
       const { data: profile, error } = await sb.from('profiles').select('*').eq('user_id', userId).maybeSingle();
       if (error) throw new Error(`profiles: ${error.message}`);
       if (profile) {
@@ -217,9 +237,16 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
         case 'profile':
           ({ error } = await sb.from('profiles').upsert({ ...op.patch, user_id: userId }));
           break;
-        case 'review':
+        case 'review': {
           ({ error } = await sb.rpc('complete_weekly_review', { payload: op.payload }));
+          // Project status lines and stage-gate decisions are saved on the review row afterwards
+          // (the review function predates them), only when there are some.
+          const r = op.payload.review;
+          if (!error && (r.project_notes?.length || r.project_decisions?.length)) {
+            ({ error } = await sb.from('reviews').update({ project_notes: r.project_notes ?? [], project_decisions: r.project_decisions ?? [] }).eq('id', r.id));
+          }
           break;
+        }
       }
       const saveError = toSaveError(error);
       if (saveError) throw saveError;
@@ -239,7 +266,13 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       await insert('plans', incoming.plans ?? []);
       await insert('goal_groups', incoming.groups ?? []);
       // Goals and their measurements point at each other: goals first without it, then the link.
-      await insert('goals', (incoming.goals ?? []).map((g) => ({ ...g, measurement_type_id: null })));
+      await insert('goals', (incoming.goals ?? []).map((g) => ({ ...g, measurement_type_id: null, ...(g.parent_id ? { parent_id: null } : {}) })));
+      // Projects point at their goal: linked once every goal exists.
+      for (const g of incoming.goals ?? []) {
+        if (!g.parent_id) continue;
+        const { error } = await sb.from('goals').update({ parent_id: g.parent_id }).eq('id', g.id);
+        if (error) throw new Error(`goals: ${error.message}`);
+      }
       await insert('measurement_types', incoming.measurementTypes ?? []);
       for (const g of incoming.goals ?? []) {
         if (!g.measurement_type_id) continue;
@@ -250,7 +283,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
         ['plan_goals', incoming.planGoals], ['goal_targets', incoming.goalTargets], ['plan_steps', incoming.planSteps], ['milestones', incoming.milestones],
         ['actions', incoming.actions], ['action_goals', incoming.actionGoals], ['action_schedules', incoming.schedules], ['sessions', incoming.sessions],
         ['workout_sets', incoming.workoutSets], ['measurements', incoming.measurements], ['week_plans', incoming.weekPlans], ['reviews', incoming.reviews],
-        ['change_log', incoming.changeLog], ['goal_ideas', incoming.ideas], ['goal_links', incoming.goalLinks],
+        ['change_log', incoming.changeLog], ['goal_ideas', incoming.ideas], ['goal_links', incoming.goalLinks], ['raid_items', incoming.raidItems],
       ];
       for (const [table, rows] of rest) if (rows?.length) await insert(table, rows);
     },
@@ -262,14 +295,14 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       for (let i = 0; i < paths.length; i += 100) await sb.storage.from(BUCKET).remove(paths.slice(i, i + 100));
       // Children first so nothing is left pointing at a deleted row (the foreign keys cascade anyway).
       const order = [
-        'attachments', 'goal_links', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
+        'attachments', 'raid_items', 'goal_links', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
         'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
         'plan_steps', 'plan_goals', 'goals', 'goal_groups', 'plans', 'measurement_types',
       ];
       for (const table of order) {
         const { error } = await sb.from(table).delete().eq('user_id', userId);
         // An older database without the breakdown table has nothing to delete there.
-        if (error && !((table === 'plan_steps' || table === 'goal_ideas' || table === 'attachments' || table === 'goal_links' || table === 'goal_groups') && isMissingBreakdown(error.message))) throw new Error(`${table}: ${error.message}`);
+        if (error && !((table === 'plan_steps' || table === 'goal_ideas' || table === 'attachments' || table === 'goal_links' || table === 'goal_groups' || table === 'raid_items') && (isMissingBreakdown(error.message) || isMissingProjects(error.message)))) throw new Error(`${table}: ${error.message}`);
       }
     },
   };
