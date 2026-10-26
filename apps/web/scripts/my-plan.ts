@@ -320,6 +320,7 @@ const weight = goal(
 
 run(opsCreateHabit(data, { ...blankHabit(TODAY), title: 'No alcohol', kind: 'check', minutes: 0 }, TODAY).ops);
 run(opsCreateHabit(data, { ...blankHabit(TODAY), title: 'Keto / carnivore eating', kind: 'check', minutes: 0, minLabel: 'No sugar, no bread' }, TODAY).ops);
+run(opsCreateHabit(data, { ...blankHabit(TODAY), title: 'Guitar', kind: 'minutes', minutes: 30 }, TODAY).ops);
 
 const splits = goal(
   {
