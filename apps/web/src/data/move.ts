@@ -30,6 +30,8 @@ export interface MovePlan {
   to: Plan;
   /** Notes that carry over, per level. Empty means it needs setting again. */
   notes: Record<ChainLevel, string>;
+  /** Number goals: the targets that carry over with their notes. */
+  values: Partial<Record<ChainLevel, number | null>>;
   /** Levels that had a goal written down but won't carry over (their dates don't line up). */
   dropped: ChainLevel[];
 }
@@ -40,19 +42,23 @@ const near = (a: ISODate, b: ISODate) => Math.abs(daysBetween(a, b)) <= 7;
 export function planMove(data: AppData, goal: Goal, to: Plan, today: ISODate): MovePlan {
   const from = currentWindow(data, goal.id, today);
   const notes: Record<ChainLevel, string> = { quarter: '', month: '', week: '' };
+  const values: Partial<Record<ChainLevel, number | null>> = {};
   const dropped: ChainLevel[] = [];
   if (from) {
     const was = chainFor(data, goal, from, today < from.start_date ? from.start_date : today);
     const at = today < to.start_date ? to.start_date : today;
     const will = chainAt(to, at);
     for (const level of ['quarter', 'month', 'week'] as ChainLevel[]) {
-      const note = was[level].step?.target_note.trim() ?? '';
-      if (!note) continue;
-      if (level === 'week' || near(was[level].node.end, will[level].end)) notes[level] = note;
-      else dropped.push(level);
+      const step = was[level].step;
+      const note = step?.target_note.trim() ?? '';
+      if (!note && step?.target_value == null) continue;
+      if (level === 'week' || near(was[level].node.end, will[level].end)) {
+        notes[level] = note;
+        if (step?.target_value != null) values[level] = step.target_value;
+      } else dropped.push(level);
     }
   }
-  return { goal, from, to, notes, dropped };
+  return { goal, from, to, notes, values, dropped };
 }
 
 /** The window an own clock would get if made today (for showing its dates before it's saved). */
@@ -90,7 +96,7 @@ export function opsMoveGoals(data: AppData, goals: Goal[], dest: Destination, to
       push([{ kind: 'insert', collection: 'planGoals', rows: [{ id: crypto.randomUUID(), plan_id: to.id, goal_id: goal.id }] }]);
     }
     const from = today < to.start_date ? to.start_date : today;
-    push(opsStartChain(next, goal, to, from, move.notes));
+    push(opsStartChain(next, goal, to, from, move.notes, move.values));
   }
   return all;
 }

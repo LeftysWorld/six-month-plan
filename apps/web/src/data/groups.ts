@@ -98,36 +98,3 @@ export function suggestGroupNames(goals: Goal[]): string[] {
 
 const short = (t: string) => (t.length > 16 ? `${t.slice(0, 15).trim()}…` : t);
 
-/**
- * Connections made before groups existed (goal links) become groups, once: two ungrouped goals
- * form a new group; a goal joins the group its partner is already in. The links are then removed.
- * Run when the app opens; it does nothing once every link is gone.
- */
-export function opsFoldLinksIntoGroups(data: AppData): Op[] {
-  if (data.goalLinks.length === 0) return [];
-  const goalById = new Map(data.goals.map((g) => [g.id, { ...g }]));
-  const groups: GoalGroup[] = [];
-  const ops: Op[] = [];
-  for (const link of data.goalLinks) {
-    const a = goalById.get(link.goal_a);
-    const b = goalById.get(link.goal_b);
-    if (a && b && !a.archived_at && !b.archived_at) {
-      if (!a.group_id && !b.group_id) {
-        const group: GoalGroup = { id: newId(), name: suggestGroupNames([a, b])[0]!, created_at: new Date().toISOString() };
-        groups.push(group);
-        ops.push({ kind: 'insert', collection: 'groups', rows: [group as unknown as Row] });
-        for (const g of [a, b]) {
-          g.group_id = group.id;
-          ops.push({ kind: 'update', collection: 'goals', id: g.id, patch: { group_id: group.id } });
-        }
-      } else if (!a.group_id || !b.group_id) {
-        const [lone, grouped] = a.group_id ? [b, a] : [a, b];
-        lone.group_id = grouped.group_id;
-        ops.push({ kind: 'update', collection: 'goals', id: lone.id, patch: { group_id: grouped.group_id } });
-      }
-      // Both already in groups (even different ones): a goal is in one group at most, so leave them.
-    }
-    ops.push({ kind: 'delete', collection: 'goalLinks', id: link.id });
-  }
-  return ops;
-}

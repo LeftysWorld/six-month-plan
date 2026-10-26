@@ -146,16 +146,6 @@ export interface Action {
   archived_at: string | null;
 }
 
-/** Two goals you connected by hand (e.g. Work out and Lose weight). Order of the pair doesn't matter. */
-export interface GoalLink {
-  id: string;
-  goal_a: string;
-  goal_b: string;
-  /** How they're connected, in your words (optional). */
-  note: string;
-  created_at: string;
-}
-
 export interface ActionGoal {
   id: string;
   action_id: string;
@@ -265,6 +255,11 @@ export interface ReviewGoalResult {
 export interface Review {
   id: string;
   kind: ReviewKind;
+  /**
+   * The window (batch or own clock) a month, 3-month or retrospective review belongs to. Weekly
+   * reviews cover every goal and leave it null. Rows from before the review-fixes migration have none.
+   */
+  plan_id?: string | null;
   period_start: ISODate;
   period_end: ISODate;
   status: 'draft' | 'done';

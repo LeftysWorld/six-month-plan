@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { shortDate, type Session } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, useView } from '../data/derive.ts';
+import { fmt } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { lastReading, opsLogMeasure, readingOn } from '../data/connect.ts';
 import { Sheet, useToast } from './ui.tsx';
 

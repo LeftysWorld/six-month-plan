@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { shortDate } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { seasonsOf } from '../data/season.ts';
 import { groupMembers, opsUngroup } from '../data/groups.ts';
 import { runningSchedule } from '../data/connect.ts';

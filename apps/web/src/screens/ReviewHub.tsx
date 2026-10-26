@@ -16,7 +16,8 @@ import {
   type Review,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, minutesText, useView } from '../data/derive.ts';
+import { fmt, minutesText } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import type { AppData } from '../data/model.ts';
 import {
   commitmentTrail,

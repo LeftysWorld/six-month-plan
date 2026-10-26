@@ -102,6 +102,10 @@ export function sessionFromSlot(action: Action, slot: PlannedSlot, id: string): 
 /**
  * Sessions that are missing for a week, given the scheduled sessions that already
  * exist. Existing slots are never touched, so running this twice is harmless.
+ *
+ * A slot number is only a key. When a slot's number is already taken by a session on a
+ * different day (the previous version of a schedule made it), the new session takes the
+ * next free number instead of being dropped.
  */
 export function missingSessionsForWeek(
   actions: Action[],
@@ -110,19 +114,24 @@ export function missingSessionsForWeek(
   monday: ISODate,
   makeId: () => string,
 ): Session[] {
-  const have = new Set(
-    existing
-      .filter((s) => s.origin === 'scheduled' && s.action_id && s.week_start === monday)
-      .map((s) => `${s.action_id}:${s.slot}`),
-  );
+  const mine = existing.filter((s) => s.origin === 'scheduled' && s.action_id && s.week_start === monday);
+  const bySlot = new Map(mine.map((s) => [`${s.action_id}:${s.slot}`, s]));
   const out: Session[] = [];
   for (const action of actions) {
     if (action.archived_at) continue;
     const schedule = scheduleForWeek(schedules, action.id, monday);
     if (!schedule) continue;
+    const used = new Set(mine.filter((s) => s.action_id === action.id).map((s) => s.slot));
+    const datesHad = new Set(mine.filter((s) => s.action_id === action.id && s.date).map((s) => s.date));
     for (const slot of slotsForWeek(schedule, monday)) {
-      if (have.has(`${action.id}:${slot.slot}`)) continue;
-      out.push(sessionFromSlot(action, slot, makeId()));
+      const taken = bySlot.get(`${action.id}:${slot.slot}`);
+      if (taken && (!slot.date || taken.date === slot.date)) continue;
+      // A dated slot already covered by a session on that day (under another number) is not missing.
+      if (slot.date && datesHad.has(slot.date)) continue;
+      let number = slot.slot;
+      while (used.has(number)) number += 1;
+      used.add(number);
+      out.push(sessionFromSlot(action, { ...slot, slot: number }, makeId()));
     }
   }
   return out;

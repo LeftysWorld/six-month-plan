@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyOp, emptyData, type AppData, type Op } from '../src/data/model.ts';
-import { opsLinkGoals, opsRecordReading, opsSetTaskGoals, opsShareTask, opsUnshareTask } from '../src/data/connect.ts';
+import { opsRecordReading, opsSetTaskGoals, opsShareTask, opsUnshareTask } from '../src/data/connect.ts';
 import { View } from '../src/data/derive.ts';
 import { prepGaps } from '@six/core';
 import type { Goal } from '@six/core';
@@ -16,16 +16,6 @@ function base(): AppData {
   d.actionGoals = [{ id: 'ag1', action_id: 'lift', goal_id: 'gym' }];
   return d;
 }
-
-test('connecting two goals makes one link whichever way round, and updates its note', () => {
-  let d = run(base(), opsLinkGoals(base(), 'gym', 'weight', 'gym helps'));
-  assert.equal(d.goalLinks.length, 1);
-  d = run(d, opsLinkGoals(d, 'weight', 'gym', 'gym helps'));
-  assert.equal(d.goalLinks.length, 1, 'no duplicate the other way round');
-  d = run(d, opsLinkGoals(d, 'weight', 'gym', 'new note'));
-  assert.equal(d.goalLinks[0]!.note, 'new note');
-  assert.deepEqual(opsLinkGoals(d, 'gym', 'gym', ''), [], 'a goal cannot connect to itself');
-});
 
 test('sharing a task connects goals; unsharing keeps it on the other goal', () => {
   let d = run(base(), opsShareTask(base(), 'lift', 'weight'));
@@ -153,14 +143,9 @@ test('a goal is in one group at most: joining another group leaves the old one',
   assert.equal(d.goals.find((g) => g.id === 'weight')!.group_id, null);
 });
 
-test('old connections become groups once, then the links are gone', async () => {
-  const { opsFoldLinksIntoGroups, suggestGroupNames } = await import('../src/data/groups.ts');
-  let d = run(base(), opsLinkGoals(base(), 'gym', 'weight', ''));
-  d = run(d, opsFoldLinksIntoGroups(d));
-  assert.equal(d.goalLinks.length, 0);
-  assert.equal(d.groups.length, 1);
-  assert.equal(d.groups[0]!.name, 'Body', 'named from what the goals are about');
-  assert.deepEqual(opsFoldLinksIntoGroups(d), [], 'nothing left to do the second time');
+test('group names are suggested from what the goals are about', async () => {
+  const { suggestGroupNames } = await import('../src/data/groups.ts');
+  assert.equal(suggestGroupNames([goal('a', 'Work out'), goal('b', 'Lose weight')])[0], 'Body');
   assert.equal(suggestGroupNames([goal('a', 'JHU AI certificate'), goal('b', 'Pass IAPP AIGP')])[0], 'Learning');
 });
 

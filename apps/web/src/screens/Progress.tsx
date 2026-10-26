@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { addDays, chainAt, quarterRange, shortDate, weekStart, weekdayName, type DateRange, type Plan } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, useView } from '../data/derive.ts';
+import { fmt } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { BackLink, Empty } from '../components/ui.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
 

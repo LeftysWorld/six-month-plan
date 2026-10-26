@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { addDays, daysBetween, shortDate, weekStart, type Goal, type GoalGroup, type ISODate, type Milestone, type Plan } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView, type View } from '../data/derive.ts';
+import { type View } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { goalTrack, groupTrack, seasonsOf } from '../data/season.ts';
 import { afterChoices, clampDates, dateLimits, opsRestoreDates, opsSetGoalDates } from '../data/dates.ts';
 import { href, navigate } from '../router.ts';
@@ -65,9 +66,9 @@ function buildRows(view: View, season: Plan | null): { rows: Row[]; lo: ISODate;
         goal: g,
         plan,
         start: w.start,
-        end: done && g.completed_at!.slice(0, 10) < w.end ? (g.completed_at!.slice(0, 10) < w.start ? w.start : g.completed_at!.slice(0, 10)) : w.end,
+        end: done && view.dayOf(g.completed_at!) < w.end ? (view.dayOf(g.completed_at!) < w.start ? w.start : view.dayOf(g.completed_at!)) : w.end,
         prog: done ? 100 : t.prog,
-        status: done ? `Done ${shortDate(g.completed_at!.slice(0, 10))}` : t.status,
+        status: done ? `Done ${shortDate(view.dayOf(g.completed_at!))}` : t.status,
         waiting: t.waiting ?? null,
         done,
         inGroup: !!g.group_id,
@@ -312,8 +313,8 @@ export function Roadmap() {
       );
     });
 
-  const cpMarks = (goal: Goal) =>
-    checkpointsOf(data, goal, weekStart(today))
+  const cpMarks = (goal: Goal, plan: Plan) =>
+    checkpointsOf(data, goal, weekStart(today), plan.id)
       .filter((cp) => cp.date >= lo && cp.date <= hi)
       .map((cp) => (
         <button
@@ -389,7 +390,7 @@ export function Roadmap() {
           )}
         </div>
         {msTicks(r.goal)}
-        {cpMarks(r.goal)}
+        {cpMarks(r.goal, r.plan)}
         {dragging && (
           <span className="rm-drag-tip" style={{ left: `${Math.min(80, Math.max(0, left))}%` }}>
             {shortDate(w.start)} → {shortDate(w.end)} · {daysBetween(w.start, w.end) + 1} days
@@ -622,7 +623,7 @@ function ListRow({ r, onEdit, onDate, onCheckpoint }: { r: GoalRow; onEdit: () =
   // Every date inside the goal, in order: yours and its 3-month, month and week goals.
   const dated = [
     ...view.milestonesOf(r.goal.id).map((m) => ({ key: m.id, date: m.due_date, label: m.title, done: !!m.completed_at, open: () => onDate(m), cp: false })),
-    ...checkpointsOf(data, r.goal, weekStart(today)).map((cp) => ({ key: cp.id, date: cp.date, label: `${CHECKPOINT_NAME[cp.level]}: ${cp.text}`, done: cp.done, open: () => onCheckpoint(cp), cp: true })),
+    ...checkpointsOf(data, r.goal, weekStart(today), r.plan.id).map((cp) => ({ key: cp.id, date: cp.date, label: `${CHECKPOINT_NAME[cp.level]}: ${cp.text}`, done: cp.done, open: () => onCheckpoint(cp), cp: true })),
   ].sort((a, b) => (a.date < b.date ? -1 : 1));
   return (
     <div className="rm-list-item">

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { shortDate, type Attachment, type Session } from '@six/core';
+import { dateIn, shortDate, type Attachment, type Session } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { opsAddAttachment, opsRemoveAttachment } from '../data/ops.ts';
 import { Icon, useToast } from './ui.tsx';
@@ -177,7 +177,7 @@ export function GoalFiles({ actionIds }: { actionIds: Set<string> }) {
   const sessions = new Map(data.sessions.map((s) => [s.id, s]));
   const files = data.attachments
     .filter((a) => (a.action_id && actionIds.has(a.action_id)) || actionIds.has(sessions.get(a.session_id)?.action_id ?? ''))
-    .map((a) => ({ file: a, day: sessions.get(a.session_id)?.date ?? a.created_at.slice(0, 10) }))
+    .map((a) => ({ file: a, day: sessions.get(a.session_id)?.date ?? dateIn(data.profile.timezone, a.created_at) }))
     .sort((a, b) => (a.day === b.day ? (a.file.created_at < b.file.created_at ? 1 : -1) : a.day < b.day ? 1 : -1));
   if (files.length === 0) return null;
   const shown = all ? files : files.slice(0, 9);

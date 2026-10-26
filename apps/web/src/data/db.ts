@@ -3,6 +3,8 @@ import type { AppData, Op } from './model.ts';
 /** The storage backend. The store never talks to Supabase or localStorage directly. */
 export interface Db {
   mode: 'supabase' | 'demo';
+  /** The signed-in user (Supabase). Changes waiting to be saved are kept per user. */
+  userId?: string;
   /** Load everything for the signed-in user. */
   loadAll(): Promise<AppData>;
   /** Persist one change. Throws if it couldn't be saved (the store will retry). */

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Session } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { opsLinkOneOff, opsUnlinkOneOff } from '../data/calendar.ts';
 import { withOps } from '../data/breakdown.ts';
 import { opsSetTaskGoals } from '../data/connect.ts';

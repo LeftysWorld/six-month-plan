@@ -30,7 +30,8 @@ import {
   type Suggestion,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, minutesText, useView, type View } from '../data/derive.ts';
+import { fmt, minutesText, type View } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import type { AppData, Op, ReviewPayload } from '../data/model.ts';
 import { opsArchiveAction, opsArchiveGoal, opsCompleteGoal, opsCompleteReview, opsCreatePlan, opsLinkGoalToPlan, opsReplacePath, opsUpdateGoal } from '../data/ops.ts';
 import { catchUp, catchUpPlan, chainFor, isSet, opsSetLevel, type ChainLevel } from '../data/chain.ts';
@@ -160,7 +161,8 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
   const toast = useToast();
   const steps = STEPS[kind];
   const word = PERIOD_WORD[kind];
-  const draftKey = `six.review.draft.${kind}.${period.start}`;
+  // Month, 3-month and plan reviews belong to one window, so two windows never share a draft.
+  const draftKey = `six.review.draft.${kind}.${kind === 'weekly' ? 'all' : plan?.id ?? 'none'}.${period.start}`;
   const nextMonday = kind === 'weekly' ? addDays(period.start, 7) : addDays(weekStart(today), 7);
 
   // ---- Draft (kept on this device only) ----
@@ -193,13 +195,16 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
   // Month, 3-month and plan reviews cover the goals of the one plan they belong to.
   const isWeekly = kind === 'weekly';
   // Connected goals sit next to each other, so the gym is reviewed beside the weight trend.
-  const goals = view.groupConnected(isWeekly ? view.activeGoals : plan ? view.goalsForPlan(plan.id) : []);
+  // The retrospective looks at every goal of the plan, the ones you finished included; the month and
+  // 3-month reviews only ask about goals still running.
+  const planGoals = plan ? (kind === 'retro' ? view.goalsForPlan(plan.id, true).filter((g) => !g.archived_at) : view.goalsForPlan(plan.id)) : [];
+  const goals = view.groupConnected(isWeekly ? view.activeGoals : planGoals);
   const planOf = (g: Goal): Plan | null => (isWeekly ? view.planForGoal(g) : plan);
   const goalPlans = goals.map(planOf).filter((p): p is Plan => !!p);
   const trendPlan: Plan | null = isWeekly ? ([...goalPlans].sort((a, b) => (a.start_date < b.start_date ? -1 : 1))[0] ?? null) : plan;
   const lookEnd = period.end < today ? period.end : today;
   const paces = goals.map((g) => view.goalPace(g, planOf(g), { start: period.start, end: lookEnd }));
-  const prev = previousReview(data.reviews, kind, period.start);
+  const prev = previousReview(data.reviews, kind, period.start, isWeekly ? null : plan?.id);
   const due = kind === 'weekly' || kind === 'block' ? view.measurementsDue(period.end) : [];
   const lastMonday = weekStart(period.end < today ? period.end : today);
   const trendWeeks = kind === 'weekly' || kind === 'block' ? 8 : Math.min(26, Math.max(1, Math.ceil((Date.parse(lookEnd) - Date.parse(period.start)) / (7 * 864e5))));
@@ -251,17 +256,25 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
     }
     return out;
   }, [kind, suggestions, draft.choices, nextMonday]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Next week may already have sessions (the calendar or a look ahead made them). The ones a task's
+  // old schedule made are stale once its schedule changes here: they're deleted and remade.
+  const rescheduled = useMemo(() => new Set(scheduleChanges.filter((c) => c.new_schedule).map((c) => c.action_id)), [scheduleChanges]);
+  const stale = useMemo(
+    () => existingNext.filter((s) => s.status === 'planned' && s.origin === 'scheduled' && !!s.action_id && rescheduled.has(s.action_id)),
+    [existingNext, rescheduled],
+  );
+  const existingKept = useMemo(() => existingNext.filter((s) => !stale.includes(s)), [existingNext, stale]);
   const generated = useMemo(
-    () => (kind === 'weekly' ? [...missingSessionsForWeek(data.actions, schedulesAfter, existingNext, nextMonday, () => crypto.randomUUID()), ...extras] : []),
-    [kind, data.actions, schedulesAfter, existingNext, nextMonday, extras],
+    () => (kind === 'weekly' ? [...missingSessionsForWeek(data.actions, schedulesAfter, existingKept, nextMonday, () => crypto.randomUUID()), ...extras] : []),
+    [kind, data.actions, schedulesAfter, existingKept, nextMonday, extras],
   );
   // Sessions of a paused task don't belong in next week.
   const paused = new Set(scheduleChanges.filter((c) => !c.new_schedule).map((c) => c.action_id));
   const days = weekDates(nextMonday);
-  const suggested = useMemo(() => lightestDays([...existingNext, ...generated], days, available), [existingNext, generated, nextMonday]); // eslint-disable-line react-hooks/exhaustive-deps
+  const suggested = useMemo(() => lightestDays([...existingKept, ...generated], days, available), [existingKept, generated, nextMonday]); // eslint-disable-line react-hooks/exhaustive-deps
   const placements: Record<string, ISODate | null> = { ...suggested, ...draft.placements };
   const isOut = (s: Session) => s.status === 'planned' && !!s.action_id && (!!draft.removed[slotKey(s)] || paused.has(s.action_id));
-  const nextSessions = [...existingNext, ...generated].map((s) => {
+  const nextSessions = [...existingKept, ...generated].map((s) => {
     const key = slotKey(s);
     return key in placements && s.status === 'planned' ? { ...s, date: placements[key] ?? null } : s;
   });
@@ -314,7 +327,7 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
     const results: ReviewGoalResult[] = resultLines
       .filter((l) => draft.results[l.goal.id])
       .map((l) => ({ goal_id: l.goal.id, level: RESULT_LEVEL[kind], step_id: l.stepId, note: l.note, result: draft.results[l.goal.id]! }));
-    const changedExisting = existingNext.filter(
+    const changedExisting = existingKept.filter(
       (s) => s.status === 'planned' && (isOut(s) || (slotKey(s) in placements && placements[slotKey(s)] !== s.date)),
     );
     const out = (s: Session): Session => (isOut(s) ? { ...s, status: 'moved', note: paused.has(s.action_id ?? '') ? 'Paused in the weekly review' : 'Taken out in the weekly review' } : s);
@@ -322,6 +335,7 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
       review: {
         id: crypto.randomUUID(),
         kind,
+        plan_id: isWeekly ? null : plan?.id ?? null,
         period_start: period.start,
         period_end: period.end,
         status: 'done',
@@ -356,11 +370,11 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
             ]
           : [],
     };
-    commit(opsCompleteReview(payload));
-
-    // Everything else the review decided, applied one after another on fresh data.
-    let next = withOps(data, opsCompleteReview(payload));
-    const ops: Op[] = [];
+    // Everything the review decided goes out as one change set, applied one after another on fresh
+    // data, so a refused save never leaves half a review behind.
+    const staleOps: Op[] = stale.map((s) => ({ kind: 'delete', collection: 'sessions', id: s.id }));
+    let next = withOps(data, [...staleOps, ...opsCompleteReview(payload)]);
+    const ops: Op[] = [...staleOps, ...opsCompleteReview(payload)];
     const add = (more: Op[]) => {
       ops.push(...more);
       next = withOps(next, more);
@@ -408,7 +422,7 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
       newPlanId = created.plan.id;
       for (const g of goals) if (carryDefault(draft, g)) add(opsLinkGoalToPlan(next, g.id, created.plan.id));
     }
-    if (ops.length) commit(ops);
+    commit(ops);
 
     try {
       localStorage.removeItem(draftKey);
@@ -1212,7 +1226,7 @@ function resultWord(kind: ReviewKind, r: GoalResult): string {
 
 /** A goal is carried into the next plan unless it was achieved (or the person changed the tick). */
 function carryDefault(draft: Draft, g: Goal): boolean {
-  return draft.newPlan.carry[g.id] ?? draft.results[g.id] !== 'hit';
+  return draft.newPlan.carry[g.id] ?? (!g.completed_at && draft.results[g.id] !== 'hit');
 }
 
 /** Each goal's written goal for the period under review (or the 6-month goal for a retrospective). */

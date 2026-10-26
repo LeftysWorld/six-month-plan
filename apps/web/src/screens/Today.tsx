@@ -1,9 +1,10 @@
 import { isHabit } from '../data/habits.ts';
 import { TodayHabits } from './Habits.tsx';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { addDays, isoWeekday, minutesLeft, shortDate, weekDates, weekStart, weekdayName, type ISODate, type PlannedExercise, type Session } from '@six/core';
+import { addDays, isoWeekday, minutesLeft, shortDate, weekDates, weekStart, weekdayName, type ISODate, type PlannedExercise, type Session, hourIn } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, minutesText, useView } from '../data/derive.ts';
+import { fmt, minutesText } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { coachLine } from '../data/coach.ts';
 import { checkInStreak, dismissRitual, ritualDue, type Streak } from '../data/habit.ts';
 import { parseQuickAdd } from '../data/parse.ts';
@@ -106,8 +107,9 @@ export function Today({ date }: { date?: ISODate } = {}) {
   const streak = checkInStreak(data.sessions, today);
   const commitment = currentCommitment(data.reviews, today);
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
-  const showMorning = isToday && ritualDue('morning', today);
-  const showEvening = isToday && !showMorning && ritualDue('evening', today);
+  const hour = hourIn(data.profile.timezone);
+  const showMorning = isToday && ritualDue('morning', today, hour);
+  const showEvening = isToday && !showMorning && ritualDue('evening', today, hour);
 
   // A measure task asks for the number; a photo task takes the photo; anything else checks off.
   const [measuring, setMeasuring] = useState<Session | null>(null);

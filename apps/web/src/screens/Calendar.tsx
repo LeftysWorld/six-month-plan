@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { addDays, isoWeekday, type ISODate } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { KIND_TEXT, calendarItems, dayTitle, repeatingOn, type CalItem, type CalKind } from '../data/calendar.ts';
 import { opsToggleMilestone } from '../data/ops.ts';
 import { href, navigate } from '../router.ts';

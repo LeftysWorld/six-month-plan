@@ -7,7 +7,6 @@ import type {
   Goal,
   GoalGroup,
   GoalIdea,
-  GoalLink,
   GoalTarget,
   Measurement,
   MeasurementType,
@@ -45,8 +44,6 @@ export interface AppData {
   ideas: GoalIdea[];
   /** Photos and files attached to logged tasks (the files themselves are in file storage). */
   attachments: Attachment[];
-  /** Goals connected by hand. Goals that share a task are connected too, without a row here. */
-  goalLinks: GoalLink[];
   /** Named groups of goals. A goal points at its group with group_id. */
   groups: GoalGroup[];
 }
@@ -73,7 +70,6 @@ export const TABLES: Record<CollectionKey, string> = {
   changeLog: 'change_log',
   ideas: 'goal_ideas',
   attachments: 'attachments',
-  goalLinks: 'goal_links',
   groups: 'goal_groups',
 };
 
@@ -119,7 +115,6 @@ export function emptyData(): AppData {
     changeLog: [],
     ideas: [],
     attachments: [],
-    goalLinks: [],
     groups: [],
   };
 }
@@ -203,10 +198,12 @@ export function applyOp(data: AppData, op: Op): AppData {
 /** The weekly review's effects, mirroring the complete_weekly_review SQL function. */
 export function applyReviewPayload(data: AppData, p: ReviewPayload): AppData {
   const now = new Date().toISOString();
+  // One reading per measurement per day: a review reading replaces the day's earlier one.
+  const replaced = new Set(p.measurements.map((m) => `${m.type_id}|${m.measured_on}`));
   let next: AppData = {
     ...data,
     reviews: [...data.reviews.filter((r) => r.id !== p.review.id), { ...p.review, status: 'done', completed_at: now }],
-    measurements: [...data.measurements, ...p.measurements],
+    measurements: [...data.measurements.filter((m) => !replaced.has(`${m.type_id}|${m.measured_on}`)), ...p.measurements],
   };
   for (const c of p.schedule_changes) {
     next = {

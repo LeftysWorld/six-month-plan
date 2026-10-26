@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { describeSchedule, shortDate, type Action, type Goal, type GoalGroup } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView, type View } from '../data/derive.ts';
+import { type View } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { opsShareTask, runningSchedule, shareCandidates, type ShareGroup } from '../data/connect.ts';
 import { groupMembers, groupOf, opsAddToGroup, opsCreateGroup, opsRemoveFromGroup, opsRenameGroup, opsSetGroupOutcome, opsUngroup, suggestGroupNames } from '../data/groups.ts';
 import { applyOp, type AppData, type Op } from '../data/model.ts';
@@ -422,37 +423,6 @@ export function GoalGroupCard({ goal }: { goal: Goal }) {
       {open && group && <GroupSheet group={group} onClose={() => setOpen(false)} />}
       {adding && <AddToGroupSheet goal={goal} onClose={() => setAdding(false)} />}
       {sharingFrom && <ShareTaskSheet goal={goal} onlyGoalId={sharingFrom} onClose={() => setSharingFrom(null)} onShared={(m) => toast(m)} />}
-    </div>
-  );
-}
-
-/** One line under a goal's title (and on its Goals card): its group and the other goals in it. */
-export function ConnectionStrip({ goal, editable = false }: { goal: Goal; editable?: boolean }) {
-  const { data } = useStore();
-  const [adding, setAdding] = useState(false);
-  const group = groupOf(data, goal);
-  const mates = group ? groupMembers(data, group.id).filter((g) => g.id !== goal.id) : [];
-  if (!group && !editable) return null;
-  return (
-    <div className="connection-strip" aria-label="Group">
-      <span className="mono">{group ? group.name.toUpperCase() : 'NOT IN A GROUP'}</span>
-      {mates.map((g) => (
-        <a key={g.id} className="connection-chip" href={href(`/goals/${g.id}`)}>
-          <span className="dot" style={{ width: 7, height: 7, background: g.color }} />
-          {g.title}
-        </a>
-      ))}
-      {editable && !group && (
-        <button type="button" className="connection-chip add" onClick={() => setAdding(true)}>
-          + Add to a group
-        </button>
-      )}
-      {editable && group && (
-        <button type="button" className="link-btn small" onClick={() => document.getElementById('connected-goals')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          Details
-        </button>
-      )}
-      {adding && <AddToGroupSheet goal={goal} onClose={() => setAdding(false)} />}
     </div>
   );
 }

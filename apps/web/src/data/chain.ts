@@ -73,12 +73,20 @@ export function opsSetLevel(
 }
 
 /** Start a new goal's chain with sensible defaults, so it's useful before you edit anything. */
-export function opsStartChain(data: AppData, goal: Goal, plan: Plan, today: ISODate, notes: Partial<Record<ChainLevel, string>>): Op[] {
+export function opsStartChain(
+  data: AppData,
+  goal: Goal,
+  plan: Plan,
+  today: ISODate,
+  notes: Partial<Record<ChainLevel, string>>,
+  values: Partial<Record<ChainLevel, number | null>> = {},
+): Op[] {
   let chain = chainFor(data, goal, plan, today);
   const ops: Op[] = [];
   for (const level of CHAIN_LEVELS) {
     if (chain[level].step) continue;
-    const step = { ...stepFor(goal, plan, chain, level), target_note: notes[level] ?? '' };
+    const base = stepFor(goal, plan, chain, level);
+    const step = { ...base, target_note: notes[level] ?? '', target_value: values[level] !== undefined ? values[level] : base.target_value };
     ops.push({ kind: 'insert', collection: 'planSteps', rows: [step as unknown as { id: string } & Record<string, unknown>] });
     chain = { ...chain, [level]: { ...chain[level], step } };
   }
@@ -102,7 +110,7 @@ export interface CatchUp {
  * Task-based goals get a number of extra tasks for this week, which "Add N this week" schedules.
  */
 export function catchUpPlan(view: View, data: AppData, goal: Goal, plan: Plan, today: ISODate): CatchUp | null {
-  if (plan.start_date > today || view.tooEarly(plan)) return null;
+  if (view.startFor(goal, plan) > today || view.tooEarly(plan, goal)) return null;
   const { month } = chainAt(plan, today);
   const daysLeft = Math.max(1, daysBetween(today, month.end) + 1);
   const weeksLeft = Math.max(1, Math.ceil(daysLeft / 7));

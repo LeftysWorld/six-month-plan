@@ -1,6 +1,7 @@
 import { previousReview, shortDate, type Review } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, minutesText, useView } from '../data/derive.ts';
+import { fmt, minutesText } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { BackLink, Empty } from '../components/ui.tsx';
 import { PastRow, reviewTitle } from './ReviewHub.tsx';
 
@@ -46,7 +47,7 @@ export function ReviewDetail({ id }: { id: string }) {
       <h1>{reviewTitle(r)}</h1>
       <span className="small muted" style={{ marginTop: -8 }}>
         {shortDate(r.period_start)} – {shortDate(r.period_end)}
-        {r.completed_at ? ` · saved ${shortDate(r.completed_at.slice(0, 10))}` : ''}
+        {r.completed_at ? ` · saved ${shortDate(view.dayOf(r.completed_at))}` : ''}
       </span>
 
       <div className="grid-3">

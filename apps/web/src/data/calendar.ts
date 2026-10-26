@@ -90,7 +90,7 @@ export function calendarItems(view: View, from: ISODate, to: ISODate): Map<ISODa
   // When each 3-month, month and week goal you've written down is due.
   for (const goal of data.goals) {
     if (goal.archived_at || goal.completed_at) continue;
-    for (const cp of checkpointsOf(data, goal)) {
+    for (const cp of checkpointsOf(data, goal, null, view.planForGoal(goal)?.id ?? null)) {
       add({ id: `c-${cp.id}`, date: cp.date, kind: 'checkpoint', title: `${CHECKPOINT_NAME[cp.level]}: ${cp.text}`, sub: goal.title, color: goal.color, done: cp.done, to: `/goals/${goal.id}` });
     }
   }
@@ -100,7 +100,7 @@ export function calendarItems(view: View, from: ISODate, to: ISODate): Map<ISODa
     const plan = view.planForGoal(goal);
     if (!plan) continue;
     if (goal.completed_at) {
-      add({ id: `d-${goal.id}`, date: goal.completed_at.slice(0, 10), kind: 'done', title: goal.title, sub: 'Goal complete', color: goal.color, done: true, to: `/goals/${goal.id}` });
+      add({ id: `d-${goal.id}`, date: view.dayOf(goal.completed_at), kind: 'done', title: goal.title, sub: 'Goal complete', color: goal.color, done: true, to: `/goals/${goal.id}` });
       continue;
     }
     const w = view.plannedWindow(goal, plan);

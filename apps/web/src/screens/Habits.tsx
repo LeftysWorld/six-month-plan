@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { addDays, habitDays, shortDate, weekStart, type Action, type ISODate, type Session } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { opsLogSession, opsRestoreSession } from '../data/ops.ts';
 import { blankHabit, habitSessions, habitWhen, habitsOf, opsCreateHabit, opsEditHabit, opsStopHabit, statsFor } from '../data/habits.ts';
 import type { TaskInput } from '../data/breakdown.ts';

@@ -34,9 +34,10 @@ export function stepText(goal: Goal, step: PlanStep): string {
  * The checkpoints of a goal that have been written down. Week goals are many and short, so only the
  * ones from `weeksFrom` on are included (the roadmap passes the current week; the calendar, every week).
  */
-export function checkpointsOf(data: AppData, goal: Goal, weeksFrom: ISODate | null = null): Checkpoint[] {
+export function checkpointsOf(data: AppData, goal: Goal, weeksFrom: ISODate | null = null, planId: string | null = null): Checkpoint[] {
   return data.planSteps
     .filter((s) => s.goal_id === goal.id && (s.level === 'quarter' || s.level === 'month' || s.level === 'week'))
+    .filter((s) => !planId || s.plan_id === planId)
     .filter((s) => s.level !== 'week' || !weeksFrom || s.end_date >= weeksFrom)
     .map((s) => ({ step: s, text: stepText(goal, s) }))
     .filter((x) => x.text)

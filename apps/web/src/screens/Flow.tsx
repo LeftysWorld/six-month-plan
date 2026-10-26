@@ -21,7 +21,8 @@ import {
   forecastFinish,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, minutesText, useView } from '../data/derive.ts';
+import { fmt, minutesText } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { CHAIN_LEVELS, catchUpPlan, chainFor, isSet, opsAddExtra, opsEnsureStep, periodStatus, opsSetLevel, stepFor, type Chain, type ChainLevel } from '../data/chain.ts';
 import { GoalExtras, GoalManage, GoalRecord, WhyLine } from './GoalDetail.tsx';
 import { GoalGroupCard } from '../components/Connections.tsx';
@@ -51,7 +52,7 @@ import { WorkoutPlanEditor, blankExercise } from '../components/Workout.tsx';
 import { goalTrack } from '../data/season.ts';
 import { afterChoices } from '../data/dates.ts';
 import { matchingTasks, opsRecordReading, opsShareTask, opsUnshareTask, shareCandidates } from '../data/connect.ts';
-import { ConnectionStrip, ShareTaskSheet } from '../components/Connections.tsx';
+import { ShareTaskSheet } from '../components/Connections.tsx';
 
 /**
  * One page per goal: the goal chain, top to bottom, then this week's daily tasks.
@@ -194,7 +195,7 @@ function ForecastLine({ goal, plan, by }: { goal: Goal; plan: Plan; by: ISODate 
   const view = useView();
   const milestones = view.data.milestones.filter((m) => m.goal_id === goal.id);
   if (!milestones.length) return null;
-  const f = forecastFinish(milestones, view.startFor(goal, plan), today);
+  const f = forecastFinish(milestones, view.startFor(goal, plan), today, (t) => view.dayOf(t));
   if (f.reason === 'done') return null;
   const late = !!f.date && f.date > by;
   const text =

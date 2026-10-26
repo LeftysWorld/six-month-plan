@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { addDays, shortDate, weekDates, weekStart, weekdayName, type Session, type SessionStatus } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { opsLogSession, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
 import { href } from '../router.ts';
 import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Goal } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { currentWindow, opsMoveGoals, ownClockWindow, planMove, windowLine, type Destination } from '../data/move.ts';
 import type { ChainLevel } from '../data/chain.ts';
 import { Sheet, useToast } from './ui.tsx';

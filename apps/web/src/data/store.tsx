@@ -4,7 +4,6 @@ import type { Db } from './db.ts';
 import { SaveError } from './db.ts';
 import { applyOp, type AppData, type Op } from './model.ts';
 import { opsEnsureWeek } from './ops.ts';
-import { opsFoldLinksIntoGroups } from './groups.ts';
 import { opsMergeDuplicateMeasures } from './connect.ts';
 import { opsFillWorkoutPlans } from './breakdown.ts';
 
@@ -33,32 +32,49 @@ interface StoreValue {
 
 const StoreContext = createContext<StoreValue | null>(null);
 
-const OUTBOX_KEY = 'six.outbox.v1';
+const OUTBOX_PREFIX = 'six.outbox.v1';
 
-function readOutbox(): Op[] {
+/** Changes waiting to be saved live per user, so another account on this browser never replays them. */
+export function outboxKey(userId: string | undefined): string {
+  return userId ? `${OUTBOX_PREFIX}.${userId}` : OUTBOX_PREFIX;
+}
+
+function readOutbox(key: string): Op[] {
   try {
-    return JSON.parse(localStorage.getItem(OUTBOX_KEY) ?? '[]') as Op[];
+    // Changes queued by an older version were kept under one shared key: they become this user's.
+    const legacy = key !== OUTBOX_PREFIX ? localStorage.getItem(OUTBOX_PREFIX) : null;
+    if (legacy) {
+      localStorage.removeItem(OUTBOX_PREFIX);
+      if (!localStorage.getItem(key)) localStorage.setItem(key, legacy);
+    }
+    return JSON.parse(localStorage.getItem(key) ?? '[]') as Op[];
   } catch {
     return [];
   }
 }
 
-function writeOutbox(ops: Op[]): void {
+function writeOutbox(key: string, ops: Op[]): void {
   try {
-    localStorage.setItem(OUTBOX_KEY, JSON.stringify(ops));
+    if (ops.length === 0) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(ops));
   } catch {
     // ignore: the queue still lives in memory for this session
   }
 }
 
+
 export function StoreProvider({ db, initial, children }: { db: Db; initial: AppData; children: ReactNode }) {
   const [data, setData] = useState<AppData>(initial);
   const [clock, setClock] = useState(() => Date.now());
   const [sync, setSync] = useState<SyncState>({ pending: 0, offline: false, error: null });
-  const queue = useRef<Op[]>(db.mode === 'supabase' ? readOutbox() : []);
+  const key = outboxKey(db.userId);
+  const persist = db.mode === 'supabase';
+  const queue = useRef<Op[]>(persist ? readOutbox(key) : []);
   const flushing = useRef(false);
   const retryTimer = useRef<number | null>(null);
   const backoff = useRef(2000);
+  /** Set when a change was refused: memory has it, the database doesn't, so reload after the flush. */
+  const needReload = useRef(false);
 
   const timezone = data.profile.timezone;
   const today = useMemo(() => todayIn(timezone, new Date(clock)), [timezone, clock]);
@@ -84,7 +100,7 @@ export function StoreProvider({ db, initial, children }: { db: Db; initial: AppD
         try {
           await db.apply(op);
           queue.current = queue.current.slice(1);
-          if (db.mode === 'supabase') writeOutbox(queue.current);
+          if (persist) writeOutbox(key, queue.current);
           backoff.current = 2000;
           setSync((s) => ({ ...s, pending: queue.current.length, offline: false }));
         } catch (err) {
@@ -96,9 +112,11 @@ export function StoreProvider({ db, initial, children }: { db: Db; initial: AppD
             backoff.current = Math.min(backoff.current * 2, 60_000);
             return;
           }
-          // The database refused this change: drop it so the queue keeps moving.
+          // The database refused this change: drop it so the queue keeps moving, and reload once the
+          // queue is empty so the screen matches what was actually saved.
           queue.current = queue.current.slice(1);
-          if (db.mode === 'supabase') writeOutbox(queue.current);
+          if (persist) writeOutbox(key, queue.current);
+          needReload.current = true;
           setSync((s) => ({
             ...s,
             pending: queue.current.length,
@@ -106,21 +124,31 @@ export function StoreProvider({ db, initial, children }: { db: Db; initial: AppD
           }));
         }
       }
+      if (needReload.current) {
+        needReload.current = false;
+        try {
+          const fresh = await db.loadAll();
+          setData(queue.current.reduce(applyOp, fresh));
+        } catch {
+          // Offline again: the next flush tries once more.
+          needReload.current = true;
+        }
+      }
     } finally {
       flushing.current = false;
     }
-  }, [db]);
+  }, [db, key, persist]);
 
   const commit = useCallback(
     (ops: Op[]) => {
       if (ops.length === 0) return;
       setData((current) => ops.reduce(applyOp, current));
       queue.current = [...queue.current, ...ops];
-      if (db.mode === 'supabase') writeOutbox(queue.current);
+      if (persist) writeOutbox(key, queue.current);
       setSync((s) => ({ ...s, pending: queue.current.length }));
       void flush();
     },
-    [db, flush],
+    [flush, key, persist],
   );
 
   // Changes left over from a previous session: show them and send them.
@@ -135,14 +163,11 @@ export function StoreProvider({ db, initial, children }: { db: Db; initial: AppD
     return () => window.removeEventListener('online', online);
   }, [flush]);
 
-  // Connections made before groups existed become groups, once. Skipped while the database is
-  // missing an update (the groups table might not be there yet, and the links would be lost).
+  // One-time tidy-ups when the app opens. Skipped while the database is missing an update.
   useEffect(() => {
     if (db.schemaWarning?.()) return;
-    const ops = opsFoldLinksIntoGroups(data);
-    if (ops.length > 0) commit(ops);
     // A goal that ended up with the same measurement twice (two "Weight"s) gets them merged.
-    const merge = opsMergeDuplicateMeasures(ops.length ? ops.reduce(applyOp, data) : data);
+    const merge = opsMergeDuplicateMeasures(data);
     if (merge.length > 0) commit(merge);
     // Workout tasks with their exercises written in details get a plan to log against.
     const plans = opsFillWorkoutPlans(data);

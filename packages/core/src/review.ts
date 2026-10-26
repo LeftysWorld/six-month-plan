@@ -139,10 +139,10 @@ export function obstacleCounts(sessions: Session[], range: DateRange): { name: s
 }
 
 /** The most recent finished review of a kind that started before `before`. */
-export function previousReview(reviews: Review[], kind: ReviewKind, before: ISODate): Review | null {
+export function previousReview(reviews: Review[], kind: ReviewKind, before: ISODate, planId?: string | null): Review | null {
   return (
     reviews
-      .filter((r) => r.kind === kind && r.status === 'done' && r.period_start < before)
+      .filter((r) => r.kind === kind && r.status === 'done' && r.period_start < before && (!planId || r.plan_id == null || r.plan_id === planId))
       .sort((a, b) => (a.period_start < b.period_start ? 1 : -1))[0] ?? null
   );
 }
@@ -201,8 +201,12 @@ export interface PeriodReviewSlot {
   state: 'open' | 'overdue' | 'upcoming';
 }
 
-function isDone(reviews: Review[], kind: ReviewKind, start: ISODate): boolean {
-  return reviews.some((r) => r.kind === kind && r.status === 'done' && r.period_start === start);
+/**
+ * Whether a review of this kind and period is done for the plan. Reviews saved before plan_id
+ * existed have none and match on the period alone, as they always did.
+ */
+function isDone(reviews: Review[], kind: ReviewKind, start: ISODate, planId: string): boolean {
+  return reviews.some((r) => r.kind === kind && r.status === 'done' && r.period_start === start && (r.plan_id == null || r.plan_id === planId));
 }
 
 /**
@@ -220,7 +224,7 @@ export function periodReviewSlots(plan: Plan, reviews: Review[], today: ISODate)
     const opens = (n: CascadeNode) => addDays(n.end, -REVIEW_OPENS_DAYS_BEFORE);
     const opened = nodes.filter((n) => opens(n) <= today);
     const latest = opened[opened.length - 1];
-    if (latest && !isDone(reviews, kind, latest.start)) {
+    if (latest && !isDone(reviews, kind, latest.start, plan.id)) {
       out.push({ kind, plan, period: { start: latest.start, end: latest.end }, title: latest.title, opensOn: opens(latest), state: latest.end < today ? 'overdue' : 'open' });
     }
     const next = nodes.find((n) => opens(n) > today);
@@ -231,7 +235,7 @@ export function periodReviewSlots(plan: Plan, reviews: Review[], today: ISODate)
 
 /** The retrospective for a plan: open from the plan's last week until it's done (upcoming before that). */
 export function retroSlot(plan: Plan, reviews: Review[], today: ISODate): PeriodReviewSlot | null {
-  if (isDone(reviews, 'retro', plan.start_date)) return null;
+  if (isDone(reviews, 'retro', plan.start_date, plan.id)) return null;
   const opensOn = addDays(plan.end_date, -RETRO_OPENS_DAYS_BEFORE);
   const state = plan.end_date < today ? 'overdue' : opensOn <= today ? 'open' : 'upcoming';
   return { kind: 'retro', plan, period: { start: plan.start_date, end: plan.end_date }, title: plan.name, opensOn, state };

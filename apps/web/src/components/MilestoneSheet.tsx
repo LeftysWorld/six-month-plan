@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { shortDate, type ISODate, type Milestone } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { opsAddMilestone } from '../data/ops.ts';
 import { opsDeleteMilestone, opsRestoreMilestone, opsUpdateMilestone } from '../data/dated.ts';
 import { navigate } from '../router.ts';

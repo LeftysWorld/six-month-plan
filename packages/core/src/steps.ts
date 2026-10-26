@@ -23,9 +23,9 @@ export interface Forecast {
  * When a finish goal will likely be done, from the pace its milestones are being completed: the
  * last 4 weeks when two or more were done in them (how it's going now), else since the start.
  */
-export function forecastFinish(milestones: Milestone[], start: ISODate, today: ISODate): Forecast {
+export function forecastFinish(milestones: Milestone[], start: ISODate, today: ISODate, dayOf: (timestamp: string) => ISODate = (t) => t.slice(0, 10)): Forecast {
   if (!milestones.length) return { date: null, reason: 'no_milestones' };
-  const done = milestones.map((m) => m.completed_at?.slice(0, 10)).filter((d): d is ISODate => !!d && d <= today).sort();
+  const done = milestones.map((m) => (m.completed_at ? dayOf(m.completed_at) : undefined)).filter((d): d is ISODate => !!d && d <= today).sort();
   const left = milestones.filter((m) => !m.completed_at).length;
   if (left === 0) return { date: done.at(-1) ?? today, reason: 'done' };
   const elapsed = daysBetween(start, today);

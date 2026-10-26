@@ -5,7 +5,7 @@ import { createLocalDb } from './data/local.ts';
 import type { AppData } from './data/model.ts';
 import { StoreProvider, useStore } from './data/store.tsx';
 import { createSupabaseDb, getSupabase, schemaWarning, supabaseConfigured } from './data/supabase.ts';
-import { useView } from './data/derive.ts';
+import { useView } from './data/useView.ts';
 import { opsProfile } from './data/ops.ts';
 import { href, navigate, useRoute } from './router.ts';
 import { Icon, ToastProvider } from './components/ui.tsx';

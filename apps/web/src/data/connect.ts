@@ -1,33 +1,15 @@
-import { type Action, type ActionSchedule, type Goal, type GoalLink, type ISODate, type Session } from '@six/core';
+import { type Action, type ActionSchedule, type Goal, type ISODate, type Session } from '@six/core';
 import type { View } from './derive.ts';
 import type { AppData, Op } from './model.ts';
 import { opsLogSession } from './ops.ts';
 
 /**
  * Connected goals and shared tasks. A task can support any number of goals (action_goals);
- * logging it once counts for each. Goals can also be connected by hand (goal_links).
+ * logging it once counts for each. Goals in the same group count as connected too (groups.ts).
  */
 
 const newId = () => crypto.randomUUID();
 type Row = { id: string } & Record<string, unknown>;
-
-/** The hand-made link between two goals, if there is one (either way round). */
-export function linkBetween(data: AppData, a: string, b: string): GoalLink | undefined {
-  return data.goalLinks.find((l) => (l.goal_a === a && l.goal_b === b) || (l.goal_a === b && l.goal_b === a));
-}
-
-/** Connect two goals by hand, or update the note if they're already connected. */
-export function opsLinkGoals(data: AppData, a: string, b: string, note: string): Op[] {
-  if (a === b) return [];
-  const existing = linkBetween(data, a, b);
-  if (existing) return existing.note === note.trim() ? [] : [{ kind: 'update', collection: 'goalLinks', id: existing.id, patch: { note: note.trim() } }];
-  const row: GoalLink = { id: newId(), goal_a: a, goal_b: b, note: note.trim(), created_at: new Date().toISOString() };
-  return [{ kind: 'insert', collection: 'goalLinks', rows: [row as unknown as Row] }];
-}
-
-export function opsUnlinkGoals(link: GoalLink): Op[] {
-  return [{ kind: 'delete', collection: 'goalLinks', id: link.id }];
-}
 
 /** Let another goal share an existing task. Its sessions already exist, so it shows on Today as before. */
 export function opsShareTask(data: AppData, actionId: string, goalId: string): Op[] {

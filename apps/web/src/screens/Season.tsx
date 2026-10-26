@@ -1,7 +1,8 @@
 import { useState, type MouseEvent } from 'react';
 import { daysBetween, isoWeekday, shortDate, weekDates, weekStart, type Goal, type GoalGroup, type ISODate, type PaceLabel, type Plan } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView, type View } from '../data/derive.ts';
+import { type View } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { CHAIN_LEVELS, catchUpPlan, chainFor, isSet, type Chain, type ChainLevel, type CatchUp } from '../data/chain.ts';
 import type { AppData } from '../data/model.ts';
 import { firstCheckpoint, goalTrack, groupTrack, nextCheckpoint, nextReviewWord, nextSeasonDates, seasonsOf, type Seasons } from '../data/season.ts';
@@ -30,12 +31,13 @@ export interface GoalCardData {
 
 /** Every goal in the plan with what it needs, goals that need you first. */
 export function goalCards(view: View, data: AppData, plan: Plan, today: ISODate): GoalCardData[] {
-  const started = plan.start_date <= today;
-  const date = started ? today : plan.start_date;
   return view
     .goalsForPlan(plan.id)
     .map((goal, i) => {
-      const chain = chainFor(data, goal, plan, date);
+      // Judged from the goal's own start (a later start on the roadmap, or after another goal).
+      const start = view.startFor(goal, plan);
+      const started = start <= today;
+      const chain = chainFor(data, goal, plan, started ? today : start);
       // A goal waiting on another isn't judged yet: it sits at the bottom, asking nothing.
       if (view.waitingOn(goal)) return { goal, chain, pace: 'none' as PaceLabel, fix: null, gaps: [], needs: false, rank: 5000 + i };
       const pace = started ? view.goalPace(goal, plan).label : 'none';

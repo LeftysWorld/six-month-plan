@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
 import {
+  dateIn,
   chainAt,
   addDays,
   currentTargets,
@@ -29,7 +29,6 @@ import {
   type Session,
 } from '@six/core';
 import type { AppData } from './model.ts';
-import { useStore } from './store.tsx';
 
 export interface GoalPace {
   goal: Goal;
@@ -54,6 +53,11 @@ export class View {
     readonly today: ISODate,
     readonly dayFraction: number,
   ) {}
+
+  /** The calendar day a timestamp fell on, in your time zone. */
+  dayOf(timestamp: string): ISODate {
+    return dateIn(this.data.profile.timezone, timestamp);
+  }
 
   get activePlans(): Plan[] {
     return this.data.plans
@@ -140,7 +144,7 @@ export class View {
    */
   startFor(goal: Goal, plan: Plan): ISODate {
     const before = goal.after_goal_id ? this.goal(goal.after_goal_id) : undefined;
-    const done = before?.completed_at?.slice(0, 10);
+    const done = before?.completed_at ? this.dayOf(before.completed_at) : undefined;
     const start = [plan.start_date, goal.start_date ?? '', done ?? ''].sort().at(-1)!;
     return start > plan.end_date ? plan.end_date : start;
   }
@@ -289,7 +293,7 @@ export class View {
     return this.data.measurementTypes.filter((t) => {
       if (t.archived_at) return false;
       const last = this.measurementsFor(t.id).at(-1);
-      return !last || addDays(last.measured_on, t.cadence_days) <= addDays(date, 1);
+      return !last || addDays(last.measured_on, t.cadence_days) <= date;
     });
   }
 
@@ -297,16 +301,20 @@ export class View {
     return currentTargets(this.data.goalTargets, goal.id).map((t) => ({ date: t.target_date, value: Number(t.target_value) }));
   }
 
-  tooEarly(plan: Plan | null): boolean {
-    return !plan || addDays(plan.start_date, 7) > this.today;
+  /** No pace labels in a window's first week (or a goal's, when it starts later than its window). */
+  tooEarly(plan: Plan | null, goal?: Goal): boolean {
+    if (!plan) return true;
+    const start = goal ? this.startFor(goal, plan) : plan.start_date;
+    return addDays(start, 7) > this.today;
   }
 
   /** Pace for one goal over a period (practice goals) or overall (number and finish goals). */
   goalPace(goal: Goal, plan: Plan | null, range?: DateRange): GoalPace {
-    const early = this.tooEarly(plan);
+    const early = this.tooEarly(plan, goal);
     const waiting = this.waitingOn(goal);
     if (waiting) return { goal, label: 'none', summary: `Up next · after ${waiting.title}`, progress: null, number: null };
-    const fallbackStart = plan?.start_date ?? this.today;
+    // The goal's own start: a goal given a later start on the roadmap isn't behind before it begins.
+    const fallbackStart = plan ? this.startFor(goal, plan) : this.today;
     if (goal.type === 'number') {
       const status = numberGoalStatus(goal, this.pathFor(goal), this.measurementsFor(goal.measurement_type_id), this.today, fallbackStart, early);
       const summary =
@@ -326,7 +334,7 @@ export class View {
         number: null,
       };
     }
-    const period = range ?? { start: plan?.start_date ?? addDays(this.today, -28), end: this.today };
+    const period = range ?? { start: fallbackStart, end: this.today };
     // Today's sessions don't count against pace until the day is over (done early still helps).
     const progress = progressFor(this.sessionsForGoal(goal.id), period, { today: this.today, dayFraction: 0, tooEarly: early });
     return {
@@ -403,16 +411,11 @@ export class View {
   /** Days since anything was last logged (null if nothing ever was). */
   daysAway(): number | null {
     const dates = [
-      ...this.data.sessions.filter((s) => s.logged_at).map((s) => s.logged_at!.slice(0, 10)),
+      ...this.data.sessions.filter((s) => s.logged_at).map((s) => this.dayOf(s.logged_at!)),
       ...this.data.measurements.map((m) => m.measured_on),
     ];
     return daysSince(dates, this.today);
   }
-}
-
-export function useView(): View {
-  const { data, today, dayFraction } = useStore();
-  return useMemo(() => new View(data, today, dayFraction), [data, today, dayFraction]);
 }
 
 export function fmt(n: number | null | undefined, digits = 1): string {

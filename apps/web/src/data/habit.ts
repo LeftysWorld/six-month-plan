@@ -80,7 +80,7 @@ export function checkInStreak(sessions: Session[], today: ISODate): Streak {
 
 export type Ritual = 'morning' | 'evening';
 
-export function ritualDue(kind: Ritual, today: ISODate, hour: number = new Date().getHours()): boolean {
+export function ritualDue(kind: Ritual, today: ISODate, hour: number): boolean {
   if (kind === 'morning' && (hour < 4 || hour >= 12)) return false;
   if (kind === 'evening' && hour < 18) return false;
   try {

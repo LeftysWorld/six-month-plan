@@ -549,7 +549,9 @@ export function opsDeleteGoal(data: AppData, goal: Goal): { ops: Op[]; files: st
   for (const st of data.planSteps.filter((x) => x.goal_id === goal.id)) del('planSteps', st.id);
   for (const t of data.goalTargets.filter((x) => x.goal_id === goal.id)) del('goalTargets', t.id);
   for (const m of data.milestones.filter((x) => x.goal_id === goal.id)) del('milestones', m.id);
-  for (const l of data.goalLinks.filter((x) => x.goal_a === goal.id || x.goal_b === goal.id)) del('goalLinks', l.id);
+  // Its change history (and its own tasks' and schedules') has nothing to point at any more.
+  const gone = new Set<string>([goal.id, ...own, ...data.schedules.filter((x) => own.has(x.action_id)).map((x) => x.id)]);
+  for (const c of data.changeLog.filter((x) => gone.has(x.entity_id))) del('changeLog', c.id);
   // Its own measurement goes too, unless another goal or a remaining task records it.
   const usedElsewhere = (typeId: string) =>
     data.goals.some((g) => g.id !== goal.id && g.measurement_type_id === typeId) || data.actions.some((a) => !own.has(a.id) && a.measurement_type_id === typeId);

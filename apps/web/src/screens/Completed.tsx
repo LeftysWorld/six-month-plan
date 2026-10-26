@@ -1,6 +1,7 @@
 import { daysBetween, minutesDone, sessionCredit, shortDate, type Goal } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, minutesText, useView } from '../data/derive.ts';
+import { fmt, minutesText } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { opsArchiveGoal, opsDeleteGoal, opsReopenGoal } from '../data/ops.ts';
 import { actionLookup } from '../data/insights.ts';
 import { href } from '../router.ts';
@@ -73,7 +74,7 @@ function ArchivedRow({ goal }: { goal: Goal }) {
           <span className="dot" style={{ background: goal.color, flex: 'none' }} />
           <span className="strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{goal.title}</span>
         </span>
-        <span className="xsmall muted" style={{ flex: 'none' }}>Archived {shortDate(goal.archived_at!.slice(0, 10))}</span>
+        <span className="xsmall muted" style={{ flex: 'none' }}>Archived {shortDate(view.dayOf(goal.archived_at!))}</span>
       </div>
       <span className="xsmall muted">
         {plans.length ? `In ${plans.map((p) => p.name).join(', ')}` : 'In no plan'} · {tasks.length} task{tasks.length === 1 ? '' : 's'} · {logged} logged
@@ -132,7 +133,7 @@ function CompletedCard({ goal }: { goal: Goal }) {
   const minutes = sessions.reduce((sum, s) => sum + minutesDone(s, lookup(s.action_id)), 0);
   const plan = view.plansForGoal(goal.id)[0];
   const started = plan?.start_date ?? goal.baseline_date;
-  const finished = goal.completed_at!.slice(0, 10);
+  const finished = view.dayOf(goal.completed_at!);
   const idea = data.ideas.find((i) => i.goal_id === goal.id);
   const latest = goal.type === 'number' ? view.measurementsFor(goal.measurement_type_id).at(-1) : undefined;
   return (

@@ -56,6 +56,25 @@ export function todayIn(timezone: string, now: Date = new Date()): ISODate {
   }
 }
 
+/**
+ * The calendar date of a timestamp in a time zone (a goal completed at 11 pm in New York was
+ * completed that day, not the next UTC day).
+ */
+export function dateIn(timezone: string, timestamp: string | number | Date): ISODate {
+  const d = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  return todayIn(timezone, d);
+}
+
+/** The hour of the day (0–23) in a time zone. */
+export function hourIn(timezone: string, now: Date = new Date()): number {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+    return Number(parts.find((p) => p.type === 'hour')?.value ?? now.getHours());
+  } catch {
+    return now.getHours();
+  }
+}
+
 /** Fraction of the waking day (6:00–22:00) that has passed in a timezone, 0..1. */
 export function dayFractionIn(timezone: string, now: Date = new Date()): number {
   let hours = now.getHours() + now.getMinutes() / 60;

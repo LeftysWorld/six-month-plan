@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { addDays, parseWorkoutPlan, shortDate, weekDates, weekStart, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { fmt, useView } from '../data/derive.ts';
+import { fmt } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { opsLogSession, opsMoveSession, opsRestoreSession, opsSaveWorkout, opsStartExtra } from '../data/ops.ts';
 import { cleanPlan } from '../data/breakdown.ts';
 import { SessionFiles, useAddFiles } from './Attachments.tsx';

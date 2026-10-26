@@ -1,6 +1,7 @@
 import { addDays, weekStart } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { minutesText, useView } from '../data/derive.ts';
+import { minutesText } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import type { Op } from '../data/model.ts';
 import { navigate } from '../router.ts';
 import { Icon, useToast } from '../components/ui.tsx';

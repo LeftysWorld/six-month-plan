@@ -3,7 +3,8 @@ import { evenSteps, shortDate, type Goal, type MeasurementType, type Plan } from
 import { findMeasure, measureLabel, measureOnToday } from '../data/connect.ts';
 import { daysText, opsAddPhotoTracker, opsStopPhotoTracker, photoTrackers } from '../data/tracking.ts';
 import { useStore } from '../data/store.tsx';
-import { fmt, useView } from '../data/derive.ts';
+import { fmt } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import {
   opsAddMeasurement,
   opsAddMeasurementType,
@@ -387,7 +388,7 @@ function CompleteGoal({ goal }: { goal: Goal }) {
     return (
       <div className="card tight row-between small" style={{ gap: 10 }}>
         <span>
-          <b>Completed {shortDate(goal.completed_at.slice(0, 10))}.</b>
+          <b>Completed {shortDate(view.dayOf(goal.completed_at))}.</b>
           {goal.completion_note ? <span className="muted"> “{goal.completion_note}”</span> : null}
         </span>
         <button

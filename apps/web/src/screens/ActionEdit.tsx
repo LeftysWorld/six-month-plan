@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { addDays, describeSchedule, scheduleForWeek, shortDate, weekStart, type Action } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { opsArchiveAction, opsChangeSchedule, opsCreateAction, opsUpdateAction, type ActionInput } from '../data/ops.ts';
 import { goBack, navigate } from '../router.ts';
 import { ActionFields, blankAction } from '../components/ActionFields.tsx';

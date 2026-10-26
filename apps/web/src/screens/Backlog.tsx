@@ -16,7 +16,7 @@ import {
   type PrepGap,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
-import { useView } from '../data/derive.ts';
+import { useView } from '../data/useView.ts';
 import { opsAddIdea, opsDeleteIdea, opsEditIdea, opsMoveIdea, opsRestoreIdea, opsSetStatus } from '../data/backlog.ts';
 import { commitTarget, opsCommitIdea, opsCommitOwnClock, startPeriods } from '../data/commit.ts';
 import { withOps } from '../data/breakdown.ts';
@@ -368,7 +368,7 @@ export function Backlog() {
                         Open goal
                       </a>
                     ) : (
-                      <span className="xsmall muted">{idea.started_at ? shortDate(idea.started_at.slice(0, 10)) : ''}</span>
+                      <span className="xsmall muted">{idea.started_at ? shortDate(view.dayOf(idea.started_at)) : ''}</span>
                     )}
                   </div>
                 );

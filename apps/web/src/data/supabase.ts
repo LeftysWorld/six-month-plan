@@ -8,28 +8,55 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const supabaseConfigured = Boolean(url && anonKey);
 
-const BREAKDOWN_MIGRATION = 'supabase/migrations/20261019000000_goal_breakdown.sql, 20261021000000_reminders_and_cues.sql, 20261025000000_review_overhaul.sql, 20261026000000_goal_backlog.sql, 20261027000000_completed_goals_and_readiness.sql, 20261028000000_idea_prep.sql, 20261029000000_batches_and_own_clocks.sql, 20261030000000_attachments.sql, 20261031000000_connected_goals.sql and 20261101000000_goal_groups.sql';
-const BACKLOG_MIGRATION = 'supabase/migrations/20261026000000_goal_backlog.sql';
-const OUTCOMES_MIGRATION = 'supabase/migrations/20261105000000_group_outcomes.sql';
+/**
+ * Every migration after the initial schema, with the table it creates or the newest column it adds.
+ * The app checks these once when it loads and names the first missing one in a banner; a save that
+ * fails on one of these columns or tables names the same file.
+ */
+const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: boolean }[] = [
+  { file: '20261019000000_goal_breakdown.sql', table: 'plan_steps', columns: [], creates: true },
+  { file: '20261021000000_reminders_and_cues.sql', table: 'actions', columns: ['cue'] },
+  { file: '20261025000000_review_overhaul.sql', table: 'reviews', columns: ['commitment_kept', 'goal_results', 'goal_decisions', 'carry_forward', 'minutes_planned', 'minutes_done'] },
+  { file: '20261026000000_goal_backlog.sql', table: 'goal_ideas', columns: [], creates: true },
+  { file: '20261027000000_completed_goals_and_readiness.sql', table: 'goals', columns: ['completed_at', 'completion_note'] },
+  { file: '20261028000000_idea_prep.sql', table: 'goal_ideas', columns: ['prep'] },
+  { file: '20261029000000_batches_and_own_clocks.sql', table: 'plans', columns: ['solo'] },
+  { file: '20261030000000_attachments.sql', table: 'attachments', columns: [], creates: true },
+  { file: '20261031000000_connected_goals.sql', table: 'actions', columns: ['measurement_type_id'] },
+  { file: '20261101000000_goal_groups.sql', table: 'goal_groups', columns: [], creates: true },
+  { file: '20261102000000_task_details.sql', table: 'actions', columns: ['details'] },
+  { file: '20261103000000_measure_on_today.sql', table: 'measurement_types', columns: ['on_today'] },
+  { file: '20261104000000_workout_plans.sql', table: 'actions', columns: ['workout_plan'] },
+  { file: '20261105000000_group_outcomes.sql', table: 'goals', columns: ['after_goal_id'] },
+  { file: '20261106000000_goal_start_dates.sql', table: 'goals', columns: ['start_date'] },
+  { file: '20261107000000_review_fixes.sql', table: 'goals', columns: ['reflection'] },
+];
 
-/** Columns added by the group-outcomes migration. */
-const START_MIGRATION = 'supabase/migrations/20261106000000_goal_start_dates.sql';
+/** Tables that exist only once their migration has run. */
+const CREATED_TABLES = new Map(MIGRATIONS.filter((m) => m.creates).map((m) => [m.table, m]));
 
-/** The goal start-date column (roadmap). */
-function isMissingStart(message: string): boolean {
-  return /'start_date' column of 'goals'|goals\.start_date/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+function looksMissing(message: string): boolean {
+  return /does not exist|could not find|schema cache|relation .* does not exist/i.test(message);
 }
 
-function isMissingOutcomes(message: string): boolean {
-  return /after_goal_id|'outcome'|goal_groups\.outcome|\boutcome\b/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
+/** The migration a "missing column or table" error points at, if it does. */
+function migrationFor(message: string, table?: string): (typeof MIGRATIONS)[number] | null {
+  if (!looksMissing(message)) return null;
+  for (const m of MIGRATIONS) {
+    if (m.creates && (m.table === table || new RegExp(`\\b${m.table}\\b`).test(message))) return m;
+    if (m.columns.some((c) => message.includes(c))) return m;
+  }
+  // Measure and photo tasks need the connected-goals migration (it widens the allowed task kinds).
+  if (/actions_kind_check/.test(message)) return MIGRATIONS.find((m) => m.file.includes('connected_goals')) ?? null;
+  return null;
+}
+
+function runText(m: { file: string }): string {
+  return `In Supabase → SQL Editor, run supabase/migrations/${m.file}, then reload.`;
 }
 
 /** Set when the database is missing a newer migration; the app shows it as a banner. */
 export let schemaWarning: string | null = null;
-
-function isMissingBreakdown(message: string): boolean {
-  return /plan_steps|step_id|'cue'|\bcue\b|reminder_time|evening_reminder|calendar_token|push_subscriptions|commitment_kept|goal_results|goal_decisions|carry_forward|minutes_planned|minutes_done|goal_ideas|completion_note|done_means|goals\.completed_at|\bprep\b|\bsolo\b|attachments|goal_links|goal_groups|group_id|actions\.measurement_type_id|'details' column|actions\.details|on_today|workout_plan|'measurement_type_id' column of 'actions'/i.test(message) && /does not exist|could not find|schema cache/i.test(message);
-}
 
 let client: SupabaseClient | null = null;
 
@@ -81,19 +108,8 @@ const NUMERIC_FIELDS: Record<string, string[]> = {
 /** A network failure is worth retrying; a database refusal is not. */
 function toSaveError(error: { message: string; code?: string } | null): SaveError | null {
   if (!error) return null;
-  if (isMissingStart(error.message)) {
-    return new SaveError(`${error.message}. Run ${START_MIGRATION} in the Supabase SQL Editor, then reload.`, false);
-  }
-  if (isMissingOutcomes(error.message)) {
-    return new SaveError(`${error.message}. Run ${OUTCOMES_MIGRATION} in the Supabase SQL Editor, then reload.`, false);
-  }
-  if (isMissingBreakdown(error.message)) {
-    return new SaveError(`${error.message}. Run ${BREAKDOWN_MIGRATION} in the Supabase SQL Editor, then reload.`, false);
-  }
-  // Measure and photo tasks need the connected-goals migration (it widens the allowed task kinds).
-  if (/actions_kind_check/.test(error.message)) {
-    return new SaveError(`${error.message}. Run supabase/migrations/20261031000000_connected_goals.sql in the Supabase SQL Editor, then reload.`, false);
-  }
+  const m = migrationFor(error.message);
+  if (m) return new SaveError(`${error.message}. ${runText(m)}`, false);
   const retryable = !error.code || /fetch|network|timeout/i.test(error.message);
   return new SaveError(error.message, retryable);
 }
@@ -110,6 +126,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
   const urlCache = new Map<string, { url: string; until: number }>();
   return {
     mode: 'supabase',
+    userId,
     schemaWarning: () => schemaWarning,
 
     files: {
@@ -142,29 +159,10 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       const results = await Promise.all(
         COLLECTIONS.map((key) =>
           selectAll(sb, TABLES[key]).catch((e: Error) => {
-            // A database set up before the goal breakdown existed: keep the app usable and say what to run.
-            if (key === 'planSteps' && isMissingBreakdown(e.message)) {
-              schemaWarning = `Your database needs the goal breakdown update. In Supabase → SQL Editor, run ${BREAKDOWN_MIGRATION}, then reload.`;
-              return [];
-            }
-            // A database without the backlog table still loads; the backlog just can't save yet.
-            // A database without groups still loads; goals just can't be grouped yet.
-            if (key === 'groups' && isMissingBreakdown(e.message)) {
-              schemaWarning ??= `Your database needs the goal groups update. In Supabase → SQL Editor, run supabase/migrations/20261101000000_goal_groups.sql, then reload.`;
-              return [];
-            }
-            // A database without connected goals still loads; goals just can't be connected yet.
-            if (key === 'goalLinks' && isMissingBreakdown(e.message)) {
-              schemaWarning ??= `Your database needs the connected-goals update. In Supabase → SQL Editor, run supabase/migrations/20261031000000_connected_goals.sql, then reload.`;
-              return [];
-            }
-            // A database without the attachments table still loads; files just can't be added yet.
-            if (key === 'attachments' && isMissingBreakdown(e.message)) {
-              schemaWarning ??= `Your database needs the attachments update. In Supabase → SQL Editor, run supabase/migrations/20261030000000_attachments.sql, then reload.`;
-              return [];
-            }
-            if (key === 'ideas' && isMissingBreakdown(e.message)) {
-              schemaWarning ??= `Your database needs the goal backlog update. In Supabase → SQL Editor, run ${BACKLOG_MIGRATION}, then reload.`;
+            // A table a newer migration creates: the app still loads, that part just can't save yet.
+            const m = CREATED_TABLES.get(TABLES[key]);
+            if (m && looksMissing(e.message)) {
+              schemaWarning ??= `Your database needs an update. ${runText(m)}`;
               return [];
             }
             throw e;
@@ -176,43 +174,15 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
         const rows = numeric(results[i] ?? [], NUMERIC_FIELDS[table] ?? []);
         (data as unknown as Record<string, unknown>)[key] = rows;
       });
-      // A database without the review overhaul still loads; reviews just won't keep the new answers.
+      // Columns added by later migrations: one small select per table, all at once. The first
+      // migration found missing is the one to run (they're meant to be run in order).
       if (!schemaWarning) {
-        const probe = await sb.from('reviews').select('goal_results').limit(1);
-        if (probe.error && isMissingBreakdown(probe.error.message)) {
-          schemaWarning = `Your database needs the review update. In Supabase → SQL Editor, run supabase/migrations/20261025000000_review_overhaul.sql, then reload.`;
-        }
-      }
-      // Completed goals and the backlog's "done looks like" need the newest migration.
-      if (!schemaWarning) {
-        const probe = await sb.from('goals').select('completed_at').limit(1);
-        if (probe.error && isMissingBreakdown(probe.error.message)) {
-          schemaWarning = `Your database needs the completed-goals update. In Supabase → SQL Editor, run supabase/migrations/20261027000000_completed_goals_and_readiness.sql, then reload.`;
-        }
-      }
-      if (!schemaWarning) {
-        const probe = await sb.from('goal_ideas').select('prep').limit(1);
-        if (probe.error && isMissingBreakdown(probe.error.message)) {
-          schemaWarning = `Your database needs the prepare-and-commit update. In Supabase → SQL Editor, run supabase/migrations/20261028000000_idea_prep.sql, then reload.`;
-        }
-      }
-      if (!schemaWarning) {
-        const probe = await sb.from('plans').select('solo').limit(1);
-        if (probe.error && isMissingBreakdown(probe.error.message)) {
-          schemaWarning = `Your database needs the batches update. In Supabase → SQL Editor, run supabase/migrations/20261029000000_batches_and_own_clocks.sql, then reload.`;
-        }
-      }
-      if (!schemaWarning) {
-        const probe = await sb.from('goals').select('after_goal_id').limit(1);
-        if (probe.error && isMissingOutcomes(probe.error.message)) {
-          schemaWarning = `Your database needs the group outcomes update. In Supabase → SQL Editor, run ${OUTCOMES_MIGRATION}, then reload.`;
-        }
-      }
-      if (!schemaWarning) {
-        const probe = await sb.from('goals').select('start_date').limit(1);
-        if (probe.error && /start_date/.test(probe.error.message)) {
-          schemaWarning = `Your database needs the roadmap update. In Supabase → SQL Editor, run ${START_MIGRATION}, then reload.`;
-        }
+        const byTable = new Map<string, string[]>();
+        for (const m of MIGRATIONS) if (m.columns.length) byTable.set(m.table, [...(byTable.get(m.table) ?? []), ...m.columns]);
+        const probes = await Promise.all([...byTable].map(async ([table, cols]) => (await sb.from(table).select(cols.join(',')).limit(1)).error?.message ?? null));
+        const missing = probes.map((msg) => (msg ? migrationFor(msg) : null)).filter((m): m is (typeof MIGRATIONS)[number] => !!m);
+        const first = MIGRATIONS.find((m) => missing.includes(m));
+        if (first) schemaWarning = `Your database needs an update. ${runText(first)}`;
       }
       const { data: profile, error } = await sb.from('profiles').select('*').eq('user_id', userId).maybeSingle();
       if (error) throw new Error(`profiles: ${error.message}`);
@@ -287,7 +257,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
         ['plan_goals', incoming.planGoals], ['goal_targets', incoming.goalTargets], ['plan_steps', incoming.planSteps], ['milestones', incoming.milestones],
         ['actions', incoming.actions], ['action_goals', incoming.actionGoals], ['action_schedules', incoming.schedules], ['sessions', incoming.sessions],
         ['workout_sets', incoming.workoutSets], ['measurements', incoming.measurements], ['week_plans', incoming.weekPlans], ['reviews', incoming.reviews],
-        ['change_log', incoming.changeLog], ['goal_ideas', incoming.ideas], ['goal_links', incoming.goalLinks],
+        ['change_log', incoming.changeLog], ['goal_ideas', incoming.ideas],
       ];
       for (const [table, rows] of rest) if (rows?.length) await insert(table, rows);
     },
@@ -299,14 +269,14 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       for (let i = 0; i < paths.length; i += 100) await sb.storage.from(BUCKET).remove(paths.slice(i, i + 100));
       // Children first so nothing is left pointing at a deleted row (the foreign keys cascade anyway).
       const order = [
-        'attachments', 'goal_links', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
+        'attachments', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
         'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
         'plan_steps', 'plan_goals', 'goals', 'goal_groups', 'plans', 'measurement_types',
       ];
       for (const table of order) {
         const { error } = await sb.from(table).delete().eq('user_id', userId);
         // An older database without the breakdown table has nothing to delete there.
-        if (error && !((table === 'plan_steps' || table === 'goal_ideas' || table === 'attachments' || table === 'goal_links' || table === 'goal_groups') && isMissingBreakdown(error.message))) throw new Error(`${table}: ${error.message}`);
+        if (error && !(CREATED_TABLES.has(table) && looksMissing(error.message))) throw new Error(`${table}: ${error.message}`);
       }
     },
   };

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore } from '../data/store.tsx';
+import { outboxKey, useStore } from '../data/store.tsx';
 import { opsProfile } from '../data/ops.ts';
 import { resetDemo } from '../data/local.ts';
 import { navigate } from '../router.ts';
@@ -56,7 +56,7 @@ function StartOver({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      localStorage.removeItem('six.outbox.v1'); // drop any unsaved changes so they don't come back
+      localStorage.removeItem(outboxKey(db.userId)); // drop any unsaved changes so they don't come back
       await db.wipeAll();
       window.location.hash = '#/';
       window.location.reload();
@@ -171,7 +171,7 @@ function ImportData({ onClose, onIdeasFile }: { onClose: () => void; onIdeasFile
     setBusy(true);
     setError(null);
     try {
-      localStorage.removeItem('six.outbox.v1'); // unsaved changes belong to the data being replaced
+      localStorage.removeItem(outboxKey(db.userId)); // unsaved changes belong to the data being replaced
       await db.importAll(file.data);
       window.location.hash = '#/';
       window.location.reload();
