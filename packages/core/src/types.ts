@@ -79,6 +79,8 @@ export interface Goal {
   target_date_at_set?: ISODate | null;
   prize_claimed_at?: string | null;
   prize_on_time_claimed_at?: string | null;
+  /** Hand-set position among its siblings (its group, or the loose goals) on the Goals page. Missing on older databases. */
+  sort_order?: number | null;
 }
 
 /** A named group of goals that work together, made by dragging one goal onto another (like a phone folder). */
@@ -94,6 +96,8 @@ export interface GoalGroup {
   /** The group's one-line week goal ("250 applications and prereqs done"), and the Monday it's for. */
   week_goal?: string;
   week_goal_for?: ISODate | null;
+  /** Hand-set position among groups on the Goals page. Missing on older databases. */
+  sort_order?: number | null;
 }
 
 export interface PlanGoal {

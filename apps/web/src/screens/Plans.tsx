@@ -13,7 +13,8 @@ import { href } from '../router.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { useGoalDrag } from '../components/goalDrag.ts';
 import { nextSeasonDates, seasonsOf } from '../data/season.ts';
-import { GroupRowsCard, LooseCard, SeasonHorizon, SeasonOutcomes, SeasonStats, dropHint, placeGoals } from './Season.tsx';
+import { GroupRowsCard, LooseCard, SeasonHorizon, SeasonOutcomes, SeasonStats, dropHint, placeGoals, type Placed } from './Season.tsx';
+import { byOrder, placeAmong } from '../data/order.ts';
 import { SeasonCardButton } from '../components/SeasonCard.tsx';
 import { SeasonStart } from '../components/SeasonStart.tsx';
 import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
@@ -87,9 +88,12 @@ export function Plans() {
   const season = selected === 'next' ? seasons.next : seasons.current;
   const inSeason = placed.filter((p) => p.season === selected || (!seasons.current && selected === 'current'));
   const others = placed.filter((p) => p.season === 'other');
-  const groups = data.groups.map((group) => ({ group, members: inSeason.filter((p) => p.card.goal.group_id === group.id) })).filter((g) => g.members.length > 0);
+  const orderPlaced = (ps: Placed[]) => byOrder(ps.map((p) => ({ id: p.card.goal.id, sort_order: p.card.goal.sort_order, p }))).map((x) => x.p);
+  const groups = byOrder(data.groups)
+    .map((group) => ({ group, members: orderPlaced(inSeason.filter((p) => p.card.goal.group_id === group.id)) }))
+    .filter((g) => g.members.length > 0);
   const grouped = new Set(groups.flatMap((g) => g.members.map((m) => m.card.goal.id)));
-  const loose = inSeason.filter((p) => !grouped.has(p.card.goal.id));
+  const loose = orderPlaced(inSeason.filter((p) => !grouped.has(p.card.goal.id)));
 
   const planNext = () => {
     if (!seasons.current) return;
@@ -101,7 +105,24 @@ export function Plans() {
 
   const dnd = useGoalDrag((d, target) => {
     const goal = d.goal;
-    const [kind, id] = target.split(':') as [string, string | undefined];
+    const [kind, id, side] = target.split(':') as [string, string | undefined, string | undefined];
+    if (kind === 'order' && id) {
+      // Put the goal above or below a sibling in its own container.
+      const siblings = (goal.group_id ? groups.find((g) => g.group.id === goal.group_id)?.members ?? [] : loose).map((p) => p.card.goal);
+      const at = siblings.findIndex((g) => g.id === id);
+      const beforeId = side === 'before' ? id : siblings[at + 1]?.id ?? null;
+      const ops = placeAmong('goals', siblings, goal.id, beforeId);
+      if (ops.length) commit(ops);
+      return;
+    }
+    if (kind === 'gorder' && id && d.group) {
+      const all = groups.map((g) => g.group);
+      const at = all.findIndex((g) => g.id === id);
+      const beforeId = side === 'before' ? id : all[at + 1]?.id ?? null;
+      const ops = placeAmong('groups', all, d.group.id, beforeId);
+      if (ops.length) commit(ops);
+      return;
+    }
     if (kind === 'already') {
       const plan = data.plans.find((x) => x.id === id);
       toast(`${d.group ? `${d.group.name}'s goals are` : `${goal.title} is`} already in ${plan?.id === seasons.current?.id ? 'this season' : plan?.id === seasons.next?.id ? 'next season' : plan?.name ?? 'that season'}`);

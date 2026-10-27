@@ -1,5 +1,6 @@
 import { addDays, daysBetween, isoWeekday, paceLabel, progressFor, quarterRange, shortDate, type Goal, type ISODate, type PaceLabel, type Plan } from '@six/core';
 import { fmt, type View } from './derive.ts';
+import { headlineTally, tallyUnit } from './tally.ts';
 
 /**
  * Seasons: the Goals page shows two six-month windows on one horizon. "This season" is the batch
@@ -93,6 +94,14 @@ export function goalTrack(view: View, goal: Goal, plan: Plan): Track {
     const ahead = units != null && Math.abs(units) >= 0.05 ? `${fmt(Math.abs(units))} ${goal.unit ?? ''} ${units > 0 ? 'ahead' : 'behind'}`.replace(/\s+/g, ' ') : null;
     return { prog, exp, now: latest != null ? `${fmt(latest)} ${goal.unit ?? ''}`.trim() : 'No readings yet', target, by, label, status: started && ahead ? ahead : word('Too early'), started };
   }
+  // A goal with a running total ("250 applications") is summed up by the total, not by milestones ticked.
+  const tally = headlineTally(view, goal.id, today);
+  if (tally && started) {
+    const { m, t } = tally;
+    const unit = tallyUnit(m);
+    const status = t.reached ? 'Done' : t.label === 'none' ? word('Too early') : `${t.left} to go${t.perDay && t.perDay > 0 ? ` · ${t.perDay}/day` : ''}`;
+    return { prog: clamp(t.share * 100), exp: clamp((t.expected / Math.max(1, t.target)) * 100), now: `${t.total} of ${t.target}${unit ? ` ${unit}` : ''}`, target: m.title, by: m.due_date > by ? by : m.due_date, label: t.reached ? 'ahead' : t.label, status, started };
+  }
   if (goal.type === 'finish') {
     const ms = view.data.milestones.filter((m) => m.goal_id === goal.id);
     const done = ms.filter((m) => m.completed_at).length;
@@ -184,4 +193,36 @@ export function groupTrack(view: View, groupId: string): GroupTrack {
   const avgProg = clamp(prog / n);
   const avgExp = clamp(exp / n);
   return { count: goals.length, done, prog: avgProg, exp: avgExp, label: anyStarted ? paceLabel(avgProg, avgExp) : 'none', by };
+}
+
+export type DayDot = 'done' | 'part' | 'missed' | 'due' | 'none';
+
+/**
+ * The last seven days of a goal's tasks, oldest first, as one dot each: done, partly done, missed
+ * (planned, day over, nothing logged), due (today, still open) or nothing planned. The thing on a
+ * goal's row that changes every day.
+ */
+export function weekDots(view: View, goalId: string, days = 7): { date: ISODate; state: DayDot }[] {
+  const today = view.today;
+  const actionIds = new Set(view.data.actionGoals.filter((ag) => ag.goal_id === goalId).map((ag) => ag.action_id));
+  const out: { date: ISODate; state: DayDot }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const date = addDays(today, -i);
+    const on = view.data.sessions.filter((s) => s.action_id && actionIds.has(s.action_id) && s.date === date && s.status !== 'moved');
+    let state: DayDot = 'none';
+    if (on.some((s) => s.status === 'done')) state = 'done';
+    else if (on.some((s) => s.status === 'partial' || s.status === 'minimum')) state = 'part';
+    else if (on.some((s) => s.status === 'planned')) state = date < today ? 'missed' : 'due';
+    else if (on.some((s) => s.status === 'skipped')) state = 'missed';
+    out.push({ date, state });
+  }
+  return out;
+}
+
+/** The next open date on a goal ("Mock interview · Nov 3"), soonest first, or null. */
+export function nextDue(view: View, goalId: string): { title: string; date: ISODate; late: boolean } | null {
+  const m = view.data.milestones
+    .filter((x) => x.goal_id === goalId && !x.completed_at)
+    .sort((a, b) => (a.due_date < b.due_date ? -1 : 1))[0];
+  return m ? { title: m.title, date: m.due_date, late: m.due_date < view.today } : null;
 }

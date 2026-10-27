@@ -6,7 +6,7 @@ import { CHAIN_LEVELS, catchUpPlan, chainFor, isSet, type Chain, type ChainLevel
 import type { AppData } from '../data/model.ts';
 import { goalPrizes } from '../data/prizes.ts';
 import { PrizeTag } from '../components/Prize.tsx';
-import { firstCheckpoint, goalTrack, groupSentence, groupTrack, nextCheckpoint, nextReviewWord, nextSeasonDates, type Seasons } from '../data/season.ts';
+import { firstCheckpoint, goalTrack, groupSentence, groupTrack, nextCheckpoint, nextDue, nextReviewWord, nextSeasonDates, weekDots, type Seasons } from '../data/season.ts';
 import { sharedTasksOf } from '../components/Connections.tsx';
 import type { DragApi, GoalDrag } from '../components/goalDrag.ts';
 import { href } from '../router.ts';
@@ -126,13 +126,19 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
   const ink = t.started ? STATUS_INK[t.label] ?? 'var(--ink-2)' : 'var(--muted)';
   const dragging = !!dnd?.drag && !dnd.drag.group && dnd.drag.goal.id === goal.id;
   const over = dnd?.drag?.target === `goal:${goal.id}`;
+  const insert = dnd?.drag?.target === `order:${goal.id}:before` ? ' insert-before' : dnd?.drag?.target === `order:${goal.id}:after` ? ' insert-after' : '';
   const due = shortDate(t.by);
+  const dots = t.started ? weekDots(view, goal.id) : [];
+  const next = nextDue(view, goal.id);
+  const pct = Math.round(t.prog);
   // The next prize still open on this goal: a date's, then the finish, then the bonus.
   const nextPrize = goalPrizes(view, goal, view.today, placed.plan).find((p) => (p.status === 'open' || p.status === 'due') && !p.lost) ?? null;
   return (
     <div
-      className={`season-row${dragging ? ' lifted' : ''}${over ? ' drop-on' : ''}`}
+      className={`season-row${dragging ? ' lifted' : ''}${over ? ' drop-on' : ''}${insert}`}
       data-drop={goal.group_id ? undefined : `goal:${goal.id}`}
+      data-row={goal.id}
+      data-container={goal.group_id ?? 'loose'}
       onPointerDown={(e) => {
         if (!dnd || (e.target as HTMLElement).closest('button')) return;
         dnd.start(e, { goal, group: null, goals: [goal] });
@@ -169,10 +175,24 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
               <span className="season-tick" style={{ left: `${t.exp}%` }} />
             </span>
             <span className="season-row-foot">
-              <span className="num">{t.now}</span>
+              <span className="num">
+                {t.now} <span className="muted" style={{ fontWeight: 500 }}>· {pct}%</span>
+              </span>
               <span className="muted">
                 {t.target} by {due}
               </span>
+            </span>
+            <span className="season-row-week">
+              <span className="week-dots" aria-label={`Last 7 days: ${dots.map((d) => d.state).join(', ')}`}>
+                {dots.map((d) => (
+                  <i key={d.date} className={d.state} style={d.state === 'done' || d.state === 'part' ? { background: goal.color } : undefined} />
+                ))}
+              </span>
+              {next && (
+                <span className="xsmall" style={{ color: next.late ? 'var(--amber-ink)' : 'var(--muted)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Next: {next.title} · {next.late ? 'was ' : ''}{shortDate(next.date)}
+                </span>
+              )}
             </span>
           </>
         ) : (
@@ -204,14 +224,24 @@ export function GroupRowsCard({ group, members, dnd, onMove, onMoveGroup }: { gr
   const shared = sharedTasksOf(view, members.map((m) => m.card.goal));
   const over = dnd?.drag?.target === `group:${group.id}`;
   const lifted = dnd?.drag?.group?.id === group.id;
+  const insert = dnd?.drag?.target === `gorder:${group.id}:before` ? ' insert-before' : dnd?.drag?.target === `gorder:${group.id}:after` ? ' insert-after' : '';
+  // The group's own colour: a wash of its goals' colours, so the tray reads as the container and the white rows as the goals.
+  const colors = members.map((m) => m.card.goal.color);
+  const stops = (colors.length > 1 ? colors : [colors[0] ?? '#5B8CFF', colors[0] ?? '#5B8CFF']).map((c, i, arr) => `${c} ${Math.round((i / (arr.length - 1)) * 100)}%`).join(', ');
   return (
-    <section className={`season-card${over ? ' drop-on' : ''}${lifted ? ' lifted' : ''}`} data-drop={`group:${group.id}`} aria-label={`Group: ${group.name}`}>
-      <div className="season-card-head">
+    <section
+      className={`season-card group-card${over ? ' drop-on' : ''}${lifted ? ' lifted' : ''}${insert}`}
+      data-drop={`group:${group.id}`}
+      data-gcard={group.id}
+      aria-label={`Group: ${group.name}`}
+      style={{ ['--group-gradient' as string]: `linear-gradient(100deg, ${stops})` }}
+    >
+      <div className="season-card-head group-head">
         {dnd && (
           <button
             type="button"
             className="season-grip"
-            aria-label={`Drag ${group.name} onto a season to move its goals. Or press to choose.`}
+            aria-label={`Drag ${group.name} above or below another group, or onto a season to move its goals. Or press to choose.`}
             onPointerDown={(e) => {
               e.stopPropagation();
               dnd.start(e, { goal: members[0]!.card.goal, group, goals: members.map((m) => m.card.goal) }, true);
@@ -517,6 +547,7 @@ export function WeekStrip({ actionId }: { actionId: string }) {
 
 /** What letting go would do, shown on the dragged card. */
 export function dropHint(d: GoalDrag): string {
+  if (d.target?.startsWith('order:') || d.target?.startsWith('gorder:')) return d.target.endsWith(':before') ? 'Move above' : 'Move below';
   if (d.target?.startsWith('already:')) return 'Already in this season';
   if (d.target?.startsWith('plan:')) return 'Move into this season';
   if (d.target === 'loose') return 'Take out of its group';

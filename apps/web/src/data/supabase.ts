@@ -40,6 +40,8 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261111000000_digests_and_experiments.sql', table: 'path_experiments', columns: [], creates: true },
   { file: '20261111000000_digests_and_experiments.sql', table: 'goal_groups', columns: ['week_goal', 'week_goal_for'] },
   { file: '20261112000000_tallies.sql', table: 'milestones', columns: ['count_action_id'] },
+  { file: '20261113000000_goal_order.sql', table: 'goals', columns: ['sort_order'] },
+  { file: '20261113000000_goal_order.sql', table: 'goal_groups', columns: ['sort_order'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */

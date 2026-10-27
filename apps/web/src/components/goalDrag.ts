@@ -21,6 +21,11 @@ export type DragWhat = Pick<GoalDrag, 'goal' | 'group' | 'goals'>;
  * data-drop: "goal:<id>", "group:<id>" and "loose" (for goals), "plan:<id>" (for goals
  * and groups). A batch line lists the goals already in it (data-goals), so dropping them there
  * again does nothing.
+ *
+ * Ordering: a goal row carries data-row="<goal id>" and data-container="<group id | loose>". Over a
+ * sibling in the same container, the top and bottom of the row are "order:<id>:before|after"; the
+ * middle of a loose row keeps its "group with" meaning. A group card carries data-gcard="<id>";
+ * a group dragged over another group's card gives "gorder:<id>:before|after".
  */
 export function useGoalDrag(onDrop: (d: GoalDrag, target: string) => void) {
   const [drag, setDrag] = useState<GoalDrag | null>(null);
@@ -32,7 +37,27 @@ export function useGoalDrag(onDrop: (d: GoalDrag, target: string) => void) {
   dropRef.current = onDrop;
 
   const targetAt = (x: number, y: number, what: DragWhat): string | null => {
-    const el = document.elementFromPoint(x, y)?.closest('[data-drop]') as HTMLElement | null;
+    const under = document.elementFromPoint(x, y);
+    // Reordering: a goal over a sibling row, or a group over another group's card.
+    if (what.group) {
+      const card = under?.closest('[data-gcard]') as HTMLElement | null;
+      const gid = card?.dataset.gcard;
+      if (card && gid && gid !== what.group.id) {
+        const box = card.getBoundingClientRect();
+        return `gorder:${gid}:${y < box.top + box.height / 2 ? 'before' : 'after'}`;
+      }
+    } else {
+      const row = under?.closest('[data-row]') as HTMLElement | null;
+      const rid = row?.dataset.row;
+      const mine = what.goal.group_id ?? 'loose';
+      if (row && rid && rid !== what.goal.id && row.dataset.container === mine) {
+        const box = row.getBoundingClientRect();
+        const frac = (y - box.top) / Math.max(1, box.height);
+        // In a group, the whole row reorders. Loose rows keep "group with" in the middle.
+        if (mine !== 'loose' || frac < 0.3 || frac > 0.7) return `order:${rid}:${frac < 0.5 ? 'before' : 'after'}`;
+      }
+    }
+    const el = under?.closest('[data-drop]') as HTMLElement | null;
     const t = el?.dataset.drop ?? null;
     if (!t) return null;
     if (t.startsWith('plan:')) {

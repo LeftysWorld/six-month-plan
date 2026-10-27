@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   currentTargets,
   daysBetween,
+  isTally,
   tallyText,
   weekStart,
   describeSchedule,
@@ -41,7 +42,7 @@ import { LogSheet } from './LogSheet.tsx';
 import { WorkoutPlanEditor, blankExercise } from '../components/Workout.tsx';
 import { goalTrack } from '../data/season.ts';
 import { opsRecordReading } from '../data/connect.ts';
-import { tallyFor } from '../data/tally.ts';
+import { tallyFor, tallyInWeek, tallyUnit } from '../data/tally.ts';
 import { TaskSheet, dateRange, daysOfWeek } from './TaskSheet.tsx';
 import { pathLetter, pathsOf } from '../data/paths.ts';
 
@@ -329,7 +330,7 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
   } else if (t.started && !isSet(chain.week)) {
     next = { label: 'Set this week’s goal', sub: `What should be true by ${shortDate(chain.week.node.end)}?`, run: onSetWeek };
   } else if (goal.type === 'finish') {
-    const m = data.milestones.filter((x) => x.goal_id === goal.id && !x.completed_at).sort((a, b) => (a.due_date < b.due_date ? -1 : 1))[0];
+    const m = data.milestones.filter((x) => x.goal_id === goal.id && !x.completed_at && !isTally(x)).sort((a, b) => (a.due_date < b.due_date ? -1 : 1))[0];
     if (m) next = { label: `Done: ${m.title}`, sub: `Due ${shortDate(m.due_date)}${m.due_date < today ? ' · past due' : ''}`, run: () => {
       commit(opsToggleMilestone(m));
       toast(`${m.title} done`, () => commit(opsToggleMilestone({ ...m, completed_at: new Date().toISOString() })));
@@ -535,6 +536,30 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
         {weekText ? <span className="week-goal-text">{weekText}</span> : <span className="week-goal-text muted">What should be true by {shortDate(week.end_date)}?</span>}
         <span className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{weekText ? 'Edit' : 'Set it'}</span>
       </button>
+      {data.milestones
+        .filter((m) => m.goal_id === goal.id && isTally(m) && !m.completed_at)
+        .map((m) => {
+          const t = tallyFor(view, m, today);
+          if (!t) return null;
+          const inWeek = tallyInWeek(data, m, week.start_date);
+          const unit = tallyUnit(m);
+          return (
+            <div key={m.id} className="week-row" style={{ gap: 4 }}>
+              <span className="row-between small">
+                <span>
+                  <b className="num">{t.total}</b> of {t.target}{unit ? ` ${unit}` : ''} <span className="muted">· +{inWeek} this week</span>
+                </span>
+                <span className="xsmall" style={{ color: t.label === 'behind' ? 'var(--amber-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>
+                  {t.perDay == null ? 'past due' : t.perDay === 0 ? 'done' : `${t.perDay}/day to land ${shortDate(m.due_date)}`}
+                </span>
+              </span>
+              <span className="tally-bar" aria-hidden="true">
+                <span style={{ width: `${Math.round(t.share * 100)}%`, background: goal.color }} />
+                {!t.reached && <i style={{ left: `${Math.min(100, Math.round((t.expected / t.target) * 100))}%` }} />}
+              </span>
+            </div>
+          );
+        })}
       {tasks.length === 0 && <span className="small muted week-row">No daily tasks this week yet.</span>}
       {comingUp.length > 0 && (
         <div className="week-row coming-up">

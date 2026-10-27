@@ -6,7 +6,7 @@ import { applyOp, type AppData, type Op } from './model.ts';
 import { opsEnsureWeek } from './ops.ts';
 import { opsMergeDuplicateMeasures } from './connect.ts';
 import { opsFillWorkoutPlans } from './breakdown.ts';
-import { opsSettleTallies } from './tally.ts';
+import { opsAutoLinkTallies, opsSettleTallies } from './tally.ts';
 
 export interface SyncState {
   /** Changes waiting to be saved. */
@@ -180,7 +180,8 @@ export function StoreProvider({ db, initial, children }: { db: Db; initial: AppD
   // A date that is a running total (250 applications) ticks itself off once the logs reach it.
   useEffect(() => {
     if (db.schemaWarning?.()) return;
-    const ops = opsSettleTallies(data);
+    const link = opsAutoLinkTallies(data);
+    const ops = [...link, ...opsSettleTallies(link.length ? link.reduce(applyOp, data) : data)];
     if (ops.length > 0) commit(ops);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.sessions, data.milestones]);
