@@ -20,6 +20,7 @@ import { opsAddIdea } from '../src/data/backlog.ts';
 import { opsAddPhotoTracker } from '../src/data/tracking.ts';
 import { blankHabit, opsCreateHabit } from '../src/data/habits.ts';
 import { opsSetGroupPrize } from '../src/data/prizes.ts';
+import { opsAddExperiment } from '../src/data/experiments.ts';
 // Goal colours (the same set as components/ui.tsx).
 const GOAL_COLORS = ['#5B8CFF', '#22B07D', '#FF7A45', '#E8559B', '#8B6CF6', '#3FB6C9'];
 
@@ -91,6 +92,9 @@ const pathCamp = { ...blankPath(data, TODAY), name: 'Glamping: build, sell, do i
     { id: crypto.randomUUID(), text: 'Which country would let me own and run a campground as a foreigner, and would we want to live there for the years it takes?', answer: '', answered_at: null },
   ] };
 run([...opsCreatePath(pathAI), ...opsCreatePath(pathDoc), ...opsCreatePath(pathCamp)]);
+// Two small experiments on Plan C: each answers one of its questions, each is one phone call or one evening of reading.
+run(opsAddExperiment(pathCamp.id, 'Find three small glamping sites that sold in the last two years and what they went for', '2026-12-06' as ISODate, pathCamp.questions[1]!.id, 'LoopNet / BizBuySell listings, plus one broker call').ops);
+run(opsAddExperiment(pathCamp.id, 'Call one owner of a 3–5 unit glamping site and ask about their second season', '2027-01-17' as ISODate, pathCamp.questions[0]!.id, 'Ask: occupancy, what they would not build again, hours a week on site').ops);
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
