@@ -33,6 +33,8 @@ Run in order; each is safe to run twice:
   start/finish and archives the clocks; flattens the backlog (selected → backlog, drops `prep`);
   drops `goal_groups.outcome`. **This one drops columns.** Take a backup (Settings → Export) first.
 - `20261109000000_odyssey_paths.sql` — the `paths` table, `goals.path_id`, `goal_ideas.path_id`.
+- `20261112000000_tallies.sql` — `milestones.count_action_id`: a date to hit that is a running total of a
+  count task's logs (`packages/core/src/tally.ts`, `apps/web/src/data/tally.ts`).
 
 ## Still open
 

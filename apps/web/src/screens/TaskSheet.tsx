@@ -391,8 +391,9 @@ export function TaskSheet({
           <button
             className="btn danger"
             onClick={() => {
+              const everLogged = data.sessions.some((s) => s.action_id === task.action.id && s.status !== 'planned' && s.status !== 'moved');
               commit(opsRemoveTask(data, task.action, from));
-              onSaved(`${task.action.title} removed from ${from === today ? 'today' : shortDate(from)} on`);
+              onSaved(everLogged ? `${task.action.title} removed from ${from === today ? 'today' : shortDate(from)} on. Days already logged keep their history.` : `${task.action.title} removed`);
             }}
           >
             {sharedWith.length > 0 ? 'Stop everywhere' : 'Remove'}

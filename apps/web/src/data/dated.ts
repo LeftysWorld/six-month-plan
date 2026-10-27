@@ -45,7 +45,7 @@ export function checkpointsOf(data: AppData, goal: Goal, weeksFrom: ISODate | nu
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
-export function opsUpdateMilestone(m: Milestone, patch: Partial<Pick<Milestone, 'title' | 'due_date' | 'completed_at' | 'value' | 'prize' | 'prize_claimed_at'>>): Op[] {
+export function opsUpdateMilestone(m: Milestone, patch: Partial<Pick<Milestone, 'title' | 'due_date' | 'completed_at' | 'value' | 'prize' | 'prize_claimed_at' | 'count_action_id'>>): Op[] {
   const clean: Record<string, unknown> = {};
   if (patch.title !== undefined && patch.title.trim() && patch.title.trim() !== m.title) clean.title = patch.title.trim();
   if (patch.due_date !== undefined && patch.due_date && patch.due_date !== m.due_date) clean.due_date = patch.due_date;
@@ -53,6 +53,7 @@ export function opsUpdateMilestone(m: Milestone, patch: Partial<Pick<Milestone, 
   if (patch.value !== undefined && (patch.value ?? null) !== (m.value ?? null)) clean.value = patch.value ?? null;
   if (patch.prize !== undefined && patch.prize.trim() !== (m.prize ?? '')) clean.prize = patch.prize.trim();
   if (patch.prize_claimed_at !== undefined && (patch.prize_claimed_at ?? null) !== (m.prize_claimed_at ?? null)) clean.prize_claimed_at = patch.prize_claimed_at ?? null;
+  if (patch.count_action_id !== undefined && (patch.count_action_id ?? null) !== (m.count_action_id ?? null)) clean.count_action_id = patch.count_action_id ?? null;
   return Object.keys(clean).length ? [{ kind: 'update', collection: 'milestones', id: m.id, patch: clean }] : [];
 }
 

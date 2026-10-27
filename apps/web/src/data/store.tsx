@@ -6,6 +6,7 @@ import { applyOp, type AppData, type Op } from './model.ts';
 import { opsEnsureWeek } from './ops.ts';
 import { opsMergeDuplicateMeasures } from './connect.ts';
 import { opsFillWorkoutPlans } from './breakdown.ts';
+import { opsSettleTallies } from './tally.ts';
 
 export interface SyncState {
   /** Changes waiting to be saved. */
@@ -175,6 +176,14 @@ export function StoreProvider({ db, initial, children }: { db: Db; initial: AppD
     // Only when the app opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A date that is a running total (250 applications) ticks itself off once the logs reach it.
+  useEffect(() => {
+    if (db.schemaWarning?.()) return;
+    const ops = opsSettleTallies(data);
+    if (ops.length > 0) commit(ops);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.sessions, data.milestones]);
 
   // Make sure this week's sessions exist (first open of the week, or a skipped review).
   useEffect(() => {

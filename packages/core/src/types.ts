@@ -144,6 +144,8 @@ export interface Milestone {
   /** The treat for hitting it ("a nice burr grinder"). Blank = none. */
   prize?: string;
   prize_claimed_at?: string | null;
+  /** A running total: the count task whose logs add up to `value` ("250 applications" from "Apply to 25 jobs"). Missing on older databases. */
+  count_action_id?: string | null;
 }
 
 export interface Action {

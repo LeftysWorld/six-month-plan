@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { evenSteps, shortDate, type Goal, type MeasurementType, type Plan } from '@six/core';
+import { evenSteps, shortDate, tallyText, type Goal, type MeasurementType, type Plan } from '@six/core';
+import { tallyFor } from '../data/tally.ts';
 import { findMeasure, measureLabel, measureOnToday } from '../data/connect.ts';
 import { daysText, opsAddPhotoTracker, opsStopPhotoTracker, photoTrackers } from '../data/tracking.ts';
 import { useStore } from '../data/store.tsx';
@@ -116,8 +117,24 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
               <div className="grow">
                 <div style={{ textDecoration: m.completed_at ? 'line-through' : undefined, color: m.completed_at ? 'var(--muted)' : undefined }}>
                   {m.title}
-                  {m.value != null ? <span className="muted"> · {fmt(m.value)} {goal.unit ?? ''}</span> : null}
+                  {m.value != null && !m.count_action_id ? <span className="muted"> · {fmt(m.value)} {goal.unit ?? ''}</span> : null}
                 </div>
+                {(() => {
+                  const t = tallyFor(view, m, today);
+                  if (!t) return null;
+                  return (
+                    <div className="stack-sm" style={{ gap: 4, marginTop: 4 }}>
+                      <span className="xsmall" style={{ color: t.label === 'behind' ? 'var(--amber-ink)' : 'var(--muted)' }}>
+                        {tallyText(t)}
+                        {!t.reached && t.label !== 'none' ? ` · ${t.label === 'behind' ? `behind (${t.expected} expected by now)` : t.label === 'ahead' ? 'ahead' : 'on track'}` : ''}
+                      </span>
+                      <span className="tally-bar" aria-hidden="true">
+                        <span style={{ width: `${Math.round(t.share * 100)}%`, background: goal.color }} />
+                        {!t.reached && <i style={{ left: `${Math.min(100, Math.round((t.expected / t.target) * 100))}%` }} />}
+                      </span>
+                    </div>
+                  );
+                })()}
                 <div className="xsmall muted">
                   {shortDate(m.due_date)}
                   {!m.completed_at && m.due_date < today ? ' · past due' : ''}

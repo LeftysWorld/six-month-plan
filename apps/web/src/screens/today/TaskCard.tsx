@@ -1,9 +1,10 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import type { Session } from '@six/core';
+import { shortDate, tallyText, type Session } from '@six/core';
 import { useStore } from '../../data/store.tsx';
 import { fmt, minutesText } from '../../data/derive.ts';
 import { useView } from '../../data/useView.ts';
 import { readingOn } from '../../data/connect.ts';
+import { talliesFor, tallyFor } from '../../data/tally.ts';
 import { Icon } from '../../components/ui.tsx';
 import { WorkoutCardPlan } from '../../components/Workout.tsx';
 
@@ -12,8 +13,10 @@ const SWIPE_DONE = 84;
 /** One task card: tap the round button to check it off, tap the card for the log sheet, swipe left to finish it. */
 export function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session; hint?: string | null; onToggle: () => void; onOpen: () => void; swipe: boolean }) {
   const view = useView();
-  const { data } = useStore();
+  const { data, today } = useStore();
   const action = view.action(session.action_id);
+  // A count task feeding a running total shows where the total stands ("182 of 250 by Dec 15").
+  const tally = session.action_id ? talliesFor(data, session.action_id).filter((m) => !m.completed_at).map((m) => ({ m, t: tallyFor(view, m, today) })).find((x) => x.t) : undefined;
   const goals = view.goalsForAction(session.action_id).filter((g) => !g.archived_at && !g.completed_at);
   const s = session;
   const [dx, setDx] = useState(0);
@@ -32,6 +35,8 @@ export function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: 
   if (hint && s.status === 'planned') meta = [hint, meta].filter(Boolean).join(' · ');
   const fileCount = data.attachments.filter((a) => a.session_id === s.id).length;
   if (fileCount > 0) meta = [meta, fileCount === 1 ? '1 file' : `${fileCount} files`].filter(Boolean).join(' · ');
+  if (tally?.t && s.status === 'planned') meta = [meta, `${tally.t.total} of ${tally.t.target} by ${shortDate(tally.m.due_date)}`].filter(Boolean).join(' · ');
+  if (tally?.t && s.status !== 'planned' && s.status !== 'skipped') meta = [meta, tallyText(tally.t)].filter(Boolean).join(' · ');
 
   const right =
     s.status === 'done' || s.status === 'partial' || s.status === 'minimum'

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   currentTargets,
   daysBetween,
+  tallyText,
   weekStart,
   describeSchedule,
   rangeLabel,
@@ -40,6 +41,7 @@ import { LogSheet } from './LogSheet.tsx';
 import { WorkoutPlanEditor, blankExercise } from '../components/Workout.tsx';
 import { goalTrack } from '../data/season.ts';
 import { opsRecordReading } from '../data/connect.ts';
+import { tallyFor } from '../data/tally.ts';
 import { TaskSheet, dateRange, daysOfWeek } from './TaskSheet.tsx';
 import { pathLetter, pathsOf } from '../data/paths.ts';
 
@@ -631,7 +633,10 @@ function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain
     .slice(0, 2);
   const lines: { key: string; name: string; text: string; when: string; status: { text: string; label: PaceLabel } | null; current: boolean; onClick?: () => void; edit: boolean }[] = [
     { key: 'week', name: 'This week', text: weekText, when: rangeLabel(week.node), status: weekStatus, current: true, onClick: () => onEdit('week'), edit: true },
-    ...upcoming.map((m) => ({ key: m.id, name: 'Date to hit', text: m.title, when: `by ${shortDate(m.due_date)}`, status: null, current: false, edit: false })),
+    ...upcoming.map((m) => {
+      const t = tallyFor(view, m, today);
+      return { key: m.id, name: t ? 'Running total' : 'Date to hit', text: m.title, when: `by ${shortDate(m.due_date)}`, status: t ? { text: tallyText(t), label: t.label } : null, current: false, edit: false };
+    }),
     {
       key: 'goal',
       name: 'Season',

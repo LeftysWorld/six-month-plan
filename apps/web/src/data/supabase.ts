@@ -39,6 +39,7 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261111000000_digests_and_experiments.sql', table: 'reviews', columns: ['digest', 'digest_sent_at'] },
   { file: '20261111000000_digests_and_experiments.sql', table: 'path_experiments', columns: [], creates: true },
   { file: '20261111000000_digests_and_experiments.sql', table: 'goal_groups', columns: ['week_goal', 'week_goal_for'] },
+  { file: '20261112000000_tallies.sql', table: 'milestones', columns: ['count_action_id'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */

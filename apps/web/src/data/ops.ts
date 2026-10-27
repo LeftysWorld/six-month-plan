@@ -381,8 +381,14 @@ export function opsReplacePath(data: AppData, goal: Goal, points: PathPoint[], t
   ];
 }
 
-export function opsAddMilestone(goalId: string, title: string, due: ISODate, extra: { value?: number | null; prize?: string } = {}): Op[] {
-  return [{ kind: 'insert', collection: 'milestones', rows: rows([{ id: newId(), goal_id: goalId, title: title.trim(), due_date: due, completed_at: null, value: extra.value ?? null, prize: extra.prize?.trim() ?? '', prize_claimed_at: null }]) }];
+export function opsAddMilestone(goalId: string, title: string, due: ISODate, extra: { value?: number | null; prize?: string; count_action_id?: string | null } = {}): Op[] {
+  return [
+    {
+      kind: 'insert',
+      collection: 'milestones',
+      rows: rows([{ id: newId(), goal_id: goalId, title: title.trim(), due_date: due, completed_at: null, value: extra.value ?? null, prize: extra.prize?.trim() ?? '', prize_claimed_at: null, count_action_id: extra.count_action_id ?? null }]),
+    },
+  ];
 }
 
 export function opsToggleMilestone(m: Milestone): Op[] {

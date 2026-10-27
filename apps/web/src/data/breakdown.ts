@@ -73,6 +73,13 @@ export function tasksInRange(data: AppData, goalId: string, range: DateRange, st
       .filter((s) => s.action_id === action.id && s.effective_from <= range.end && (s.effective_to == null || s.effective_to >= range.start))
       .sort((a, b) => (a.effective_from < b.effective_from ? 1 : -1))[0];
     if (!schedule) continue;
+    // A task stopped part-way through the range ("Remove" from Tuesday on) only stays listed if something was logged on it in the range.
+    if (
+      schedule.effective_to != null &&
+      schedule.effective_to < range.end &&
+      !data.sessions.some((x) => x.action_id === action.id && x.status !== 'planned' && x.status !== 'moved' && x.date != null && x.date >= range.start && x.date <= range.end)
+    )
+      continue;
     const step = action.step_id ? data.planSteps.find((s) => s.id === action.step_id) : undefined;
     const origin = action.step_id && action.step_id === stepId ? 'here' : step && step.goal_id !== goalId ? 'shared' : action.step_id ? 'carried' : 'ongoing';
     out.push({ action, schedule, origin });
@@ -296,6 +303,9 @@ export function opsEditTask(data: AppData, action: Action, input: TaskInput, fro
 export function opsRemoveTask(data: AppData, action: Action, from: ISODate): Op[] {
   const ops: Op[] = [];
   const all = data.schedules.filter((s) => s.action_id === action.id);
+  // Never logged: there is no history to keep, so the task goes entirely rather than lingering as "stopped yesterday".
+  const everLogged = data.sessions.some((s) => s.action_id === action.id && s.status !== 'planned' && s.status !== 'moved');
+  if (!everLogged && all.length) from = all.reduce((lo, s) => (s.effective_from < lo ? s.effective_from : lo), from);
   let remaining = 0;
   for (const s of all) {
     if (s.effective_to != null && s.effective_to < from) {

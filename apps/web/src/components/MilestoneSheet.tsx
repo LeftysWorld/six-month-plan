@@ -5,6 +5,8 @@ import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { opsAddMilestone } from '../data/ops.ts';
 import { opsDeleteMilestone, opsRestoreMilestone, opsUpdateMilestone } from '../data/dated.ts';
+import { countTasksFor, tallyFor } from '../data/tally.ts';
+import { tallyText } from '@six/core';
 import { navigate } from '../router.ts';
 import { Sheet, useToast } from './ui.tsx';
 
@@ -38,22 +40,26 @@ export function MilestoneSheet({
   const [done, setDone] = useState(!!milestone?.completed_at);
   const [value, setValue] = useState(milestone?.value != null ? String(milestone.value) : '');
   const [prize, setPrize] = useState(milestone?.prize ?? '');
+  const [countFrom, setCountFrom] = useState<string>(milestone?.count_action_id ?? '');
   const goal = view.goal(goalId);
+  const countTasks = goal ? countTasksFor(view, goal.id) : [];
+  const countTask = countTasks.find((a) => a.id === countFrom);
+  const tally = milestone && countTask ? tallyFor(view, { ...milestone, count_action_id: countFrom, value: value.trim() === '' ? null : Number(value) }, today) : null;
   const plan = goal ? view.planForGoal(goal) : null;
   const window = goal && plan ? view.plannedWindow(goal, plan) : null;
   const outside = !!window && (date < window.start || date > window.end);
   const numValue = value.trim() === '' ? null : Number(value);
-  const valid = !!goal && title.trim().length > 0 && !!date && !outside && (numValue == null || Number.isFinite(numValue));
+  const valid = !!goal && title.trim().length > 0 && !!date && !outside && (numValue == null || Number.isFinite(numValue)) && (!countFrom || (numValue != null && numValue > 0));
   const example = goal?.type === 'number' ? `e.g. ${goal.unit === 'lb' || goal.unit === 'kg' ? 'Weigh' : 'Reach'} ${goal.target_value ?? 200}${goal.unit ? ` ${goal.unit}` : ''}` : 'e.g. Class begins, Exam day, Module 3 done';
 
   function save() {
     if (!valid || !goal) return;
     if (!milestone) {
-      commit(opsAddMilestone(goal.id, title, date, { value: numValue, prize }));
+      commit(opsAddMilestone(goal.id, title, date, { value: numValue, prize, count_action_id: countFrom || null }));
       toast(`${title.trim()} added on ${shortDate(date)}. It shows on the roadmap, calendar and ${goal.title}.`);
     } else {
       const before = milestone;
-      const ops = opsUpdateMilestone(milestone, { title, due_date: date, completed_at: done ? milestone.completed_at ?? new Date().toISOString() : null, value: numValue, prize });
+      const ops = opsUpdateMilestone(milestone, { title, due_date: date, completed_at: done ? milestone.completed_at ?? new Date().toISOString() : null, value: numValue, prize, count_action_id: countFrom || null });
       if (ops.length) {
         commit(ops);
         toast(`${title.trim()} · ${shortDate(date)}`, () => commit(opsRestoreMilestone(data, before)));
@@ -97,11 +103,38 @@ export function MilestoneSheet({
           Date
           <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
         </label>
-        {goal?.type === 'number' && (
+        {goal?.type === 'number' && !countFrom && (
           <label className="field">
             The number that marks it hit{goal.unit ? ` (${goal.unit})` : ''} <span style={{ fontWeight: 400 }}>(optional)</span>
             <input type="number" step="any" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder={goal.target_value != null ? `e.g. ${goal.target_value}` : 'e.g. 184.2'} />
           </label>
+        )}
+        {goal && countTasks.length > 0 && (
+          <label className="field">
+            Count it up from a task <span style={{ fontWeight: 400 }}>(optional)</span>
+            <select value={countFrom} onChange={(e) => setCountFrom(e.target.value)}>
+              <option value="">No — it's a plain date</option>
+              {countTasks.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.title} ({a.planned_count ?? 1} each time)
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {goal && countFrom && (
+          <label className="field">
+            Total to reach
+            <input type="number" step="1" min="1" inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value)} placeholder="e.g. 250" />
+          </label>
+        )}
+        {countTask && numValue != null && numValue > 0 && (
+          <span className="xsmall muted">
+            Every time you log <b>{countTask.title}</b>, its count adds up. {tally ? `${tallyText(tally)}. ` : ''}The date ticks itself off when the total reaches {numValue}.
+          </span>
+        )}
+        {goal && countTasks.length === 0 && !milestone && goal.type !== 'number' && (
+          <span className="xsmall muted">To make this date a running total (250 applications, 500 miles), first give the goal a <b>Count</b> task; then pick it here.</span>
         )}
         <label className="field">
           Prize for hitting it <span style={{ fontWeight: 400 }}>(optional)</span>
