@@ -1019,7 +1019,7 @@ button.week-day:active { transform: scale(0.9); }
 .workout-ex-body { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
 .workout-up { font-size: 13px; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-ink); }
 .workout-sets { display: flex; flex-direction: column; gap: 6px; }
-.workout-set { display: grid; grid-template-columns: 26px minmax(0, 1fr) 68px 58px 44px; gap: 6px; align-items: center; border-radius: 10px; padding: 2px 4px; }
+.workout-set { display: grid; grid-template-columns: 26px minmax(0, 1fr) 68px 58px 44px 28px; gap: 6px; align-items: center; border-radius: 10px; padding: 2px 4px; }
 .workout-set.head { padding-top: 0; padding-bottom: 0; }
 .workout-set .input { text-align: center; padding-left: 4px; padding-right: 4px; min-height: 44px; font-size: 16px; }
 .workout-set .input::placeholder { color: var(--muted); opacity: 1; }
@@ -1029,7 +1029,8 @@ button.week-day:active { transform: scale(0.9); }
 .workout-prev:disabled { cursor: default; }
 .set-tick { width: 44px; height: 44px; border-radius: 12px; border: 1.5px solid var(--line); background: none; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .workout-cell { text-align: center; font-size: 16px; color: var(--ink-2); min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
-.workout-remove-set { grid-column: 2 / -1; justify-self: start; min-height: 28px; color: var(--muted); }
+.set-remove { grid-column: 6; width: 28px; height: 44px; border: 0; background: none; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 8px; }
+.set-remove:hover { color: var(--danger); background: var(--fill); }
 .set-tick.on { background: var(--accent); border-color: transparent; color: #fff; }
 .rest-bar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 14px; background: var(--sheet-bg, var(--surface)); border: 1px solid var(--line); box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.08); }
 .rest-time { display: block; font-size: 22px; }

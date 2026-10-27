@@ -546,9 +546,9 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
                               <Icon name="check" size={16} stroke={2.6} />
                             </button>
                             )}
-                            {k >= e.sets && !r.done && (
-                              <button type="button" className="link-btn xsmall workout-remove-set" onClick={() => removeSet(i, k)} aria-label={`Remove set ${k + 1}`}>
-                                Remove extra set
+                            {!future && !r.done && rows[i]!.length > 1 && (
+                              <button type="button" className="set-remove" onClick={() => removeSet(i, k)} aria-label={`Remove set ${k + 1}${k >= e.sets ? ' (extra)' : ''}`} title={k >= e.sets ? 'Remove this extra set' : 'Remove this set (didn’t do it)'}>
+                                <Icon name="x" size={14} stroke={2.4} />
                               </button>
                             )}
                           </div>
