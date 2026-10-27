@@ -68,7 +68,21 @@ const GONE: Record<string, Set<string>> = {
 /** Attachments point at files in storage that the SQL can't carry; they're left out. */
 
 const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
+/** Text columns that are `not null default ''`; an export may carry them as null. */
+const BLANK_TEXT: Record<string, Set<string>> = {
+  goals: new Set(['prize', 'prize_on_time', 'completion_note', 'reflection', 'why', 'done_means']),
+  milestones: new Set(['prize', 'title']),
+  goal_groups: new Set(['prize', 'week_goal']),
+  reviews: new Set(['digest', 'went_well', 'got_in_way', 'change_next', 'carry_forward']),
+  path_experiments: new Set(['note', 'result']),
+  paths: new Set(['headline', 'why']),
+  actions: new Set(['min_label', 'cue', 'details']),
+  goal_ideas: new Set(['note']),
+  sessions: new Set(['note']),
+  measurements: new Set(['note']),
+};
 function literal(table: string, col: string, v: unknown): string {
+  if ((v === null || v === undefined) && BLANK_TEXT[table]?.has(col)) return "''";
   if (v === null || v === undefined) return 'null';
   if (JSONB[table]?.has(col)) return `${q(JSON.stringify(v))}::jsonb`;
   if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'null';

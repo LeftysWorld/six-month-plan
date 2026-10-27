@@ -46,6 +46,29 @@ const GONE_GOAL_COLUMNS = ['after_goal_id'];
 const GONE_IDEA_COLUMNS = ['prep', 'selected_at'];
 const GONE_GROUP_COLUMNS = ['outcome'];
 
+/** Text columns that are `not null default ''`: an export may carry them as null, which the default doesn't cover. */
+const BLANK_TEXT: Record<string, string[]> = {
+  goals: ['prize', 'prize_on_time', 'completion_note', 'reflection', 'why', 'done_means'],
+  milestones: ['prize', 'title'],
+  goal_groups: ['prize', 'week_goal'],
+  reviews: ['digest', 'went_well', 'got_in_way', 'change_next', 'carry_forward'],
+  path_experiments: ['note', 'result'],
+  paths: ['headline', 'why'],
+  actions: ['min_label', 'cue', 'details'],
+  goal_ideas: ['note'],
+  sessions: ['note'],
+  measurements: ['note'],
+};
+
+/** Null → '' for the table's not-null text columns, so an export round-trips. */
+function blanks(table: string, row: Record<string, unknown>): Record<string, unknown> {
+  const cols = BLANK_TEXT[table];
+  if (!cols) return row;
+  const out = { ...row };
+  for (const c of cols) if (c in out && (out[c] === null || out[c] === undefined)) out[c] = '';
+  return out;
+}
+
 function without<T extends object>(row: T, keys: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = { ...(row as Record<string, unknown>) };
   for (const k of keys) delete out[k];
@@ -259,10 +282,10 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
 
     async importAll(incoming: AppData): Promise<void> {
       await this.wipeAll();
-      const strip = (rows: unknown[]) => (rows as Record<string, unknown>[]).map(({ user_id: _u, ...r }) => r);
+      const strip = (table: string, rows: unknown[]) => (rows as Record<string, unknown>[]).map(({ user_id: _u, ...r }) => blanks(table, r));
       const insert = async (table: string, rows: unknown[]) => {
         for (let i = 0; i < rows.length; i += 500) {
-          const { error } = await sb.from(table).insert(strip(rows.slice(i, i + 500)));
+          const { error } = await sb.from(table).insert(strip(table, rows.slice(i, i + 500)));
           if (error) throw new Error(`${table}: ${error.message}`);
         }
       };
