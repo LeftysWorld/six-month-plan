@@ -233,6 +233,14 @@ export function Plans() {
         <div className="season-main">
           <div className="only-narrow">{side}</div>
           {list}
+          <div className="row-start" style={{ gap: 8, alignItems: 'stretch' }}>
+            <div className="grow">
+              <IdeaAdd placeholder="Add a goal idea (it starts in your backlog)" after={(t) => toast(`${t} added to your backlog`)} />
+            </div>
+            <a className="btn" href={href('/goals/new')} style={{ flex: 'none' }}>
+              Make a goal
+            </a>
+          </div>
         </div>
         <aside className="season-aside only-wide" aria-label="This season at a glance">
           {side}
@@ -246,15 +254,6 @@ export function Plans() {
           {dnd.drag.target && <span className="drag-ghost-hint">{dropHint(dnd.drag)}</span>}
         </div>
       )}
-
-      <div className="row-start" style={{ gap: 8, alignItems: 'stretch' }}>
-        <div className="grow">
-          <IdeaAdd placeholder="Add a goal idea (it starts in your backlog)" after={(t) => toast(`${t} added to your backlog`)} />
-        </div>
-        <a className="btn" href={href('/goals/new')} style={{ flex: 'none' }}>
-          Make a goal
-        </a>
-      </div>
 
       {creating && (
         <Sheet title="New season" onClose={() => setCreating(false)}>

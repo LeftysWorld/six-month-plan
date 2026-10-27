@@ -888,12 +888,13 @@ input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-o
 .season-grip { width: 28px; height: 36px; flex: none; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: var(--faint); cursor: grab; border-radius: 10px; touch-action: none; }
 .season-grip:hover { color: var(--ink-2); background: var(--fill); }
 
-.season-row { position: relative; display: flex; align-items: flex-start; gap: 2px; padding: 4px 12px 4px 8px; border-top: 1px solid var(--line); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; transition: background 0.15s, opacity 0.15s; }
+.season-row { position: relative; display: flex; align-items: stretch; gap: 2px; padding: 4px 12px 4px 8px; border-top: 1px solid var(--line); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; transition: background 0.15s, opacity 0.15s; }
 .season-card-head + .season-row, .season-drop-hint + .season-row { border-top: 0; }
 .season-row:hover { background: var(--fill); }
 .season-row.lifted { opacity: 0.35; }
 .season-row.drop-on { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent-ink); }
-.season-row .season-grip { margin-top: 6px; }
+.season-row .season-grip { align-self: stretch; height: auto; min-height: 56px; width: 36px; margin: 6px 0; border-radius: 12px; }
+.season-row .season-grip:active { cursor: grabbing; background: var(--fill-strong); }
 .season-row-link { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 4px; color: var(--ink); text-decoration: none; }
 .season-row-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--faint); }
 .season-row-title { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1344,16 +1345,16 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .tally-bar > i { position: absolute; top: -3px; width: 2px; height: 12px; margin-left: -1px; background: var(--ink); opacity: 0.55; border-radius: 1px; }
 
 /* ---------- Goals page: groups as trays, goals as rows ---------- */
-/* A group card wears its goals' colours: a gradient band on the head and a faint wash behind the rows. */
-.group-card { --group-gradient: var(--gradient); background: var(--card); }
-.group-card .group-head { position: relative; background: var(--group-gradient); color: #fff; border-bottom: 0; padding-top: 10px; padding-bottom: 10px; }
-.group-card .group-head::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.04), rgba(0,0,0,0.18)); pointer-events: none; }
+/* A group card wears its goals' colours quietly: a thin band at full strength along the top, a light wash behind the head, ink text. */
+.group-card { --group-gradient: var(--gradient); background: var(--card); position: relative; }
+.group-card::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--group-gradient); z-index: 1; }
+.group-card .group-head { position: relative; border-bottom: 1px solid var(--line); padding-top: 12px; padding-bottom: 8px; }
+.group-card .group-head::before { content: ''; position: absolute; inset: 0; background: var(--group-gradient); opacity: 0.11; pointer-events: none; }
 .group-card .group-head > * { position: relative; z-index: 1; }
-.group-card .group-head .season-card-title, .group-card .group-head .season-card-title b, .group-card .group-head .season-open { color: #fff; }
-.group-card .group-head .xsmall.muted { color: rgba(255,255,255,0.82); }
-.group-card .group-head .season-grip { color: rgba(255,255,255,0.85); }
-.group-card .group-head .season-grip:hover { background: rgba(255,255,255,0.18); color: #fff; }
-.group-card .group-rollup { background: color-mix(in srgb, var(--card) 86%, transparent); border-bottom: 1px solid var(--line); }
+.group-head .season-grip { width: 36px; height: 44px; }
+.group-card .group-rollup { background: color-mix(in srgb, var(--card) 70%, transparent); position: relative; }
+.group-card .group-rollup::before { content: ''; position: absolute; inset: 0; background: var(--group-gradient); opacity: 0.045; pointer-events: none; }
+.group-card .group-rollup > * { position: relative; }
 .group-card > .season-row { margin: 0 8px; border-top: 1px solid var(--line); }
 .group-card > .season-row:last-child { margin-bottom: 8px; }
 .season-card.drop-on .group-head { opacity: 0.6; }
@@ -1375,3 +1376,61 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .week-dots i.part { opacity: 0.45; }
 .week-dots i.missed { background: var(--amber-bar); }
 .week-dots i.due { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink-2); }
+
+/* ---------- Goals page: the season header ---------- */
+.season-hz { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px 14px; }
+.season-hz-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.hz-title { font-family: var(--display); font-size: 22px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hz-gear { flex: none; width: 36px; height: 36px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.hz-gear:hover { color: var(--ink); border-color: var(--border-strong); }
+.hz-line { position: relative; height: 40px; margin-top: 4px; }
+.hz-bar { position: absolute; top: 14px; height: 12px; border: 0; padding: 0; cursor: pointer; background: var(--track); overflow: hidden; transition: background 0.15s, outline-color 0.15s; }
+.hz-bar.current { border-radius: 6px 0 0 6px; }
+.hz-bar.next { border-radius: 0 6px 6px 0; }
+.hz-bar.on { background: var(--fill-strong); box-shadow: inset 0 0 0 1.5px var(--border-strong); }
+.hz-bar.empty { background: transparent; border: 1.5px dashed var(--border-strong); }
+.hz-bar.empty.on { border-color: var(--ink); }
+.hz-bar.drop-on { outline: 3px solid var(--accent-ink); outline-offset: 3px; }
+.hz-elapsed { position: absolute; left: 0; top: 0; bottom: 0; background: var(--gradient); border-radius: 6px 0 0 6px; }
+.hz-today { position: absolute; top: 6px; width: 2px; height: 28px; margin-left: -1px; border-radius: 1px; background: var(--ink); pointer-events: none; }
+.hz-today-label { position: absolute; top: -6px; transform: translateX(-50%); font-size: 10px; color: var(--ink); pointer-events: none; }
+.hz-cp { position: absolute; top: 16px; width: 9px; height: 9px; margin-left: -4.5px; transform: rotate(45deg); background: var(--surface); border: 1.5px solid var(--ink); pointer-events: none; }
+.hz-end { position: absolute; top: 31px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 2px var(--card); }
+.hz-dates { position: relative; display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); height: 14px; margin-top: -2px; }
+.hz-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--fill); border-radius: 16px; padding: 4px; }
+.hz-tab { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 52px; padding: 8px 12px; border: 0; border-radius: 12px; background: none; color: var(--muted); font: inherit; text-align: left; cursor: pointer; transition: background 0.2s var(--ease), color 0.2s; }
+.hz-tab b { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.hz-tab .xsmall { color: inherit; opacity: 0.85; }
+.hz-tab.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow-1); }
+.hz-voice { margin: 2px 0 0; color: var(--ink-2); font-style: italic; line-height: 1.45; }
+
+/* ---------- The season card: the commitment on one page ---------- */
+.scard { position: relative; display: flex; flex-direction: column; gap: 14px; padding: 18px 18px 16px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); overflow: hidden; }
+.scard-band { position: absolute; left: 0; right: 0; top: 0; height: 5px; }
+.scard-head { display: flex; flex-direction: column; gap: 3px; padding-top: 2px; }
+.scard-title { margin: 0; font-family: var(--display); font-size: 24px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; }
+.scard-count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.scard-section { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.scard-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.scard-section-name { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.scard-goal { display: flex; flex-direction: column; gap: 6px; }
+.scard-goal-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.scard-goal-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; flex: 1; min-width: 0; }
+.scard-path { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.scard-goal-body { display: flex; flex-direction: column; gap: 4px; padding-left: 18px; }
+.scard-line { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; font-size: 13.5px; line-height: 1.4; }
+.scard-k { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding-top: 3px; }
+.scard-v { min-width: 0; color: var(--ink); }
+.scard-why { font-style: italic; color: var(--ink-2); }
+.scard-dates { display: flex; flex-direction: column; gap: 2px; }
+.scard-date { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.scard-date i { font-style: normal; font-size: 10px; color: var(--ink-2); }
+.scard-date.done { color: var(--muted); }
+.scard-date.done span { text-decoration: line-through; }
+.scard-date.late { color: var(--amber-ink); }
+.scard-prize { display: inline-flex; align-items: center; gap: 5px; color: var(--ink); }
+.scard-foot { margin-top: 2px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink-2); font-style: italic; line-height: 1.45; }
+@media print {
+  .scard { border: 0; padding: 0; }
+  .no-print { display: none !important; }
+}
