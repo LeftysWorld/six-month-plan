@@ -19,6 +19,7 @@ import { ReviewHub } from './screens/ReviewHub.tsx';
 import { Review } from './screens/Review.tsx';
 import { ReviewDetail, ReviewList } from './screens/ReviewPast.tsx';
 import { ThenNow } from './screens/ThenNow.tsx';
+import { PhotoTimeline } from './screens/PhotoTimeline.tsx';
 import { Progress } from './screens/Progress.tsx';
 import { Settings } from './screens/Settings.tsx';
 import { setAppBadge } from './push.ts';
@@ -185,6 +186,7 @@ function Shell(props: ShellProps) {
       else if (s0 === 'goals' && s1 === 'backlog') screen = <Backlog />;
       else if (s0 === 'goals' && s1 === 'completed') screen = <Completed />;
       else if (s0 === 'goals' && s1 === 'group' && s2) screen = <GroupPage id={s2} />;
+      else if (s0 === 'goals' && s1 && s2 === 'photos') screen = <PhotoTimeline goalId={s1} />;
       else if (s0 === 'goals' && s1) screen = <Flow goalId={s1} />;
       else screen = <Plans />;
       break;

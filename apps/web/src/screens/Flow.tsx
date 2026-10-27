@@ -21,6 +21,7 @@ import { useView } from '../data/useView.ts';
 import { catchUpPlan, chainFor, isSet, opsAddExtra, opsEnsureStep, periodStatus, opsSetLevel, stepFor, type Chain, type ChainLevel } from '../data/chain.ts';
 import { GoalExtras, GoalManage, GoalRecord, WhyLine } from './GoalDetail.tsx';
 import { GoalPrizes } from '../components/Prize.tsx';
+import { PaceLine } from '../components/PaceLine.tsx';
 import { GoalGroupCard } from '../components/Connections.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
@@ -455,6 +456,7 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
       </span>
       {fix && !fix.extra && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>{fix.text}</span>}
       {goal.type === 'finish' && <ForecastLine goal={goal} plan={plan} by={t.by} />}
+      {goal.type === 'number' && <PaceLine goal={goal} plan={plan} onWeek={onSetWeek} />}
       {chart}
     </section>
   );

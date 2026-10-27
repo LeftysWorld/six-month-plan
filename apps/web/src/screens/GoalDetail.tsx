@@ -318,7 +318,7 @@ export function GoalRecord({ goal }: { goal: Goal }) {
       )}
 
       {msEditing && <MilestoneSheet milestone={msEditing} onClose={() => setEditingMs(null)} />}
-      <GoalFiles actionIds={actionIds} />
+      <GoalFiles actionIds={actionIds} goalId={goal.id} />
       <Measurements goal={goal} types={types} onAdd={(msg) => toast(/^(Stopped|Already|Renamed|Showing|Hidden)/.test(msg) ? msg : `Added ${msg}`)} />
     </>
   );

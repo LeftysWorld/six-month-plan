@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Session } from '@six/core';
 import { useStore } from '../../data/store.tsx';
+import { href } from '../../router.ts';
 import { fmt } from '../../data/derive.ts';
 import { useView } from '../../data/useView.ts';
 import { opsLogSession, opsRestoreSession } from '../../data/ops.ts';
@@ -132,7 +133,13 @@ export function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
             <span className="dot" style={{ background: goal?.color ?? 'var(--muted)' }} />
             <span className="grow" style={{ minWidth: 0 }}>
               <span className="today-number-name">{s.title}</span>
-              {goal && <span className="xsmall muted today-number-goal">{goal.title}</span>}
+              {goal && (
+                <span className="xsmall muted today-number-goal">
+                  {goal.title}
+                  {' · '}
+                  <a href={href(`/goals/${goal.id}/photos`)}>timeline</a>
+                </span>
+              )}
             </span>
             {files.slice(-2).map((f) => (
               <span key={f.id} className="today-photo">

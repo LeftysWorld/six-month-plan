@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { dateIn, shortDate, type Attachment, type Session } from '@six/core';
 import { useStore } from '../data/store.tsx';
+import { href } from '../router.ts';
 import { opsAddAttachment, opsRemoveAttachment } from '../data/ops.ts';
 import { Icon, useToast } from './ui.tsx';
 
@@ -171,7 +172,7 @@ export function SessionFiles({ session, title = 'Photos and files', accept, cta 
 }
 
 /** Every photo and file on a goal's tasks, newest first, labelled with the day it was logged. */
-export function GoalFiles({ actionIds }: { actionIds: Set<string> }) {
+export function GoalFiles({ actionIds, goalId }: { actionIds: Set<string>; goalId?: string }) {
   const { data } = useStore();
   const [all, setAll] = useState(false);
   const sessions = new Map(data.sessions.map((s) => [s.id, s]));
@@ -185,7 +186,14 @@ export function GoalFiles({ actionIds }: { actionIds: Set<string> }) {
     <div className="card stack-sm">
       <div className="row-between">
         <span className="label">Photos and files</span>
-        <span className="small muted">{files.length}</span>
+        <span className="row-start" style={{ gap: 10 }}>
+          {goalId && files.some((f) => isImage(f.file.mime_type)) && (
+            <a className="link-btn small" href={href(`/goals/${goalId}/photos`)}>
+              Timeline ›
+            </a>
+          )}
+          <span className="small muted">{files.length}</span>
+        </span>
       </div>
       <div className="file-grid">
         {shown.map(({ file, day }) => (
