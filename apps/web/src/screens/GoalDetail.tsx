@@ -91,6 +91,7 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
             today={today}
             unit={goal.unit ?? ''}
             color={goal.color}
+            initial={30}
           />
         </div>
       )}

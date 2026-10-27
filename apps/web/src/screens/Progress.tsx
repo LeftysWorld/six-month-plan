@@ -74,6 +74,7 @@ function Body({ plan }: { plan: Plan }) {
               today={today}
               unit={g.unit ?? ''}
               color={g.color}
+              controls={false}
             />
             <WorkoutsBars range={ranges[range]!} />
             <span className="xsmall muted">Same dates on both charts, so weeks line up. It shows a pattern, not proof.</span>

@@ -179,7 +179,7 @@ export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: 
                     {fmt((target! - baseline) / Math.max(1, path.length))} {unit} every {Math.round(season.block_days / 7)} weeks
                   </span>
                 </div>
-                <WeightChart start={{ date: from, value: baseline }} path={path} readings={[]} range={{ start: from, end: targetDate }} today={today} unit={unit} color={color} />
+                <WeightChart start={{ date: from, value: baseline }} path={path} readings={[]} range={{ start: from, end: targetDate }} today={today} unit={unit} color={color} controls={false} />
                 <div className="grid-3">
                   {path.map((p, i) => (
                     <NumberInput key={p.date} label={i === path.length - 1 ? `Goal · ${p.date.slice(5)}` : `Checkpoint ${i + 1} · ${p.date.slice(5)}`} value={p.value} onChange={(v) => v != null && setEdits({ ...edits, [p.date]: v })} />
