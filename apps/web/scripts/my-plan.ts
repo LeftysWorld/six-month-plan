@@ -39,6 +39,7 @@ const JHU_PREREQS_DONE = '2026-11-13' as ISODate;
 const JHU_STARTS = '2026-11-14' as ISODate;
 const JHU_ENDS = addDays(JHU_STARTS, 22 * 7 - 1); // 22 weeks → 2027-04-16
 const AIGP_EXAM = '2027-01-29' as ISODate;
+const JHU_PREREQS_START = '2026-11-01' as ISODate;
 const AIGP_STUDY_STARTS = '2026-12-01' as ISODate; // no AIGP study before December 1
 const DOC_COURSE_STARTS = '2026-11-02' as ISODate; // choose and buy the course this week, start it next Monday
 const ISO_COURSE_STARTS = '2027-02-15' as ISODate;
@@ -126,8 +127,8 @@ const jhu = goal(
     doneMeans: 'Certificate earned: prerequisites done by Nov 13, all 22 weeks of coursework submitted',
     finish: JHU_ENDS,
     pathId: pathAI.id,
-    weekGoal: 'Prerequisites: first half done',
-    task: { title: 'JHU prerequisites', days: [1, 2, 3, 4, 5, 6], minutes: 60 },
+    weekGoal: 'Materials and plan ready; prerequisite work starts Nov 1',
+    task: null,
     milestones: [
       { title: 'Prerequisites done', due_date: JHU_PREREQS_DONE },
       { title: 'Course starts', due_date: JHU_STARTS },
@@ -140,13 +141,11 @@ const jhu = goal(
   },
   GOAL_COLORS[0]!,
 );
-// The prerequisites end the day before class; coursework is 10 hours a week from then on.
-{
-  const prereq = data.actions.find((a) => a.title === 'JHU prerequisites')!;
-  const sched = data.schedules.find((s) => s.action_id === prereq.id)!;
-  run([{ kind: 'update', collection: 'schedules', id: sched.id, patch: { effective_to: JHU_PREREQS_DONE } }]);
-}
-tasks(jhu, [{ title: 'JHU coursework', kind: 'minutes', minutes: 120, days: [1, 2, 3, 4, 5], start: JHU_STARTS, through: JHU_ENDS, cue: 'Mornings, before applications' }]);
+// Prerequisite work runs Nov 1 to the day before class; coursework is 10 hours a week from then on.
+tasks(jhu, [
+  { title: 'JHU prerequisites', kind: 'minutes', minutes: 60, days: [1, 2, 3, 4, 5, 6], start: JHU_PREREQS_START, through: JHU_PREREQS_DONE },
+  { title: 'JHU coursework', kind: 'minutes', minutes: 120, days: [1, 2, 3, 4, 5], start: JHU_STARTS, through: JHU_ENDS, cue: 'Mornings, before applications' },
+]);
 
 const aigp = goal(
   {
