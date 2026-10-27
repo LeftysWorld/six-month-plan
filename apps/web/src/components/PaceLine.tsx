@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { daysBetween, projectNumberGoal, shortDate, type Goal, type ISODate, type Plan } from '@six/core';
+import { currentTargets, daysBetween, projectNumberGoal, shortDate, suggestPath, type Goal, type ISODate, type Plan } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { fmt } from '../data/derive.ts';
-import { opsRestoreDates, opsSetGoalDates } from '../data/dates.ts';
+import { opsReplacePath } from '../data/ops.ts';
+import type { Op } from '../data/model.ts';
 import { useToast } from './ui.tsx';
 
 /**
@@ -13,15 +14,15 @@ import { useToast } from './ui.tsx';
  * what you do. The number is never left for you to interpret.
  */
 export function PaceLine({ goal, plan, onWeek }: { goal: Goal; plan: Plan; onWeek: () => void }) {
-  const { today, commit } = useStore();
+  const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
   const [moving, setMoving] = useState(false);
   if (goal.type !== 'number' || goal.target_value == null) return null;
   const pace = view.goalPace(goal, plan).number;
   const readings = view.measurementsFor(goal.measurement_type_id);
-  const proj = projectNumberGoal(goal, readings, today);
   const by = goal.target_date ?? plan.end_date;
+  const proj = projectNumberGoal({ target_value: goal.target_value, target_date: by }, readings, today);
   const unit = goal.unit ?? '';
   if (!pace || pace.trend == null) return null;
 
@@ -54,11 +55,22 @@ export function PaceLine({ goal, plan, onWeek }: { goal: Goal; plan: Plan; onWee
             <button
               className="btn small"
               onClick={() => {
+                // A number goal finishes where its path does: redraw the path from where you are
+                // today to the target on the projected day, and move the goal's date with it.
                 setMoving(true);
-                const r = opsSetGoalDates(view, goal, plan, { start: view.startFor(goal, plan), end: proj.eta as ISODate }, today, 'start');
-                if (!r.ops.length) return setMoving(false);
-                commit(r.ops);
-                toast(`Finish moved to ${shortDate(r.end)}${bonusFixed ? ` · the on-time bonus still judges against ${shortDate(goal.target_date_at_set ?? by)}` : ''}`, () => commit(opsRestoreDates(goal, r.logId)));
+                const eta = proj.eta as ISODate;
+                const from = pace.trend ?? pace.latest ?? pace.start.value;
+                const points = suggestPath(from, goal.target_value!, today, eta, plan.block_days);
+                const replace = opsReplacePath(data, goal, points, today);
+                const oldIds = currentTargets(data.goalTargets, goal.id).map((t) => t.id);
+                const inserted = replace.flatMap((op) => (op.kind === 'insert' && op.collection === 'goalTargets' ? op.rows.map((r) => r.id) : []));
+                commit([...replace, { kind: 'update', collection: 'goals', id: goal.id, patch: { target_date: eta } }]);
+                const undo: Op[] = [
+                  ...inserted.map((id): Op => ({ kind: 'delete', collection: 'goalTargets', id })),
+                  ...oldIds.map((id): Op => ({ kind: 'update', collection: 'goalTargets', id, patch: { superseded_at: null } })),
+                  { kind: 'update', collection: 'goals', id: goal.id, patch: { target_date: goal.target_date ?? null } },
+                ];
+                toast(`Finish moved to ${shortDate(eta)}; the path now runs from ${fmt(from)} to ${fmt(goal.target_value!)}${bonusFixed ? ` · the on-time bonus still judges against ${shortDate(goal.target_date_at_set ?? by)}` : ''}`, () => commit(undo));
                 setMoving(false);
               }}
             >

@@ -69,7 +69,10 @@ export function PhotoTimeline({ goalId }: { goalId: string }) {
   const [compare, setCompare] = useState<number | null>(shots.length > 1 ? 0 : null);
   const [saving, setSaving] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => setAt(Math.max(0, shots.length - 1)), [shots.length]);
+  useEffect(() => {
+    setAt(Math.max(0, shots.length - 1));
+    setCompare((c) => (c != null && c >= shots.length ? (shots.length > 1 ? 0 : null) : c));
+  }, [shots.length]);
 
   if (!goal) return <Empty title="Goal not found." />;
   const unit = goal.unit ?? '';

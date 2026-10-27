@@ -129,7 +129,7 @@ function morningPayload(sessions: SessionRow[], date: string): Payload {
 }
 
 function reviewPayload(date: string): Payload {
-  return { title: 'Two minutes to review', body: 'Your week in a few lines, then next week’s plan.', url: '/#/review/weekly', tag: `review-${date}` };
+  return { title: 'Two minutes to review', body: 'Your week in a few lines, then next week’s plan.', url: '/#/review/run?kind=weekly', tag: `review-${date}` };
 }
 
 function eveningPayload(date: string): Payload {

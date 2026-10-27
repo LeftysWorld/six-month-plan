@@ -21,3 +21,11 @@ test('no eta when the trend points the wrong way or there is too little data', (
   assert.equal(up.eta, null);
   assert.ok(up.ratePerWeek! > 0);
 });
+
+test('the eta counts from the last reading, not from today', () => {
+  const goal = { target_value: 155, target_date: '2027-04-26' };
+  const readings = [r('2026-11-02', 194), r('2026-11-09', 193), r('2026-11-16', 192), r('2026-11-20', 191)];
+  const fresh = projectNumberGoal(goal, readings, '2026-11-20');
+  const stale = projectNumberGoal(goal, readings, '2026-11-25');
+  assert.equal(fresh.eta, stale.eta);
+});

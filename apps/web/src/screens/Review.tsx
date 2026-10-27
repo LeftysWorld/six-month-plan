@@ -216,7 +216,7 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
   const trend = trendPlan && (isWeekly || kind === 'block') ? planTrend(data, trendPlan, lastMonday, today) : trendFor(data, lastMonday, trendWeeks, today, trendPlan ? firstPlanWeek(trendPlan) : undefined);
   const lines = goalLines(data, view, goals, planOf, kind, period);
   // The week in a few plain lines: shown at the top, copied or mailed to a partner, stored with the review.
-  const digest = isWeekly && trendPlan ? weeklyDigest(data, view, trendPlan, period.start) : null;
+  const digest = isWeekly && trendPlan ? weeklyDigest(data, view, trendPlan, period.start, goals) : null;
 
   // ---- Next week (weekly only) ----
   const existingNext = useMemo(() => data.sessions.filter((s) => s.week_start === nextMonday && s.status !== 'moved'), [data.sessions, nextMonday]);

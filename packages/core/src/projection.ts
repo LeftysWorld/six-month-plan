@@ -33,13 +33,15 @@ export function projectNumberGoal(goal: Pick<Goal, 'target_value' | 'target_date
   const sxx = pts.reduce((s, p) => s + (p.x - mx) ** 2, 0);
   const slope = sxx ? pts.reduce((s, p) => s + (p.x - mx) * (p.y - my), 0) / sxx : 0;
   const ratePerWeek = Math.round(slope * 7 * 100) / 100;
-  const latest = pts[pts.length - 1]!.y;
+  const last = pts[pts.length - 1]!;
+  const latest = last.y;
+  const latestDate = addDays(from, last.x);
   const remaining = goal.target_value - latest;
   if (Math.abs(slope) < 1e-6 || Math.sign(remaining) !== Math.sign(slope) || Math.abs(remaining) < 1e-9) {
     return { ratePerWeek, eta: Math.abs(remaining) < 1e-9 ? today : null, daysOff: null, points: n };
   }
   const days = Math.ceil(remaining / slope);
-  const eta = addDays(today, Math.min(days, 3650));
+  const eta = addDays(latestDate, Math.min(days, 3650));
   const daysOff = goal.target_date ? daysBetween(goal.target_date, eta) : null;
   return { ratePerWeek, eta, daysOff, points: n };
 }

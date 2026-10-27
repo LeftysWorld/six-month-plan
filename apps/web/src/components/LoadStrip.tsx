@@ -2,6 +2,8 @@ import { addDays, shortDate, weekStart, type ISODate, type Plan } from '@six/cor
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { minutesText } from '../data/derive.ts';
+import { actionLookup } from '../data/insights.ts';
+import { minutesDone } from '@six/core';
 
 /**
  * Load, not just dates: under the roadmap, one bar per week of planned minutes against the time
@@ -12,6 +14,7 @@ export function LoadStrip({ plan, lo, hi }: { plan: Plan; lo: ISODate; hi: ISODa
   const { data, today } = useStore();
   const view = useView();
   const available = data.profile.available_minutes.reduce((a, b) => a + b, 0);
+  const lookup = actionLookup(data);
   const weeks: { monday: ISODate; planned: number; done: number; past: boolean }[] = [];
   const first = weekStart(lo > plan.start_date ? lo : plan.start_date);
   const last = hi < plan.end_date ? hi : plan.end_date;
@@ -20,7 +23,7 @@ export function LoadStrip({ plan, lo, hi }: { plan: Plan; lo: ISODate; hi: ISODa
     const end = addDays(monday, 6);
     const inWeek = projected.filter((s) => (s.date ? s.date >= monday && s.date <= end : s.week_start === monday) && s.status !== 'moved');
     const planned = inWeek.filter((s) => s.status !== 'skipped').reduce((sum, s) => sum + s.planned_minutes, 0);
-    const done = inWeek.filter((s) => s.status === 'done' || s.status === 'partial' || s.status === 'minimum').reduce((sum, s) => sum + (s.actual_minutes ?? s.planned_minutes), 0);
+    const done = inWeek.reduce((sum, s) => sum + minutesDone(s, lookup(s.action_id)), 0);
     weeks.push({ monday, planned, done, past: end < today });
   }
   if (weeks.length === 0) return null;

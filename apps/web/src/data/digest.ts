@@ -39,7 +39,7 @@ export function goalLine(view: View, goal: Goal, plan: Plan, week: DateRange): s
     const parts = [`${goal.title}: ${t.now}`];
     if (change != null && Math.abs(change) >= 0.05) parts.push(`${change > 0 ? '+' : '−'}${fmt(Math.abs(change))} this week`);
     parts.push(t.status.toLowerCase());
-    if (proj.eta && goal.target_date) parts.push(proj.daysOff != null && proj.daysOff > 7 ? `at this rate, there ${shortDate(proj.eta)} (${Math.round(proj.daysOff / 7)} wk late)` : `on course for ${shortDate(goal.target_date)}`);
+    if (proj.eta && goal.target_date) parts.push(proj.daysOff != null && proj.daysOff > 7 ? `at this rate you get there ${shortDate(proj.eta)} (${Math.round(proj.daysOff / 7)} wk late)` : `on course for ${shortDate(goal.target_date)}`);
     const next = nextValuedPrize(view, goal);
     if (next?.value != null && t.now !== 'No readings yet') {
       const latest = readings.filter((r) => r.measured_on <= view.today).at(-1);
@@ -51,11 +51,12 @@ export function goalLine(view: View, goal: Goal, plan: Plan, week: DateRange): s
 }
 
 /** Build the digest for the week starting `monday` (the week just finished, usually). */
-export function weeklyDigest(data: AppData, view: View, plan: Plan, monday: ISODate): Digest {
+/** `goals` is every goal the review covers (they may sit on different plans); `plan` sets the season line and week number. */
+export function weeklyDigest(data: AppData, view: View, plan: Plan, monday: ISODate, goalsIn?: Goal[]): Digest {
   const week = { start: monday, end: addDays(monday, 6) };
   const today = view.today;
   const lookup = actionLookup(data);
-  const goals = view.goalsForPlan(plan.id, true).filter((g) => !g.archived_at && (!g.completed_at || view.dayOf(g.completed_at) >= monday));
+  const goals = (goalsIn ?? view.goalsForPlan(plan.id, true)).filter((g) => !g.archived_at && (!g.completed_at || view.dayOf(g.completed_at) >= monday));
   const ids = new Set(goals.map((g) => g.id));
   const actionIds = new Set(data.actionGoals.filter((ag) => ids.has(ag.goal_id)).map((ag) => ag.action_id));
   const sessions = data.sessions.filter((s) => s.action_id && actionIds.has(s.action_id));
@@ -64,11 +65,11 @@ export function weeklyDigest(data: AppData, view: View, plan: Plan, monday: ISOD
   const days = new Set(logged.map((s) => s.date ?? s.week_start)).size;
   const minutes = logged.reduce((sum, s) => sum + minutesDone(s, lookup(s.action_id)), 0);
   const arc = seasonArc(plan, today);
-  const weekNo = planWeekNumber(plan, monday);
+  const weekNo = Math.max(1, Math.min(arc.weeks, planWeekNumber(plan, monday)));
 
   const lines: string[] = [];
   lines.push(`Showed up ${days} of 7 days · ${tally.credit % 1 ? fmt(tally.credit) : tally.credit} of ${tally.planned} tasks · ${hm(minutes)} put in.`);
-  for (const g of goals) lines.push(goalLine(view, g, plan, week));
+  for (const g of goals) lines.push(goalLine(view, g, view.planForGoal(g) ?? plan, week));
 
   const prizes = allPrizes(data, view, today);
   const earned = prizes.filter((p) => p.doneDay && p.doneDay >= week.start && p.doneDay <= week.end && !p.lost);
