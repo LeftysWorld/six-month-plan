@@ -11,6 +11,7 @@ import { sharedTasksOf } from '../components/Connections.tsx';
 import type { DragApi, GoalDrag } from '../components/goalDrag.ts';
 import { href } from '../router.ts';
 import { Icon } from '../components/ui.tsx';
+import { groupGradient } from '../data/palette.ts';
 
 /**
  * The Goals page's building blocks: the horizon of two seasons, the season's numbers, "By … you'll
@@ -226,15 +227,14 @@ export function GroupRowsCard({ group, members, dnd, onMove, onMoveGroup }: { gr
   const lifted = dnd?.drag?.group?.id === group.id;
   const insert = dnd?.drag?.target === `gorder:${group.id}:before` ? ' insert-before' : dnd?.drag?.target === `gorder:${group.id}:after` ? ' insert-after' : '';
   // The group's own colour: a wash of its goals' colours, so the tray reads as the container and the white rows as the goals.
-  const colors = members.map((m) => m.card.goal.color);
-  const stops = (colors.length > 1 ? colors : [colors[0] ?? '#5B8CFF', colors[0] ?? '#5B8CFF']).map((c, i, arr) => `${c} ${Math.round((i / (arr.length - 1)) * 100)}%`).join(', ');
+  const gradient = groupGradient(group.id, members.map((m) => m.card.goal.color));
   return (
     <section
       className={`season-card group-card${over ? ' drop-on' : ''}${lifted ? ' lifted' : ''}${insert}`}
       data-drop={`group:${group.id}`}
       data-gcard={group.id}
       aria-label={`Group: ${group.name}`}
-      style={{ ['--group-gradient' as string]: `linear-gradient(100deg, ${stops})` }}
+      style={{ ['--group-gradient' as string]: gradient }}
     >
       <div className="season-card-head group-head">
         {dnd && (

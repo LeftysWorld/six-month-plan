@@ -1434,3 +1434,10 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
   .scard { border: 0; padding: 0; }
   .no-print { display: none !important; }
 }
+
+/* ---------- Today: by Sunday you'll have ---------- */
+.week-ahead-row { display: flex; align-items: flex-start; gap: 4px; border-top: 1px solid var(--line); padding: 2px 0; }
+.week-ahead-row:first-child { border-top: 0; }
+.week-ahead-tick { width: 40px; min-height: 44px; flex: none; display: flex; align-items: center; justify-content: center; border: 0; background: none; cursor: pointer; margin-left: -8px; }
+.week-ahead-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 0; color: var(--ink); text-decoration: none; }
+.week-ahead-text { font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }

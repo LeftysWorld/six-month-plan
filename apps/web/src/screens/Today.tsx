@@ -25,6 +25,7 @@ import { TodayNumbers } from './today/TodayNumbers.tsx';
 import { PrizeCelebration } from '../components/Prize.tsx';
 import { SeasonLine } from '../components/SeasonLine.tsx';
 import { AddTaskOnDay } from './today/AddTaskOnDay.tsx';
+import { WeekAhead } from './today/WeekAhead.tsx';
 
 
 const FULL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -385,6 +386,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
         {(isToday || isFuture) && <AddTaskOnDay day={day} label={isToday ? 'Add a task' : `Add a task on ${weekdayName(day)}`} />}
 
         {/* What supports the list. */}
+        {isToday && <WeekAhead />}
         {ritual}
         {isToday && <TodayNumbers photoSessions={photoSessions} />}
         <DayDates day={day} />
