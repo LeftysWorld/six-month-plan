@@ -369,6 +369,9 @@ export function Today({ date }: { date?: ISODate } = {}) {
         )}
         {isFuture && <span className="xsmall muted">Coming up. You can check these off on the day.</span>}
 
+        {/* Today's numbers and photos come first: a weigh-in or a progress photo is the quickest check-in of the day. */}
+        {isToday && <TodayNumbers photoSessions={photoSessions} />}
+
         {/* The list. */}
         {sessions.length === 0 && planned.length === 0 && (
           <div className="card empty">
@@ -385,10 +388,9 @@ export function Today({ date }: { date?: ISODate } = {}) {
         )}
         {(isToday || isFuture) && <AddTaskOnDay day={day} label={isToday ? 'Add a task' : `Add a task on ${weekdayName(day)}`} />}
 
-        {/* What supports the list. */}
-        {isToday && <WeekAhead />}
+        {/* What supports the list. On a phone the week's goals sit here; on a computer they sit in the right column under the streak. */}
+        {isToday && <div className="only-narrow"><WeekAhead /></div>}
         {ritual}
-        {isToday && <TodayNumbers photoSessions={photoSessions} />}
         <DayDates day={day} />
         <TodayHabits day={day} />
         {isToday && commitment && commitment.forWeek === weekStart(today) && (
@@ -400,6 +402,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
       <aside className="today-side stack only-wide" aria-label="This week">
         {weekStrip}
         <StreakCard streak={streak} />
+        {isToday && <WeekAhead />}
         {anyDay}
         <p className="xsmall muted" style={{ margin: 0 }}>
           Keys: ← → change day · N add · G goals · R review
