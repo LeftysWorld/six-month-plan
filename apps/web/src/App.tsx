@@ -105,7 +105,9 @@ export function App() {
       <ToastProvider>
         <Shell
           demo={demo}
+          email={demo ? null : authSession?.user.email ?? null}
           onExitDemo={supabaseConfigured ? () => setDemo(false) : undefined}
+          onEnterDemo={demo || !supabaseConfigured ? undefined : () => setDemo(true)}
           onSignOut={demo ? undefined : () => void getSupabase()?.auth.signOut()}
         />
       </ToastProvider>
@@ -123,7 +125,12 @@ function Splash({ text }: { text: string }) {
 
 export interface ShellProps {
   demo: boolean;
+  /** Who is signed in (null in demo mode). */
+  email?: string | null;
+  /** Demo → the real account (sign-in screen, or straight in when a session exists). */
   onExitDemo?: () => void;
+  /** Signed in → the demo in this browser, without signing out. */
+  onEnterDemo?: () => void;
   onSignOut?: () => void;
 }
 
@@ -242,7 +249,13 @@ function Shell(props: ShellProps) {
           {props.demo && (
             <div className="banner info">
               <span>Demo mode: data stays in this browser.</span>
-              <a href={href('/settings')}>Settings</a>
+              {props.onExitDemo ? (
+                <button type="button" className="link-btn small" onClick={props.onExitDemo}>
+                  Switch to my account
+                </button>
+              ) : (
+                <a href={href('/settings')}>Settings</a>
+              )}
             </div>
           )}
           {schemaWarning && !props.demo && (

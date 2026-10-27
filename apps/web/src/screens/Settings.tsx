@@ -212,7 +212,7 @@ function ImportData({ onClose, onIdeasFile }: { onClose: () => void; onIdeasFile
   );
 }
 
-export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
+export function Settings({ demo, email, onExitDemo, onEnterDemo, onSignOut }: ShellProps) {
   const { data, db, commit, today } = useStore();
   const toast = useToast();
   const p = data.profile;
@@ -228,6 +228,51 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
     <div className="stack">
       <BackLink label="Today" fallback="/today" />
       <h1>Settings</h1>
+
+      <div className="section-label">Account</div>
+      <div className="card stack-sm">
+        <div className="small">
+          {demo ? (
+            <>
+              <b>Demo mode.</b> Everything here is stored only in this browser.
+            </>
+          ) : (
+            <>
+              Signed in as <b>{email ?? 'you'}</b>. Saved to your private Supabase database.
+            </>
+          )}
+        </div>
+        <div className="row-start" style={{ gap: 8, flexWrap: 'wrap' }}>
+          {demo && onExitDemo && (
+            <button className="btn primary small" onClick={onExitDemo}>
+              Switch to my account
+            </button>
+          )}
+          {!demo && onEnterDemo && (
+            <button className="btn small" onClick={onEnterDemo}>
+              Switch to the demo
+            </button>
+          )}
+          {!demo && onSignOut && (
+            <button
+              className="btn small"
+              onClick={() => {
+                toast('Signing out…');
+                onSignOut();
+              }}
+            >
+              Switch user
+            </button>
+          )}
+        </div>
+        <span className="xsmall muted">
+          {demo
+            ? onExitDemo
+              ? 'Your account’s data is untouched by anything you do in the demo. To move demo data into your account: Export here, switch, then Import.'
+              : 'Add your Supabase keys to apps/web/.env.local to sign in for real.'
+            : '“Switch to the demo” keeps you signed in; come back from the demo’s Settings. “Switch user” signs out, so another account can sign in on this browser.'}
+        </span>
+      </div>
 
       <div className="section-label">You</div>
       <div className="card stack">
@@ -392,11 +437,6 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
                 Start empty
               </button>
             </div>
-            {onExitDemo && (
-              <button className="btn primary" onClick={onExitDemo}>
-                Sign in to save for real
-              </button>
-            )}
           </div>
         </>
       )}
@@ -442,17 +482,6 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
       </div>
       {startOver && <StartOver onClose={() => setStartOver(false)} />}
 
-      {onSignOut && (
-        <button
-          className="btn"
-          onClick={() => {
-            toast('Signing out…');
-            onSignOut();
-          }}
-        >
-          Sign out
-        </button>
-      )}
       <p className="xsmall muted" style={{ textAlign: 'center', margin: 0 }}>
         On a computer: N add · T Today · G Goals · B Backlog · R Review · ← → change day on Today
       </p>
