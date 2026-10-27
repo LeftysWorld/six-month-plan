@@ -125,7 +125,7 @@ On Vercel (Hobby plan, personal use):
 - Add the two `VITE_SUPABASE_…` environment variables.
 - Add the deployed URL to Supabase **Redirect URLs**.
 
-Any static host works (Netlify, Cloudflare Pages): the app uses `#/` URLs, so no rewrite rules are needed.
+On Netlify: import the repository; `netlify.toml` at the repo root sets the build (`npm run build`, publish `apps/web/dist`, Node 20), so leave the dashboard's build settings alone. Add the two `VITE_SUPABASE_…` variables under Project configuration → Environment variables, then Deploys → Trigger deploy → Clear cache and deploy (variables are baked in at build time). Any other static host works too (Cloudflare Pages): the app uses `#/` URLs, so no rewrite rules are needed.
 
 **On your iPhone:** open the deployed URL in Safari → Share → **Add to Home Screen**. It opens full screen like an app.
 
