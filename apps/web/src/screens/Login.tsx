@@ -10,6 +10,7 @@ export function Login({ onDemo }: { onDemo: () => void }) {
   const [mode, setMode] = useState<'password' | 'create' | 'link'>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [show, setShow] = useState(false);
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [message, setMessage] = useState('');
 
@@ -85,7 +86,12 @@ export function Login({ onDemo }: { onDemo: () => void }) {
             {mode !== 'link' && (
               <label className="field">
                 {mode === 'create' ? 'Choose a password' : 'Password'}
-                <input type="password" required minLength={mode === 'create' ? 8 : undefined} autoComplete={mode === 'create' ? 'new-password' : 'current-password'} value={password} onChange={(e) => setPassword(e.target.value)} />
+                <span className="pw-row">
+                  <input type={show ? 'text' : 'password'} required minLength={mode === 'create' ? 8 : undefined} autoComplete={mode === 'create' ? 'new-password' : 'current-password'} value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <button type="button" className="pw-toggle" onClick={() => setShow(!show)} aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show}>
+                    {show ? 'Hide' : 'Show'}
+                  </button>
+                </span>
               </label>
             )}
             <button className="btn primary" type="submit" disabled={state === 'sending'}>

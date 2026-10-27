@@ -1332,3 +1332,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .load-col.past .load-bar { opacity: 0.55; }
 .load-col.now .load-bar { outline: 2px solid var(--ink); outline-offset: -2px; }
 .load-line { position: absolute; left: 0; right: 0; border-top: 1.5px dashed var(--ink); opacity: 0.45; pointer-events: none; }
+.pw-row { position: relative; display: flex; }
+.pw-row input { flex: 1; padding-right: 64px; }
+.pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: var(--fill); color: var(--ink); border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 500; cursor: pointer; min-height: 32px; }
+.pw-toggle:hover { background: var(--fill-strong); }
