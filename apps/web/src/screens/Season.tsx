@@ -376,11 +376,12 @@ export function SeasonHorizon({
   const nowIndex = Math.max(0, chapters.findIndex((c) => today >= c.start && today <= c.end));
   const [pick, setPick] = useState<number | null>(null);
   const [peek, setPeek] = useState<{ n: number; x: number; pinned: boolean } | null>(null);
+  // Folded by default; opening it is remembered on this device.
   const [open, setOpen] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('six.seasonHeader') !== 'closed';
+      return localStorage.getItem('six.seasonHeader') === 'open';
     } catch {
-      return true;
+      return false;
     }
   });
   const toggleOpen = () => {
