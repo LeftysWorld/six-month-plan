@@ -1,4 +1,6 @@
-import { daysBetween, seasonArc, shortDate, weekDates, weekStart, type Goal, type GoalGroup, type ISODate, type PaceLabel, type Plan } from '@six/core';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { daysBetween, seasonArc, seasonChapters, shortDate, weekDates, weekStart, type Chapter, type Goal, type GoalGroup, type ISODate, type PaceLabel, type Plan } from '@six/core';
+import { chapterSpan, chapterView, weekRecord, weekTotals } from '../data/chapters.ts';
 import { useStore } from '../data/store.tsx';
 import { type View } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
@@ -324,10 +326,11 @@ export function LooseCard({ title, members, dnd, onMove }: { title: string; memb
 }
 
 /**
- * The season header: which season you're looking at, where you are in it, and what's on the way.
- * One bar for this season and the next (today, the 3-month checkpoints, where goals finish early);
- * under it a two-way switch with the facts that matter for each; then the line for this part of
- * the season. While dragging, each half of the bar takes a goal or a group.
+ * The season header: the season as five chapters (Start · Build · Middle · Push · Finish), the
+ * weeks that make them up as a ribbon coloured by each weekly review, the dates under both, and a
+ * panel for the chapter you're in: its coaching line and what's due before it ends. Tap a chapter
+ * to read another one; hover or tap a week to see how it went. The strip takes a dragged goal for
+ * this season; the next-season line takes one for the next.
  */
 export function SeasonHorizon({
   seasons,
@@ -346,111 +349,230 @@ export function SeasonHorizon({
   onPlanNext: () => void;
   onMenu: (plan: Plan) => void;
 }) {
-  const { today } = useStore();
+  const { today, data } = useStore();
   const view = useView();
   const { current, next } = seasons;
+  const chapters = useMemo(() => (current ? seasonChapters(current) : []), [current?.start_date, current?.end_date]);
+  const nowIndex = Math.max(0, chapters.findIndex((c) => today >= c.start && today <= c.end));
+  const [pick, setPick] = useState<number | null>(null);
+  const [peek, setPeek] = useState<{ n: number; x: number; pinned: boolean } | null>(null);
+  const ribbonRef = useRef<HTMLDivElement>(null);
+  useEffect(() => setPick(null), [current?.id]);
+  useEffect(() => {
+    if (!peek?.pinned) return;
+    const off = () => setPeek(null);
+    window.addEventListener('pointerdown', off);
+    return () => window.removeEventListener('pointerdown', off);
+  }, [peek?.pinned]);
   if (!current) return null;
+
+  const arc = seasonArc(current, today);
   const nextDates = next ? { start: next.start_date, end: next.end_date } : nextSeasonDates(current);
-  const start = current.start_date;
-  const end = nextDates.end;
-  const total = Math.max(1, daysBetween(start, end));
-  const at = (d: ISODate) => Math.max(0, Math.min(100, (daysBetween(start, d) / total) * 100));
-  const split = at(current.end_date);
   const goalsIn = (plan: Plan | null) => (plan ? placed.filter((p) => p.plan.id === plan.id).map((p) => p.card.goal.id) : []);
   const target = dnd?.drag?.target ?? '';
-  const arc = seasonArc(current, today);
-  const shown = selected === 'next' ? next : current;
-  const members = placed.filter((p) => p.season === selected);
-  const paced = members.filter((m) => goalTrack(view, m.card.goal, m.plan).label !== 'none');
-  const onPace = paced.filter((m) => goalTrack(view, m.card.goal, m.plan).label !== 'behind').length;
+  const overCurrent = target === `plan:${current.id}` || target === `already:${current.id}`;
+  const overNext = !!next && (target === `plan:${next.id}` || target === `already:${next.id}`);
+  const index = pick ?? nowIndex;
+  const panel = chapterView(view, data, current, index, today);
+  const cells = weekRecord(data, current, today);
+  const totals = weekTotals(cells);
+  const cp = firstCheckpoint(current);
+  const cpIndex = chapters.findIndex((c) => cp >= c.start && cp <= c.end);
   const plannedNext = placed.filter((p) => p.season === 'next').length;
   const phaseWord: Record<string, string> = { before: 'Before the start', start: 'The start', build: 'Building', middle: 'The middle', push: 'The push', finish: 'The finish', after: 'Finished' };
-  const half = (key: 'current' | 'next', plan: Plan | null) => {
-    const on = selected === key;
-    const over = plan && (target === `plan:${plan.id}` || target === `already:${plan.id}`);
-    return (
+  const span = (c: Chapter) => Math.max(1, daysBetween(c.start, c.end) + 1);
+  const grid = chapters.map((c) => `${span(c)}fr`).join(' ');
+  const elapsedIn = (c: Chapter) => Math.min(100, Math.max(0, ((daysBetween(c.start, today) + 1) / span(c)) * 100));
+  const showPeek = (n: number, el: HTMLElement, pinned: boolean) => {
+    const wrap = ribbonRef.current;
+    if (!wrap) return;
+    const wb = wrap.getBoundingClientRect();
+    const bb = el.getBoundingClientRect();
+    setPeek({ n, x: bb.left - wb.left + bb.width / 2, pinned });
+  };
+  const peekCell = peek ? cells.find((c) => c.n === peek.n) : null;
+  const popWidth = 300;
+  const wrapWidth = ribbonRef.current?.getBoundingClientRect().width ?? 320;
+  const popLeft = peek ? Math.max(0, Math.min(wrapWidth - popWidth, peek.x - popWidth / 2)) : 0;
+
+  return (
+    <section className={`season-hz card${overCurrent ? ' drop-on' : ''}`} aria-label="Season" data-drop={`plan:${current.id}`} data-goals={goalsIn(current).join(',')}>
+      <div className="season-hz-head">
+        <button type="button" className="hz-titlebtn" onClick={() => onSelect('current')} aria-pressed={selected === 'current'}>
+          <span className="hz-title">{current.name}</span>
+          <span className="small muted">
+            {arc.phase === 'before' ? `Starts ${shortDate(current.start_date)} · ${arc.weeks} weeks` : `Week ${arc.week} of ${arc.weeks} · ${phaseWord[arc.phase]} · ends ${shortDate(current.end_date)}`}
+          </span>
+        </button>
+        <button type="button" className="hz-gear" onClick={() => onMenu(current)} aria-label={`${current.name} settings`}>
+          <Icon name="edit" size={16} stroke={2} />
+        </button>
+      </div>
+
+      <div className="hz-chap" style={{ gridTemplateColumns: grid }} role="tablist" aria-label="Chapters">
+        {chapters.map((c, i) => (
+          <button
+            key={c.phase}
+            type="button"
+            role="tab"
+            aria-selected={i === index}
+            className={`hz-ch${i < nowIndex || today > current.end_date ? ' done' : ''}${i === nowIndex && today >= current.start_date && today <= current.end_date ? ' now' : ''}${i === index && pick != null ? ' sel' : ''}`}
+            style={i === nowIndex ? ({ ['--p' as string]: `${elapsedIn(c)}%` } as CSSProperties) : undefined}
+            title={`${c.name} · ${chapterSpan(c)}`}
+            onClick={() => setPick(i === nowIndex ? null : i)}
+          >
+            <span>
+              {c.name}
+              {i === cpIndex ? ' ◆' : ''}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="hz-ribbonwrap" ref={ribbonRef}>
+        <div className="hz-weeks" style={{ gridTemplateColumns: `repeat(${cells.length}, 1fr)` }} aria-label={`${totals.hit} of ${totals.reviewed} reviewed weeks hit`}>
+          {cells.map((c) => (
+            <button
+              key={c.monday}
+              type="button"
+              className={`hz-wk ${c.result}${c.current ? ' now' : ''}${c.reviewed ? ' rev' : ''}${peek?.n === c.n ? ' hov' : ''}`}
+              aria-label={`Week ${c.n}, ${shortDate(c.monday)}${c.result === 'none' ? '' : `: ${c.result === 'hit' ? 'all week goals hit' : c.result === 'part' ? 'partly' : 'missed'}`}`}
+              onPointerEnter={(e) => e.pointerType === 'mouse' && !peek?.pinned && showPeek(c.n, e.currentTarget, false)}
+              onPointerLeave={() => !peek?.pinned && setPeek(null)}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => (peek?.pinned && peek.n === c.n ? setPeek(null) : showPeek(c.n, e.currentTarget, true))}
+            />
+          ))}
+        </div>
+        {peek && peekCell && (
+          <div className="hz-pop" style={{ left: popLeft, width: popWidth, ['--ax' as string]: `${peek.x - popLeft - 6}px` } as CSSProperties} role="tooltip" onPointerDown={(e) => e.stopPropagation()}>
+            <div className="hz-pop-h">
+              <b>
+                Week {peekCell.n}
+                {peekCell.current ? ' · this week' : ''}
+              </b>
+              <span className={`hz-pop-r ${peekCell.result}`}>
+                {peekCell.current ? 'reviewed Saturday' : peekCell.future ? 'not yet' : peekCell.result === 'hit' ? 'All week goals hit' : peekCell.result === 'part' ? 'Partly' : peekCell.result === 'miss' ? 'Missed' : 'No review'}
+              </span>
+            </div>
+            <div className="hz-pop-sub">{shortDate(peekCell.monday)} – {shortDate(peekCell.sunday)}{chapters.find((c) => peekCell.monday <= c.end && peekCell.sunday >= c.start) ? ` · ${chapters.find((c) => peekCell.monday <= c.end && peekCell.sunday >= c.start)!.name}` : ''}</div>
+            {peekCell.goals.map((g) => (
+              <div key={g.goal.id} className="hz-pop-g">
+                <i style={{ background: g.goal.color }} />
+                <span>{g.note || g.goal.title}</span>
+                <span className="hz-pop-mark">{g.result === 'hit' ? '✓' : g.result === 'partly' ? '½' : '✕'}</span>
+              </div>
+            ))}
+            {peekCell.change && (
+              <div className="hz-pop-f">
+                Change: <span>{peekCell.change}</span>
+                {peekCell.reviewed ? ' · month review' : ''}
+              </div>
+            )}
+            {!peekCell.goals.length && !peekCell.change && <div className="hz-pop-f">{peekCell.future ? 'Hasn’t happened yet.' : peekCell.current ? 'Saturday’s review colours it in.' : 'No weekly review was saved.'}</div>}
+          </div>
+        )}
+      </div>
+
+      <div className="hz-cdates mono" style={{ gridTemplateColumns: grid }} aria-hidden="true">
+        {chapters.map((c, i) => (
+          <span key={c.phase}>
+            {i === cpIndex ? '◆ ' : ''}
+            {shortDate(c.start).toUpperCase()}
+          </span>
+        ))}
+      </div>
+      <div className="hz-legend">
+        <span>
+          <i className="hit" />hit <i className="part" />partly <i className="miss" />missed <i className="now" />this week
+        </span>
+        <span>
+          {totals.reviewed ? (
+            <>
+              <b>{totals.hit}</b> of {totals.reviewed} weeks hit{totals.bestRun > 1 ? <> · best run <b>{totals.bestRun}</b></> : null}
+            </>
+          ) : (
+            'Saturday’s review colours the first week'
+          )}
+        </span>
+      </div>
+
+      {panel && (
+        <div className={`hz-panel ${panel.state}`} key={panel.index}>
+          <div className="hz-panel-h">
+            <b>
+              {panel.chapter.name} · {chapterSpan(panel.chapter)}
+            </b>
+            <span className="xsmall muted">
+              {panel.state === 'now'
+                ? `week ${panel.weekIn} of ${panel.weeks}${panel.onPace.of ? ` · ${panel.onPace.on} of ${panel.onPace.of} on pace` : ''}`
+                : panel.state === 'past'
+                  ? `done · ${panel.weeks} week${panel.weeks === 1 ? '' : 's'}`
+                  : `starts ${shortDate(panel.chapter.start)} · ${panel.weeks} week${panel.weeks === 1 ? '' : 's'}`}
+            </span>
+          </div>
+          <p className="hz-voice small">{panel.line}</p>
+          {panel.state === 'past' && panel.went && (
+            <>
+              <span className="mono">How it went</span>
+              <span className="xsmall" style={{ color: 'var(--ink-2)' }}>{panel.went}</span>
+            </>
+          )}
+          <span className="mono">{panel.state === 'now' ? 'Due in this stretch' : panel.state === 'past' ? 'What was due' : 'What this stretch asks'}</span>
+          {panel.due.length === 0 && <span className="xsmall muted">Nothing dated in this stretch. Add dates to hit on the roadmap.</span>}
+          <div className="hz-due">
+            {panel.due.slice(0, 6).map((d) => (
+              <a key={d.key} href={href(d.to)} className="hz-due-row">
+                <span className="hz-due-dt">{shortDate(d.date).toUpperCase()}</span>
+                <span className="dot" style={{ width: 9, height: 9, background: d.color }} />
+                <span className={d.strong ? 'strong' : ''}>{d.title}</span>
+                <span className={`hz-due-st ${d.tone}`}>{d.status}</span>
+              </a>
+            ))}
+            {panel.due.length > 6 && (
+              <a href={href('/roadmap')} className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600, padding: '6px 4px' }}>
+                +{panel.due.length - 6} more on the roadmap
+              </a>
+            )}
+          </div>
+          <div className="hz-step">
+            <button type="button" disabled={index === 0} onClick={() => setPick(index - 1 === nowIndex ? null : index - 1)}>
+              ‹ {index > 0 ? chapters[index - 1]!.name : ''}
+            </button>
+            {pick != null && (
+              <button type="button" className="hz-step-now" onClick={() => setPick(null)}>
+                Back to now
+              </button>
+            )}
+            <button type="button" disabled={index === chapters.length - 1} onClick={() => setPick(index + 1 === nowIndex ? null : index + 1)} style={{ textAlign: 'right' }}>
+              {index < chapters.length - 1 ? chapters[index + 1]!.name : ''} ›
+            </button>
+          </div>
+        </div>
+      )}
+
       <button
         type="button"
-        className={`hz-bar ${key}${on ? ' on' : ''}${!plan ? ' empty' : ''}${over ? ' drop-on' : ''}`}
-        style={key === 'current' ? { left: 0, width: `${split}%` } : { left: `calc(${split}% + 4px)`, right: 0 }}
-        aria-label={key === 'current' ? 'Show this season' : 'Show next season'}
-        aria-pressed={on}
-        onClick={() => onSelect(key)}
-        data-drop={plan ? `plan:${plan.id}` : undefined}
-        data-goals={goalsIn(plan).join(',')}
+        className={`hz-next${selected === 'next' ? ' on' : ''}${overNext ? ' drop-on' : ''}`}
+        onClick={() => (next ? onSelect(selected === 'next' ? 'current' : 'next') : onPlanNext())}
+        data-drop={next ? `plan:${next.id}` : undefined}
+        data-goals={goalsIn(next).join(',')}
+        aria-pressed={selected === 'next'}
       >
-        {key === 'current' && today >= start && <span className="hz-elapsed" style={{ width: `${Math.min(100, (daysBetween(start, today) / Math.max(1, daysBetween(start, current.end_date))) * 100)}%` }} aria-hidden="true" />}
+        <span className="hz-next-pill">Next season</span>
+        <span className="xsmall muted">
+          {shortDate(nextDates.start)} – {shortDate(nextDates.end)} · {next ? `${plannedNext} planned` : 'not planned yet'}
+        </span>
+        <span className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+          {next ? (selected === 'next' ? 'Showing · back to this season' : 'Show its goals') : 'Plan it'}
+        </span>
       </button>
-    );
-  };
-  const ends = placed.map((p) => ({ ...p, by: view.endFor(p.card.goal, p.plan) })).filter((p) => p.by <= end && p.by !== p.plan.end_date);
-  const cps = [firstCheckpoint(current), ...(next ? [firstCheckpoint(next)] : [])];
-  const inSeason = today >= start && today <= end;
-  const facts = (key: 'current' | 'next') => {
-    if (key === 'current') {
-      if (today < current.start_date) return `Starts ${shortDate(current.start_date)}`;
-      const n = placed.filter((p) => p.season === 'current').length;
-      return `${n} goal${n === 1 ? '' : 's'}${paced.length && selected === 'current' ? ` · ${onPace} of ${paced.length} on pace` : ''}`;
-    }
-    return next ? `${plannedNext} planned · from ${shortDate(nextDates.start)}` : `${shortDate(nextDates.start)} · not planned yet`;
-  };
-  return (
-    <section className="season-hz card" aria-label="Seasons">
-      <div className="hz-head">
-        <div className="stack-sm" style={{ gap: 2, minWidth: 0 }}>
-          <span className="hz-title">{shown?.name ?? 'Next season'}</span>
-          <span className="small muted">
-            {selected === 'current'
-              ? arc.phase === 'before'
-                ? `Starts ${shortDate(current.start_date)} · ${arc.weeks} weeks`
-                : `Week ${arc.week} of ${arc.weeks} · ${phaseWord[arc.phase]} · ends ${shortDate(current.end_date)}`
-              : `${shortDate(nextDates.start)} – ${shortDate(nextDates.end)}`}
-          </span>
-        </div>
-        {shown ? (
-          <button type="button" className="hz-gear" onClick={() => onMenu(shown)} aria-label={`${shown.name} settings`}>
-            <Icon name="edit" size={16} stroke={2} />
-          </button>
-        ) : (
-          <button type="button" className="btn small" onClick={onPlanNext}>
-            Plan next season
-          </button>
-        )}
-      </div>
-      <div className="hz-line">
-        {half('current', current)}
-        {half('next', next)}
-        {inSeason && (
-          <>
-            <span className="hz-today" style={{ left: `${at(today)}%` }} aria-hidden="true" />
-            <span className="hz-today-label mono" style={{ left: `${at(today)}%` }}>
-              TODAY
-            </span>
-          </>
-        )}
-        {cps.map((d) => (
-          <span key={d} className="hz-cp" style={{ left: `${at(d)}%` }} title={`3-month checkpoint ${shortDate(d)}`} aria-hidden="true" />
-        ))}
-        {ends.map((p) => (
-          <span key={p.card.goal.id} className="hz-end" style={{ left: `${at(p.by)}%`, background: p.card.goal.color }} title={`${p.card.goal.title} finishes ${shortDate(p.by)}`} aria-hidden="true" />
-        ))}
-      </div>
-      <div className="hz-dates mono" aria-hidden="true">
-        <span>{shortDate(start).toUpperCase()}</span>
-        <span style={{ position: 'absolute', left: `${at(cps[0]!)}%`, transform: 'translateX(-50%)' }}>◆ {shortDate(cps[0]!).toUpperCase()}</span>
-        <span style={{ position: 'absolute', left: `${split}%`, transform: 'translateX(-50%)' }}>{shortDate(current.end_date).toUpperCase()}</span>
-        <span>{shortDate(end).toUpperCase()}</span>
-      </div>
-      <div className="hz-switch" role="tablist" aria-label="Season">
-        {(['current', 'next'] as const).map((key) => (
-          <button key={key} type="button" role="tab" aria-selected={selected === key} className={`hz-tab${selected === key ? ' on' : ''}`} onClick={() => onSelect(key)}>
-            <b>{key === 'current' ? 'This season' : 'Next season'}</b>
-            <span className="xsmall">{facts(key)}</span>
-          </button>
-        ))}
-      </div>
-      {selected === 'current' && arc.phase !== 'after' && <p className="hz-voice small">{arc.line}</p>}
-      {dnd?.drag && <span className="xsmall" style={{ color: 'var(--accent-ink)' }}>Drop on a season to move {dnd.drag.group ? dnd.drag.group.name : dnd.drag.goal.title} there</span>}
+      {next && selected === 'next' && (
+        <button type="button" className="hz-gear-inline link-btn xsmall" onClick={() => onMenu(next)} style={{ alignSelf: 'flex-end', padding: 0 }}>
+          Next season settings
+        </button>
+      )}
+      {dnd?.drag && <span className="xsmall" style={{ color: 'var(--accent-ink)' }}>Drop on the chapters for this season, or on the next-season line, to move {dnd.drag.group ? dnd.drag.group.name : dnd.drag.goal.title}</span>}
     </section>
   );
 }

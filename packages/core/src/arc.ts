@@ -48,3 +48,46 @@ export function seasonArc(plan: Plan, today: ISODate): SeasonArc {
   };
   return { phase, week, weeks, daysLeft, elapsed, line: lines[phase] };
 }
+
+export type ChapterPhase = Exclude<ArcPhase, 'before' | 'after'>;
+
+export interface Chapter {
+  phase: ChapterPhase;
+  name: string;
+  start: ISODate;
+  end: ISODate;
+}
+
+/**
+ * The season as five stretches, with the same boundaries seasonArc uses to pick a phase:
+ * Start (the first two weeks), Build (to 30% of the way), Middle (to 65%), Push, Finish (the last
+ * two weeks). Every day of the season is in exactly one chapter.
+ */
+export function seasonChapters(plan: Plan): Chapter[] {
+  const total = planTotalDays(plan);
+  const s = plan.start_date;
+  const e = plan.end_date;
+  const add = (d: ISODate, n: number) => new Date(Date.parse(d) + n * 86400000).toISOString().slice(0, 10);
+  // seasonArc: start = week <= 2; build = elapsed < 0.3; middle = elapsed < 0.65; finish = daysLeft <= 14.
+  const startEnd = add(s, 13);
+  const buildEnd = add(s, Math.ceil(0.3 * total) - 2);
+  const middleEnd = add(s, Math.ceil(0.65 * total) - 2);
+  const finishStart = add(e, -13);
+  const clampTo = (d: ISODate, lo: ISODate, hi: ISODate) => (d < lo ? lo : d > hi ? hi : d);
+  const b0 = clampTo(startEnd, s, e);
+  const b1 = clampTo(buildEnd, b0, e);
+  const b2 = clampTo(middleEnd, b1, e);
+  const b3 = clampTo(add(finishStart, -1), b2, e);
+  return [
+    { phase: 'start', name: 'Start', start: s, end: b0 },
+    { phase: 'build', name: 'Build', start: add(b0, 1), end: b1 },
+    { phase: 'middle', name: 'Middle', start: add(b1, 1), end: b2 },
+    { phase: 'push', name: 'Push', start: add(b2, 1), end: b3 },
+    { phase: 'finish', name: 'Finish', start: add(b3, 1), end: e },
+  ].filter((c) => c.start <= c.end) as Chapter[];
+}
+
+/** The chapter a date falls in (null outside the season). */
+export function chapterAt(plan: Plan, date: ISODate): Chapter | null {
+  return seasonChapters(plan).find((c) => date >= c.start && date <= c.end) ?? null;
+}
