@@ -734,14 +734,16 @@ input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-o
 @keyframes pop-in { from { transform: scale(0.95); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes toast-in { from { transform: translate(-50%, 16px) scale(0.96); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 @keyframes pop { 0% { transform: scale(0.7); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
-@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.rise > * { animation: rise 0.5s var(--ease) both; }
-.rise > *:nth-child(2) { animation-delay: 0.04s; }
-.rise > *:nth-child(3) { animation-delay: 0.08s; }
-.rise > *:nth-child(4) { animation-delay: 0.12s; }
-.rise > *:nth-child(5) { animation-delay: 0.16s; }
-.rise > *:nth-child(6) { animation-delay: 0.2s; }
-.rise > *:nth-child(n + 7) { animation-delay: 0.24s; }
+/* Page entrance: a quick settle, not a staggered reveal. On a phone the whole page is a handful of
+   sections, so a long stagger reads as "loading" between tabs. Kept short and uniform. */
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.rise > * { animation: rise 0.18s ease-out both; }
+.rise > *:nth-child(n + 2) { animation-delay: 0.02s; }
+@media (hover: none) and (pointer: coarse) {
+  /* Touch screens: no slide, just a very short fade, so tab switches feel instant. */
+  .rise > * { animation: rise-fade 0.12s ease-out both; animation-delay: 0s !important; }
+}
+@keyframes rise-fade { from { opacity: 0.6; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0s !important; transition-duration: 0.01ms !important; }
 }
