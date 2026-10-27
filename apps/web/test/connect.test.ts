@@ -98,7 +98,7 @@ test('a task that ends with its week can still be shared (the old filter only al
   assert.equal(matchingTasks(groups, 'gy').length, 0, 'too short to suggest');
 });
 
-test('groups work like phone folders: make, add, take out, and a group of one goes away', async () => {
+test('groups work like phone folders: make, add, take out; a group keeps one goal and goes away only when empty', async () => {
   const { opsCreateGroup, opsAddToGroup, opsRemoveFromGroup, opsUngroup, groupMembers } = await import('../src/data/groups.ts');
   let d = base();
   const made = opsCreateGroup(d, 'Body', ['gym', 'weight']);
@@ -111,8 +111,15 @@ test('groups work like phone folders: make, add, take out, and a group of one go
   assert.equal(d.goals.find((g) => g.id === 'guitar')!.group_id, null);
   assert.equal(d.groups.length, 1, 'two goals left: the group stays');
   d = run(d, opsRemoveFromGroup(d, 'gym'));
-  assert.equal(d.groups.length, 0, 'one goal left: the group goes away');
-  assert.ok(d.goals.every((g) => !g.group_id), 'and the last goal is on its own again');
+  assert.equal(d.groups.length, 1, 'one goal left: the group stays (a group can hold a single goal)');
+  d = run(d, opsRemoveFromGroup(d, 'weight'));
+  assert.equal(d.groups.length, 0, 'empty: the group goes away');
+  assert.ok(d.goals.every((g) => !g.group_id), 'and every goal is on its own again');
+  // A group can be made from a single goal.
+  const solo = opsCreateGroup(d, 'Music', ['guitar']);
+  d = run(d, solo.ops);
+  assert.deepEqual(groupMembers(d, solo.groupId).map((g) => g.id), ['guitar']);
+  d = run(d, opsUngroup(d, d.groups.find((g) => g.id === solo.groupId)!));
   // Ungroup keeps the goals.
   const again = opsCreateGroup(d, 'Body', ['gym', 'weight']);
   d = run(d, again.ops);
@@ -131,8 +138,8 @@ test('a goal is in one group at most: joining another group leaves the old one',
   d = run(d, learn.ops);
   d = run(d, opsAddToGroup(d, 'gym', learn.groupId));
   assert.equal(d.goals.find((g) => g.id === 'gym')!.group_id, learn.groupId);
-  assert.ok(!d.groups.some((g) => g.id === body.groupId), 'Body had one goal left, so it is gone');
-  assert.equal(d.goals.find((g) => g.id === 'weight')!.group_id, null);
+  assert.ok(d.groups.some((g) => g.id === body.groupId), 'Body keeps its one remaining goal');
+  assert.equal(d.goals.find((g) => g.id === 'weight')!.group_id, body.groupId);
 });
 
 test('group names are suggested from what the goals are about', async () => {
@@ -163,7 +170,7 @@ test('deleting a goal removes its own tasks and logs, keeps shared tasks for oth
   assert.equal(d.attachments.length, 0);
   assert.deepEqual(files, ['demo/f1/me.jpg'], 'and its files are listed for removal');
   assert.equal(d.planGoals.length, 0);
-  assert.equal(d.groups.length, 0, 'Body had one goal left, so the group is gone');
+  assert.equal(d.groups.length, 1, 'Body keeps Work out as its one goal');
 });
 
 test('moving a goal to another season keeps its tasks and this week\'s goal', async () => {

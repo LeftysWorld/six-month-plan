@@ -167,22 +167,6 @@ export function Backlog() {
         </div>
       )}
 
-      {/* Bucket 1: the backlog */}
-      <section className={`card tight stack-sm bucket${dnd.drag?.drop?.bucket === 'backlog' && !dnd.drag.drop.rowId ? ' drop-on' : ''}`} aria-label="Backlog" data-bucket-drop="backlog">
-        <div className="row-between bucket-head">
-          <span className="label">Backlog · {ideas.length}</span>
-          <span className="xsmall muted">Order by dragging · tap to fill in</span>
-        </div>
-        {ideas.length === 0 && (
-          <span className="small muted" style={{ padding: '6px 2px 10px' }}>
-            {pathFilter !== 'all' ? 'Nothing here for this path.' : 'Write down goals you might want, one line each. Order them, then fill in why and what done looks like before selecting one.'}
-          </span>
-        )}
-        {ideas.map((idea, i) => (
-          <IdeaRow key={idea.id} idea={idea} index={i} bucket="backlog" dnd={dnd} onEdit={() => setEditing(idea)} onDiscard={() => discard(idea)} onSelect={() => select(idea)} />
-        ))}
-      </section>
-
       {/* Bucket 2: selected for next */}
       <section className={`card tight stack-sm bucket selected${dnd.drag?.drop?.bucket === 'selected' && !dnd.drag.drop.rowId ? ' drop-on' : ''}`} aria-label="Selected for next" data-bucket-drop="selected">
         <div className="row-between bucket-head">
@@ -198,6 +182,22 @@ export function Backlog() {
           <IdeaRow key={idea.id} idea={idea} index={i} bucket="selected" dnd={dnd} onEdit={() => setEditing(idea)} onDiscard={() => discard(idea)} onUnselect={() => unselect(idea)} />
         ))}
         {running >= 4 && selected.length > 0 && <span className="xsmall muted" style={{ padding: '4px 2px' }}>You have {running} goals running. Finishing one before starting another usually goes better.</span>}
+      </section>
+
+      {/* Bucket 1: the backlog */}
+      <section className={`card tight stack-sm bucket${dnd.drag?.drop?.bucket === 'backlog' && !dnd.drag.drop.rowId ? ' drop-on' : ''}`} aria-label="Backlog" data-bucket-drop="backlog">
+        <div className="row-between bucket-head">
+          <span className="label">Backlog · {ideas.length}</span>
+          <span className="xsmall muted">Order by dragging · tap to fill in</span>
+        </div>
+        {ideas.length === 0 && (
+          <span className="small muted" style={{ padding: '6px 2px 10px' }}>
+            {pathFilter !== 'all' ? 'Nothing here for this path.' : 'Write down goals you might want, one line each. Order them, then fill in why and what done looks like before selecting one.'}
+          </span>
+        )}
+        {ideas.map((idea, i) => (
+          <IdeaRow key={idea.id} idea={idea} index={i} bucket="backlog" dnd={dnd} onEdit={() => setEditing(idea)} onDiscard={() => discard(idea)} onSelect={() => select(idea)} />
+        ))}
       </section>
 
       {discarded.length > 0 && (

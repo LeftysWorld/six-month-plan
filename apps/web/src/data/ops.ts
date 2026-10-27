@@ -511,7 +511,7 @@ export function opsDeleteGoal(data: AppData, goal: Goal): { ops: Op[]; files: st
     }
   }
   for (const idea of data.ideas.filter((i) => i.goal_id === goal.id)) ops.push({ kind: 'update', collection: 'ideas', id: idea.id, patch: { goal_id: null } });
-  // Leaving its group first means a group left with one goal goes away too.
+  // Leaving its group first means a group left empty goes away too.
   ops.push(...opsRemoveFromGroup(data, goal.id));
   del('goals', goal.id);
   return { ops, files: attachments.map((a) => a.path) };

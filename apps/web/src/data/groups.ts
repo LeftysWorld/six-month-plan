@@ -77,7 +77,8 @@ function opsCleanUpLeft(data: AppData, moving: Set<string>): Op[] {
   const left = new Set(data.goals.filter((g) => moving.has(g.id) && g.group_id).map((g) => g.group_id!));
   for (const groupId of left) {
     const rest = data.goals.filter((g) => g.group_id === groupId && !moving.has(g.id) && !g.archived_at);
-    if (rest.length >= 2) continue;
+    // A group can hold a single goal; only an empty one goes away.
+    if (rest.length >= 1) continue;
     for (const g of rest) ops.push({ kind: 'update', collection: 'goals', id: g.id, patch: { group_id: null } });
     ops.push({ kind: 'delete', collection: 'groups', id: groupId });
   }

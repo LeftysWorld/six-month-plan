@@ -195,7 +195,7 @@ export function GroupSheet({ group, onClose, startSharing = false }: { group: Go
                   const ops = opsRemoveFromGroup(data, g.id);
                   commit(ops);
                   const gone = ops.some((o) => o.kind === 'delete' && o.collection === 'groups');
-                  toast(gone ? `${g.title} removed. ${live.name} had one goal left, so the group is gone.` : `${g.title} removed from ${live.name}`);
+                  toast(gone ? `${g.title} removed. ${live.name} is empty, so the group is gone.` : `${g.title} removed from ${live.name}`);
                   if (gone) onClose();
                 }}
               >
@@ -273,7 +273,9 @@ export function AddToGroupSheet({ goal, onClose }: { goal: Goal; onClose: () => 
   const [pairWith, setPairWith] = useState<Goal | null>(null);
   const groups = data.groups.filter((gr) => gr.id !== goal.group_id && groupMembers(data, gr.id).length > 0);
   const loose = view.activeGoals.filter((g) => g.id !== goal.id && !g.group_id);
+  const [solo, setSolo] = useState(false);
   if (pairWith) return <GroupNameSheet goals={[pairWith, goal]} onClose={onClose} />;
+  if (solo) return <GroupNameSheet goals={[goal]} onClose={onClose} />;
   return (
     <Sheet title={goal.group_id ? `Move ${goal.title}` : `Add ${goal.title} to a group`} onClose={onClose}>
       <span className="small muted" style={{ marginTop: -8 }}>
@@ -312,7 +314,15 @@ export function AddToGroupSheet({ goal, onClose }: { goal: Goal; onClose: () => 
           </div>
         </div>
       )}
-      {groups.length === 0 && loose.length === 0 && <span className="small muted">No other goals to group with yet.</span>}
+      {!goal.group_id && (
+        <div className="stack-sm">
+          <span className="label">Or on its own</span>
+          <button type="button" className="btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setSolo(true)}>
+            New group with just {goal.title}
+          </button>
+          <span className="xsmall muted">A group can start with one goal; add others later by dragging them onto it.</span>
+        </div>
+      )}
       {goal.group_id && (
         <button
           className="btn small"

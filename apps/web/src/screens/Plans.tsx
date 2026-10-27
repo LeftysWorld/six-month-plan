@@ -148,7 +148,7 @@ export function Plans() {
       const ops = opsRemoveFromGroup(data, goal.id);
       commit(ops);
       const gone = ops.some((o) => o.kind === 'delete' && o.collection === 'groups');
-      toast(gone ? `${goal.title} taken out. ${name} had one goal left, so the group is gone.` : `${goal.title} taken out of ${name}`);
+      toast(gone ? `${goal.title} taken out. ${name} is empty, so the group is gone.` : `${goal.title} taken out of ${name}`);
     }
   });
 
@@ -157,7 +157,7 @@ export function Plans() {
       {groups.map(({ group, members }) => (
         <GroupRowsCard key={group.id} group={group} members={members} dnd={dnd} onMove={setMoving} onMoveGroup={() => setMovingGoals({ goals: members.map((m) => m.card.goal), title: group.name, dest: null })} />
       ))}
-      {(loose.length > 0 || (dnd.drag && !dnd.drag.group && dnd.drag.goal.group_id)) && <LooseCard title={groups.length ? 'Not in a group' : 'Your goals'} members={loose} dnd={dnd} onMove={setMoving} />}
+      {(loose.length > 0 || (dnd.drag && !dnd.drag.group && dnd.drag.goal.group_id)) && <LooseCard title={groups.length ? 'Not in a group' : 'Your goals'} members={loose} dnd={dnd} onMove={setMoving} onNewGroup={(g) => setNaming([g])} />}
       {inSeason.length === 0 && selected === 'next' && (
         <div className="card small" style={{ color: 'var(--ink-2)' }}>
           Nothing in next season yet. Drag a goal or a group onto it on the horizon, use Move on a goal, or make a goal from your backlog for it.

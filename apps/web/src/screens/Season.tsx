@@ -307,8 +307,9 @@ export function GroupRollup({ group, big = false }: { group: GoalGroup; big?: bo
 }
 
 /** Goals not in a group, in the same card style. It also takes a goal dragged out of its group. */
-export function LooseCard({ title, members, dnd, onMove }: { title: string; members: Placed[]; dnd?: DragApi; onMove?: (g: Goal) => void }) {
+export function LooseCard({ title, members, dnd, onMove, onNewGroup }: { title: string; members: Placed[]; dnd?: DragApi; onMove?: (g: Goal) => void; onNewGroup?: (g: Goal) => void }) {
   const over = dnd?.drag?.target === 'loose';
+  const [picking, setPicking] = useState(false);
   const gradient = groupGradient('loose', members.map((m) => m.card.goal.color), 100);
   return (
     <section className={`season-card group-card${over ? ' drop-on' : ''}`} data-drop="loose" aria-label={title} style={{ ['--group-gradient' as string]: gradient }}>
@@ -316,8 +317,26 @@ export function LooseCard({ title, members, dnd, onMove }: { title: string; memb
         <span className="season-card-title">
           <b>{title}</b>
           {dnd?.drag && !dnd.drag.group && dnd.drag.goal.group_id ? <span className="xsmall muted">Drop here to take it out of its group</span> : null}
+          {onNewGroup && members.length > 0 && !dnd?.drag && (
+            <button type="button" className="season-open" style={{ border: 0, background: 'none', font: 'inherit', cursor: 'pointer', marginLeft: 'auto' }} onClick={() => setPicking((p) => !p)}>
+              {picking ? 'Cancel' : '+ New group'}
+            </button>
+          )}
         </span>
       </div>
+      {picking && (
+        <div className="season-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8, padding: '10px 16px 12px' }}>
+          <span className="xsmall muted">Start a group with one of these (add more by dragging them onto it later):</span>
+          <div className="chips">
+            {members.map((m) => (
+              <button key={m.card.goal.id} type="button" className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }} onClick={() => (setPicking(false), onNewGroup?.(m.card.goal))}>
+                <span className="dot" style={{ width: 7, height: 7, background: m.card.goal.color }} />
+                {m.card.goal.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {members.length === 0 && <span className="small muted" style={{ padding: '12px 16px' }}>None</span>}
       {members.map((m) => (
         <GoalRow key={m.card.goal.id} placed={m} dnd={dnd} onMove={onMove} />
