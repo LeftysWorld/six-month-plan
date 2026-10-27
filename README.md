@@ -92,19 +92,25 @@ Open http://localhost:5173. With no Supabase settings, the app runs in demo mode
 
 ## Connect Supabase (your real data)
 
-1. Create a free project at https://supabase.com.
-2. In the dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in order: first `20261016000000_initial_schema.sql`, then `20261019000000_goal_breakdown.sql`, then `20261021000000_reminders_and_cues.sql`, then `20261025000000_review_overhaul.sql`, then `20261026000000_goal_backlog.sql`, then `20261027000000_completed_goals_and_readiness.sql`, then `20261028000000_idea_prep.sql`, then `20261029000000_batches_and_own_clocks.sql`, then `20261030000000_attachments.sql`, then `20261031000000_connected_goals.sql`, then `20261101000000_goal_groups.sql`, then `20261102000000_task_details.sql`, then `20261103000000_measure_on_today.sql`, then `20261104000000_workout_plans.sql`, then `20261105000000_group_outcomes.sql`, then `20261106000000_goal_start_dates.sql`, then `20261107000000_review_fixes.sql`, then `20261108000000_one_window_per_goal.sql`, then `20261109000000_odyssey_paths.sql`. (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
-3. **Authentication → URL Configuration**: set **Site URL** to where the app runs (`http://localhost:5173` for now) and add your deployed URL under **Redirect URLs** later.
-4. **Project Settings → API**: copy the project URL and the `anon` public key.
-5. Create `apps/web/.env.local`:
+1. Create a project at https://supabase.com (or use one you have). Pick a region near you.
+2. **SQL Editor → New query**: paste the whole of `supabase/setup.sql` and run it. It is every migration in order and is safe to run again; on a project that already has some, run only the migration files you haven't yet (`supabase/migrations/`, in order). Regenerate it after adding a migration with `bash scripts/build-setup-sql.sh`. (Or with the CLI: `supabase link` then `supabase db push`.)
+3. **Storage**: `setup.sql` creates the private `attachments` bucket for photos; check it's there under Storage.
+4. **Authentication → URL Configuration**: Site URL `http://localhost:5173` for now; add your deployed URL under Redirect URLs later. **Authentication → Providers → Email**: leave magic links on.
+5. **Project Settings → API**: copy the Project URL and the `anon` `public` key (never the `service_role` key — that one is for Edge Functions only).
+6. Create `apps/web/.env.local` (git-ignored):
 
    ```
-   VITE_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
-   VITE_SUPABASE_ANON_KEY=YOUR-ANON-KEY
+   VITE_SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
+   VITE_SUPABASE_ANON_KEY=YOUR-ANON-PUBLIC-KEY
+   # optional, for push reminders (see "Reminders" below):
+   # VITE_VAPID_PUBLIC_KEY=
    ```
 
-6. Restart `npm run dev`, enter your email, and open the magic link.
-7. Once your account exists, turn off new sign-ups: **Authentication → Providers → Email → Allow new users to sign up** (off). Row-level security already limits every row to its owner.
+7. Restart `npm run dev`. The app now shows a sign-in screen instead of demo mode: enter your email, open the magic link.
+8. Load your data, one of two ways:
+   - **In the app**: Settings → Import → pick `my-plan.json` (made by `npx tsx apps/web/scripts/my-plan.ts > my-plan.json`, or any Settings → Export). Import replaces everything in your account.
+   - **As SQL**: `npx tsx apps/web/scripts/plan-to-sql.ts --user YOUR-USER-UUID --wipe > my-plan.sql`, then paste `my-plan.sql` into the SQL Editor. Your user UUID is under Authentication → Users. `--wipe` clears your rows first. Photos are not carried this way (there are none in a fresh plan).
+9. Once your account exists, turn off new sign-ups: **Authentication → Providers → Email → Allow new users to sign up** (off). Row-level security already limits every row to its owner.
 
 ## Deploy (free)
 

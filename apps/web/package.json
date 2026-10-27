@@ -8,7 +8,9 @@
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "plan": "tsx scripts/my-plan.ts",
+    "plan:sql": "tsx scripts/plan-to-sql.ts"
   },
   "dependencies": {
     "@six/core": "*",
