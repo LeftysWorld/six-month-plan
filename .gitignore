@@ -1,7 +1,46 @@
+# ---------- Secrets and local config ----------
+# Every env file except the committed example. `.env` itself included.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+supabase/.temp/
+supabase/.branches/
+.supabase/
+
+# ---------- Dependencies and builds ----------
 node_modules/
 dist/
-.env.local
-.env.*.local
-*.log
-.DS_Store
+build/
+.vite/
+.turbo/
+.cache/
+*.tsbuildinfo
+coverage/
+
+# ---------- Your data (exports, generated plans, SQL with your rows) ----------
 my-plan.json
+my-plan.sql
+*.export.json
+six-months-export*.json
+
+# ---------- Editors and OS ----------
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.iml
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ---------- Logs and scratch ----------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+tmp/
+.tmp/
