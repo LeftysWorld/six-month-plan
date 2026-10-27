@@ -1516,3 +1516,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .hz-fold svg { flex: none; transform: rotate(90deg); transition: transform .2s var(--ease); }
 .hz-fold.open svg { transform: rotate(-90deg); }
 .hz-more { display: flex; flex-direction: column; gap: 10px; animation: hz-fade .2s var(--ease); }
+
+/* Cards create stacking contexts (backdrop-filter), so the header sits above the group cards that follow it; its week popover can then hang over them. */
+.season-hz { position: relative; z-index: 2; }
+.season-hz.peeking { z-index: 40; }

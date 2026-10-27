@@ -413,7 +413,7 @@ export function SeasonHorizon({
   const popLeft = peek ? Math.max(0, Math.min(wrapWidth - popWidth, peek.x - popWidth / 2)) : 0;
 
   return (
-    <section className={`season-hz card${overCurrent ? ' drop-on' : ''}`} aria-label="Season" data-drop={`plan:${current.id}`} data-goals={goalsIn(current).join(',')}>
+    <section className={`season-hz card${overCurrent ? ' drop-on' : ''}${peek ? ' peeking' : ''}`} aria-label="Season" data-drop={`plan:${current.id}`} data-goals={goalsIn(current).join(',')}>
       <div className="season-hz-head">
         <button type="button" className="hz-titlebtn" onClick={() => onSelect('current')} aria-pressed={selected === 'current'}>
           <span className="hz-title">
