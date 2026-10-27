@@ -81,7 +81,15 @@ const pathDoc = { ...blankPath(data, TODAY), name: 'Documentarian: Adventure Mus
     { id: crypto.randomUUID(), text: 'Will people watch the uncut song at the end?', answer: '', answered_at: null },
     { id: crypto.randomUUID(), text: 'Can I work through a fixer and get written consent in Spanish?', answer: '', answered_at: null },
   ] };
-run([...opsCreatePath(pathAI), ...opsCreatePath(pathDoc)]);
+const pathCamp = { ...blankPath(data, TODAY), name: 'Glamping: build, sell, do it again abroad', headline: 'Build a campground, sell it, rebuild it somewhere I choose', why: 'Land, hospitality and a place people recover in; a business you can see and walk through. Build one, learn everything, sell it, and do the second one in a country of my choice.', color: '#22B07D', rank: 2,
+  years: ['Land bought (the AI group prize) and the site designed: 3–4 units, zoning and permits cleared, financing in place', 'Build and open: first guests, the booking and cleaning systems written down so they run without me', 'Full seasons, profitable; a manager in place; scout the second country and its rules on foreign ownership', 'Sell the campground to an operator on a clean set of books; bank the proceeds and the playbook', 'Open the second site abroad, smaller and better, with everything the first one taught me'],
+  gauges: { resources: 2, likability: 5, confidence: 3, coherence: 3 }, gauge_log: [{ on: TODAY, gauges: { resources: 2, likability: 5, confidence: 3, coherence: 3 } }],
+  questions: [
+    { id: crypto.randomUUID(), text: 'Can a 3–4 unit site near Asheville or Greenville cash-flow by its second season, without me on site every day?', answer: '', answered_at: null },
+    { id: crypto.randomUUID(), text: 'What do small glamping operations actually sell for, and what makes one sellable (books, systems, bookings)?', answer: '', answered_at: null },
+    { id: crypto.randomUUID(), text: 'Which country would let me own and run a campground as a foreigner, and would we want to live there for the years it takes?', answer: '', answered_at: null },
+  ] };
+run([...opsCreatePath(pathAI), ...opsCreatePath(pathDoc), ...opsCreatePath(pathCamp)]);
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -386,7 +394,8 @@ const ideas: [string, string, string, string | null][] = [
   ['Weekly Unique Lives podcast', 'Carries the schedule once 6–8 episodes are banked; every guest answers "what song belongs to your life?"', 'Eight episodes banked, weekly release started', pathDoc.id],
   ['Pass the PMP exam', 'Prerequisites are done; the exam is what is left.', 'PMP passed', pathAI.id],
   ['A 90-day AI governance readiness check', 'The consulting offer, prototyped once with one real conversation.', 'One paid readiness conversation', pathAI.id],
-  ['Live in Taiwan or Japan for a year', 'Not a goal yet. A desire worth keeping in sight.', '', null],
+  ['Live in Taiwan or Japan for a year', 'Not a goal yet. A desire worth keeping in sight; the second campground could be how it happens.', '', pathCamp.id],
+  ['Glamping site: land search and numbers', 'Shortlist greater Asheville, Tennessee or greater Greenville; land criteria, 3–4 units, financing. Starts in earnest when the AI goals land.', 'A site shortlisted with a model that cash-flows by season two', pathCamp.id],
 ];
 for (const [title, note, done, pathId] of ideas) {
   const added = opsAddIdea(data, title, note);
