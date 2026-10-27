@@ -12,6 +12,7 @@ import { navigate } from '../router.ts';
 import { BackLink, Empty, useToast } from '../components/ui.tsx';
 import { GoalRow, GroupRollup, WeekStrip, placeGoals } from './Season.tsx';
 import { GroupPrizeCard } from '../components/Prize.tsx';
+import { GroupWeekCard } from '../components/GroupWeek.tsx';
 
 /**
  * A group's own page, like an open folder: its goals this season and next as rows, the tasks they
@@ -55,6 +56,7 @@ export function GroupPage({ id }: { id: string }) {
       <section className="card" style={{ padding: 0 }}>
         <GroupRollup group={group} big />
       </section>
+      <GroupWeekCard group={group} />
       <GroupPrizeCard group={group} />
       <div className="season-layout">
         <div className="season-main">

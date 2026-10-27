@@ -7,6 +7,7 @@ import { goalTrack, groupTrack, seasonsOf } from '../data/season.ts';
 import { clampDates, dateLimits, opsRestoreDates, opsSetGoalDates } from '../data/dates.ts';
 import { href, navigate } from '../router.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
+import { LoadStrip } from '../components/LoadStrip.tsx';
 import { MilestoneSheet } from '../components/MilestoneSheet.tsx';
 import { CHECKPOINT_NAME, checkpointsOf, opsRestoreMilestone, opsUpdateMilestone, type Checkpoint } from '../data/dated.ts';
 
@@ -531,6 +532,8 @@ export function Roadmap() {
           </div>
         </section>
       )}
+
+      {season && rows.length > 0 && mode === 'timeline' && <LoadStrip plan={season} lo={lo} hi={hi} />}
 
       {season && rows.length > 0 && mode === 'list' && (
         <section className="card stack-sm" aria-label="Dates">

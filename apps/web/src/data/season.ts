@@ -138,6 +138,26 @@ export interface GroupTrack {
  * A group's roll-up: one bar for everything its goals add up to. Each goal counts equally;
  * a finished goal counts as all of it, and a goal waiting on another counts as not started.
  */
+/**
+ * A group's pace in one sentence: "AI is on pace." / "Body is behind, mostly the splits (2 weeks)." /
+ * "AI: two of four done, the rest on pace."
+ */
+export function groupSentence(view: View, group: { id: string; name: string }): string {
+  const goals = view.data.goals.filter((g) => g.group_id === group.id && !g.archived_at);
+  const running = goals.filter((g) => !g.completed_at);
+  const done = goals.length - running.length;
+  const tracks = running.map((g) => ({ g, t: view.planForGoal(g) ? goalTrack(view, g, view.planForGoal(g)!) : null })).filter((x) => x.t && x.t.started) as { g: Goal; t: Track }[];
+  const behind = tracks.filter((x) => x.t.label === 'behind');
+  const ahead = tracks.filter((x) => x.t.label === 'ahead');
+  const doneText = done ? `${done} of ${goals.length} done` : '';
+  if (running.length === 0 && goals.length) return `${group.name}: all ${goals.length} done.`;
+  if (tracks.length === 0) return `${group.name}: ${doneText || 'not started yet'}.`;
+  if (behind.length === 0) return `${group.name} is ${ahead.length === tracks.length ? 'ahead' : 'on pace'}${doneText ? `, ${doneText}` : ''}.`;
+  const worst = behind.sort((a, b) => a.t.prog - a.t.exp - (b.t.prog - b.t.exp))[0]!;
+  const mostly = behind.length < tracks.length ? `, mostly ${worst.g.title}${worst.t.status && /behind/.test(worst.t.status) ? ` (${worst.t.status})` : ''}` : '';
+  return `${group.name} is behind${mostly}${doneText ? `; ${doneText}` : ''}.`;
+}
+
 export function groupTrack(view: View, groupId: string): GroupTrack {
   const goals = view.data.goals.filter((g) => g.group_id === groupId && !g.archived_at);
   let prog = 0;

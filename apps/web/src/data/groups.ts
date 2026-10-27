@@ -1,4 +1,4 @@
-import type { Goal, GoalGroup } from '@six/core';
+import type { Goal, GoalGroup, ISODate } from '@six/core';
 import type { AppData, Op } from './model.ts';
 
 /**
@@ -41,6 +41,18 @@ export function opsRemoveFromGroup(data: AppData, goalId: string): Op[] {
   const goal = data.goals.find((g) => g.id === goalId);
   if (!goal?.group_id) return [];
   return [{ kind: 'update', collection: 'goals', id: goalId, patch: { group_id: null } }, ...opsCleanUpLeft(data, new Set([goalId]))];
+}
+
+/** Set the group's week goal for a Monday: one line that rolls up its goals. */
+export function opsSetGroupWeek(group: GoalGroup, text: string, monday: ISODate): Op[] {
+  const t = text.trim();
+  if (t === (group.week_goal ?? '') && monday === (group.week_goal_for ?? null)) return [];
+  return [{ kind: 'update', collection: 'groups', id: group.id, patch: { week_goal: t, week_goal_for: t ? monday : null } }];
+}
+
+/** The group's week goal if it's for this week (an old one isn't shown as current). */
+export function groupWeekGoal(group: GoalGroup, monday: ISODate): string {
+  return group.week_goal_for === monday ? group.week_goal ?? '' : '';
 }
 
 export function opsRenameGroup(group: GoalGroup, name: string): Op[] {

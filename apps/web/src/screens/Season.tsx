@@ -4,7 +4,9 @@ import { type View } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { CHAIN_LEVELS, catchUpPlan, chainFor, isSet, type Chain, type ChainLevel, type CatchUp } from '../data/chain.ts';
 import type { AppData } from '../data/model.ts';
-import { firstCheckpoint, goalTrack, groupTrack, nextCheckpoint, nextReviewWord, nextSeasonDates, type Seasons } from '../data/season.ts';
+import { goalPrizes } from '../data/prizes.ts';
+import { PrizeTag } from '../components/Prize.tsx';
+import { firstCheckpoint, goalTrack, groupSentence, groupTrack, nextCheckpoint, nextReviewWord, nextSeasonDates, type Seasons } from '../data/season.ts';
 import { sharedTasksOf } from '../components/Connections.tsx';
 import type { DragApi, GoalDrag } from '../components/goalDrag.ts';
 import { href } from '../router.ts';
@@ -125,6 +127,8 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
   const dragging = !!dnd?.drag && !dnd.drag.group && dnd.drag.goal.id === goal.id;
   const over = dnd?.drag?.target === `goal:${goal.id}`;
   const due = shortDate(t.by);
+  // The next prize still open on this goal: a date's, then the finish, then the bonus.
+  const nextPrize = goalPrizes(view, goal, view.today, placed.plan).find((p) => (p.status === 'open' || p.status === 'due') && !p.lost) ?? null;
   return (
     <div
       className={`season-row${dragging ? ' lifted' : ''}${over ? ' drop-on' : ''}`}
@@ -181,6 +185,12 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
         {placed.card.reason && (
           <span className="season-row-needs xsmall" style={{ color: 'var(--amber-ink)' }}>
             {placed.card.reason}
+          </span>
+        )}
+        {nextPrize && (
+          <span className="xsmall row-start" style={{ gap: 6, marginTop: 2 }}>
+            <PrizeTag p={nextPrize} />
+            <span className="muted">{nextPrize.dueDate ? `by ${shortDate(nextPrize.dueDate)}` : ''}</span>
           </span>
         )}
       </a>
@@ -259,6 +269,7 @@ export function GroupRollup({ group, big = false }: { group: GoalGroup; big?: bo
         </span>
         {r.by && <span className="muted">by {shortDate(r.by)}</span>}
       </span>
+      {big && <span className="small" style={{ color: 'var(--ink-2)', padding: '0 0 4px' }}>{groupSentence(view, group)}</span>}
     </div>
   );
 }

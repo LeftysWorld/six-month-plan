@@ -91,6 +91,9 @@ export interface GoalGroup {
   /** Share of the group's goals that must finish for the prize, 0–1 (default 0.85). */
   prize_threshold?: number | null;
   prize_claimed_at?: string | null;
+  /** The group's one-line week goal ("250 applications and prereqs done"), and the Monday it's for. */
+  week_goal?: string;
+  week_goal_for?: ISODate | null;
 }
 
 export interface PlanGoal {

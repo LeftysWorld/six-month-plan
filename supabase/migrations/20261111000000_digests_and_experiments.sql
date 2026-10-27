@@ -8,6 +8,10 @@ alter table public.reviews
   add column if not exists digest text not null default '',
   add column if not exists digest_sent_at timestamptz;
 
+alter table public.goal_groups
+  add column if not exists week_goal text not null default '',
+  add column if not exists week_goal_for date;
+
 alter table public.push_subscriptions
   add column if not exists last_review_on date;
 

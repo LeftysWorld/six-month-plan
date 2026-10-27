@@ -1321,3 +1321,14 @@ button.gauge-dot:hover { filter: brightness(0.9); }
 .photo-cell.before { border-color: var(--accent); }
 .pace-line { padding: 10px 12px; border-radius: 12px; background: var(--fill); }
 input[type='range'] { width: 100%; accent-color: var(--accent); }
+
+/* ---------- Load strip (roadmap) ---------- */
+.load-strip { position: relative; display: flex; align-items: flex-end; gap: 3px; height: 72px; padding-top: 4px; }
+.load-col { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 3px; }
+.load-bar { position: relative; display: block; width: 100%; min-height: 2px; border-radius: 3px 3px 0 0; background: var(--accent-soft); overflow: hidden; }
+.load-bar.over { background: var(--amber-soft); box-shadow: inset 0 0 0 1px var(--amber); }
+.load-done { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); opacity: 0.75; }
+.load-bar.over .load-done { background: var(--amber); }
+.load-col.past .load-bar { opacity: 0.55; }
+.load-col.now .load-bar { outline: 2px solid var(--ink); outline-offset: -2px; }
+.load-line { position: absolute; left: 0; right: 0; border-top: 1.5px dashed var(--ink); opacity: 0.45; pointer-events: none; }

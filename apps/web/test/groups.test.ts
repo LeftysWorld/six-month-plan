@@ -65,3 +65,15 @@ test('deleting a goal takes it out of its group and leaves the others alone', ()
   assert.equal(d.goals.filter((g) => g.group_id === 'grp').length, 2);
   assert.equal(d.milestones.filter((m) => m.goal_id === 'aigp').length, 0);
 });
+
+test('group week goal is only current for its Monday; the group sentence names what is behind', async () => {
+  const { groupWeekGoal, opsSetGroupWeek } = await import('../src/data/groups.ts');
+  const g = { id: 'g', name: 'AI', created_at: '2026-10-01T00:00:00Z' };
+  const ops = opsSetGroupWeek(g, ' 250 applications ', '2026-10-26');
+  assert.equal(ops.length, 1);
+  const patched = { ...g, ...(ops[0]!.kind === 'update' ? ops[0]!.patch : {}) } as typeof g & { week_goal: string; week_goal_for: string };
+  assert.equal(patched.week_goal, '250 applications');
+  assert.equal(groupWeekGoal(patched, '2026-10-26'), '250 applications');
+  assert.equal(groupWeekGoal(patched, '2026-11-02'), '');
+  assert.equal(opsSetGroupWeek(patched, '250 applications', '2026-10-26').length, 0);
+});
