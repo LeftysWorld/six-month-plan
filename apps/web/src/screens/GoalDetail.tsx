@@ -154,8 +154,8 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
             }}
           >
             <input className="input" placeholder="New milestone" aria-label="New milestone" value={msTitle} onChange={(e) => setMsTitle(e.target.value)} />
-            <div className="row-start" style={{ flexWrap: 'nowrap' }}>
-              <input className="input" type="date" aria-label="Milestone date" value={msDate} onChange={(e) => setMsDate(e.target.value)} />
+            <div className="row-start" style={{ flexWrap: 'wrap' }}>
+              <input className="input" type="date" aria-label="Milestone date" value={msDate} onChange={(e) => setMsDate(e.target.value)} style={{ flex: '1 1 150px', minWidth: 0 }} />
               <button className="btn small" type="submit" style={{ flex: 'none' }}>
                 Add milestone
               </button>
@@ -326,8 +326,8 @@ export function GoalRecord({ goal }: { goal: Goal }) {
             }}
           >
             <input className="input" placeholder="New milestone" aria-label="New milestone" value={msTitle} onChange={(e) => setMsTitle(e.target.value)} />
-            <div className="row-start" style={{ flexWrap: 'nowrap' }}>
-              <input className="input" type="date" aria-label="Milestone date" value={msDate} onChange={(e) => setMsDate(e.target.value)} />
+            <div className="row-start" style={{ flexWrap: 'wrap' }}>
+              <input className="input" type="date" aria-label="Milestone date" value={msDate} onChange={(e) => setMsDate(e.target.value)} style={{ flex: '1 1 150px', minWidth: 0 }} />
               <button className="btn small" type="submit" style={{ flex: 'none' }}>
                 Add milestone
               </button>

@@ -394,6 +394,20 @@ export function SeasonHorizon({
     });
   };
   const ribbonRef = useRef<HTMLDivElement>(null);
+  const [wrapWidth, setWrapWidth] = useState(320);
+  useEffect(() => {
+    const el = ribbonRef.current;
+    if (!el) return;
+    const measure = () => setWrapWidth(el.getBoundingClientRect().width || 320);
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [current?.id]);
   useEffect(() => setPick(null), [current?.id]);
   useEffect(() => {
     if (!peek?.pinned) return;
@@ -428,15 +442,14 @@ export function SeasonHorizon({
     setPeek({ n, x: bb.left - wb.left + bb.width / 2, pinned });
   };
   const peekCell = peek ? cells.find((c) => c.n === peek.n) : null;
-  const popWidth = 300;
-  const wrapWidth = ribbonRef.current?.getBoundingClientRect().width ?? 320;
+  const popWidth = Math.min(300, wrapWidth);
   const popLeft = peek ? Math.max(0, Math.min(wrapWidth - popWidth, peek.x - popWidth / 2)) : 0;
 
   return (
     <section className={`season-hz card${overCurrent ? ' drop-on' : ''}${peek ? ' peeking' : ''}`} aria-label="Season" data-drop={`plan:${current.id}`} data-goals={goalsIn(current).join(',')}>
       <div className="season-hz-head">
         <button type="button" className="hz-titlebtn" onClick={() => onSelect('current')} aria-pressed={selected === 'current'}>
-          <span className="hz-title">
+          <span className="hz-title" title={current.name}>
             <span className="hz-title-pre">Season: </span>
             {current.name}
           </span>
@@ -461,10 +474,8 @@ export function SeasonHorizon({
             title={`${c.name} · ${chapterSpan(c)}`}
             onClick={() => setPick(i === nowIndex ? null : i)}
           >
-            <span>
-              {c.name}
-              {i === cpIndex ? ' ◆' : ''}
-            </span>
+            <span className="hz-ch-name">{c.name}</span>
+            {i === cpIndex && <span className="hz-ch-cp">◆</span>}
           </button>
         ))}
       </div>
@@ -520,13 +531,31 @@ export function SeasonHorizon({
       </button>
       {open && (
       <div id="hz-more" className="hz-more">
-      <div className="hz-cdates mono" style={{ gridTemplateColumns: grid }} aria-hidden="true">
-        {chapters.map((c, i) => (
-          <span key={c.phase}>
-            {i === cpIndex ? '◆ ' : ''}
-            {shortDate(c.start).toUpperCase()}
-          </span>
-        ))}
+      <div className="hz-cdates mono" aria-hidden="true">
+        {(() => {
+          // One label per chapter start, left-aligned to its column; a label that would overlap the last one shown is skipped.
+          const totalDays = chapters.reduce((n, c) => n + span(c), 0);
+          const pxPerDay = wrapWidth / Math.max(1, totalDays);
+          const out: { key: string; left: number; text: string }[] = [];
+          let lastRight = -Infinity;
+          let left = 0;
+          chapters.forEach((c, i) => {
+            const text = `${i === cpIndex ? '◆ ' : ''}${shortDate(c.start).toUpperCase()}`;
+            const width = text.length * 6.4;
+            // The last label is pulled back inside the card if it would run past the edge.
+            const at = Math.max(0, Math.min(left, wrapWidth - width));
+            if (at >= lastRight + 8 || i === 0) {
+              out.push({ key: c.phase, left: at, text });
+              lastRight = at + width;
+            }
+            left += span(c) * pxPerDay;
+          });
+          return out.map((d) => (
+            <span key={d.key} style={{ left: d.left }}>
+              {d.text}
+            </span>
+          ));
+        })()}
       </div>
       <div className="hz-legend">
         <span>
