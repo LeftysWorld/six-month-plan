@@ -183,7 +183,10 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
             // A table a newer migration creates: the app still loads, that part just can't save yet.
             const m = CREATED_TABLES.get(TABLES[key]);
             if (m && looksMissing(e.message)) {
-              schemaWarning ??= `Your database needs an update. ${runText(m)}`;
+              // "in the schema cache" means the table may well exist and the API hasn't noticed yet.
+              schemaWarning ??= /schema cache/i.test(e.message)
+                ? `The database API hasn't picked up the ${TABLES[key]} table yet. If it exists in Supabase → Table Editor, run “notify pgrst, 'reload schema';” in the SQL Editor (or restart the project), then reload. If it doesn't, ${runText(m).replace(/^In/, 'in')}`
+                : `Your database needs an update. ${runText(m)}`;
               return [];
             }
             throw e;
