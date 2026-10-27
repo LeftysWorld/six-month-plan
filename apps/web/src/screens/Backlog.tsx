@@ -6,6 +6,7 @@ import { opsAddIdea, opsDeleteIdea, opsEditIdea, opsMoveIdea, opsRestoreIdea, op
 import { href } from '../router.ts';
 import { opsSetIdeaPath, pathLetter, pathsOf } from '../data/paths.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
+import { ExperimentSheet } from '../components/PathExperiments.tsx';
 
 /** Backlog → Goals → Completed: the flow of a goal, left to right (shown on all three pages). */
 export function GoalsSwitch({ current }: { current: 'paths' | 'backlog' | 'goals' | 'completed' }) {
@@ -221,6 +222,7 @@ function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
   const toast = useToast();
   const paths = pathsOf(data);
   const [pathId, setPathId] = useState(idea.path_id ?? '');
+  const [trying, setTrying] = useState(false);
   const [title, setTitle] = useState(idea.title);
   const [note, setNote] = useState(idea.note);
   const [done, setDone] = useState(idea.done_means ?? '');
@@ -251,6 +253,17 @@ function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
           </select>
         </label>
       )}
+      {pathId && paths.find((p) => p.id === pathId) && (
+        <div className="row-start" style={{ gap: 8 }}>
+          <button type="button" className="btn small" onClick={() => setTrying(true)}>
+            Try it small: an experiment
+          </button>
+          <a className="btn small" href={href(`/goals/new?idea=${idea.id}&path=${pathId}`)}>
+            Make it a goal
+          </a>
+        </div>
+      )}
+      {trying && paths.find((p) => p.id === pathId) && <ExperimentSheet path={paths.find((p) => p.id === pathId)!} title={title} onClose={() => setTrying(false)} />}
       <div className="btn-row">
         <button type="button" className="btn" onClick={onClose}>
           Cancel

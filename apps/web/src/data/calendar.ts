@@ -13,7 +13,7 @@ import { CHECKPOINT_NAME, checkpointsOf } from './dated.ts';
  * how many run each day.
  */
 
-export type CalKind = 'task' | 'oneoff' | 'milestone' | 'checkpoint' | 'start' | 'finish' | 'done' | 'season';
+export type CalKind = 'task' | 'oneoff' | 'milestone' | 'checkpoint' | 'start' | 'finish' | 'done' | 'season' | 'experiment';
 
 export interface CalItem {
   id: string;
@@ -29,6 +29,7 @@ export interface CalItem {
   /** A one-off or a one-day task's session (to check it off right here). */
   sessionId?: string;
   milestoneId?: string;
+  experimentId?: string;
 }
 
 const GREY = '#9AA49E';
@@ -42,6 +43,7 @@ export const KIND_TEXT: Record<CalKind, string> = {
   finish: 'Due',
   done: 'Done',
   season: 'Season',
+  experiment: 'Experiment',
 };
 
 /** Everything dated between `from` and `to`, by date, in a steady order. */
@@ -86,6 +88,12 @@ export function calendarItems(view: View, from: ISODate, to: ISODate): Map<ISODa
     const goal = view.goal(m.goal_id);
     if (!goal || goal.archived_at) continue;
     add({ id: `m-${m.id}`, date: m.due_date, kind: 'milestone', title: m.title, sub: goal.title, color: goal.color, done: !!m.completed_at, to: `/goals/${goal.id}`, milestoneId: m.id });
+  }
+  // Path experiments: due on their day, with the path they're for.
+  for (const e of data.experiments) {
+    const path = data.paths.find((p) => p.id === e.path_id);
+    if (!path || path.archived_at) continue;
+    add({ id: `x-${e.id}`, date: e.due_date, kind: 'experiment', title: e.title, sub: path.name, color: path.color, done: !!e.completed_at, to: `/paths/${path.id}`, experimentId: e.id });
   }
   // When each 3-month, month and week goal you've written down is due.
   for (const goal of data.goals) {

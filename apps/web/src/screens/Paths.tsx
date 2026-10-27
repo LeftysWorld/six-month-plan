@@ -28,6 +28,7 @@ import { goalTrack } from '../data/season.ts';
 import { href, navigate } from '../router.ts';
 import { BackLink, Icon, Sheet, useToast } from '../components/ui.tsx';
 import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
+import { PathExperiments, PathReportCard, TimeByPath } from '../components/PathExperiments.tsx';
 
 /**
  * Odyssey paths: the three five-year lives you could live, side by side. Plan A is where you're
@@ -37,6 +38,7 @@ import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
  */
 export function Paths() {
   const { data, today, commit } = useStore();
+  const view = useView();
   const toast = useToast();
   const paths = pathsOf(data);
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
@@ -72,11 +74,14 @@ export function Paths() {
           </button>
         </div>
       ) : (
-        <div className="paths-grid">
-          {paths.map((p, i) => (
-            <PathCard key={p.id} path={p} index={i} count={paths.length} />
-          ))}
-        </div>
+        <>
+          <div className="paths-grid">
+            {paths.map((p, i) => (
+              <PathCard key={p.id} path={p} index={i} count={paths.length} />
+            ))}
+          </div>
+          <TimeByPath plan={view.mainPlan} />
+        </>
       )}
       {paths.length > 0 && paths.length < 3 && (
         <button className="btn ghost" onClick={() => setAdding(true)}>
@@ -392,6 +397,9 @@ export function PathDetail({ id }: { id: string }) {
           </button>
         </form>
       </section>
+
+      <PathExperiments path={path} />
+      <PathReportCard path={path} plan={view.mainPlan} />
 
       <section className="card stack-sm" aria-label="Ideas on this path">
         <span className="label">Ideas waiting on this path</span>
