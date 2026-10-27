@@ -44,7 +44,7 @@ export function firstCheckpoint(plan: Plan): ISODate {
 export function nextReviewWord(today: ISODate, done = false): string {
   const d = isoWeekday(today);
   if (done && d >= 6) return 'Done';
-  return d === 6 ? 'Today' : d === 5 ? 'Tomorrow' : d === 7 ? 'Today' : 'Saturday';
+  return d === 6 ? 'Today' : d === 5 ? 'Tomorrow' : d === 7 ? 'Today' : 'Sat';
 }
 
 export interface Track {

@@ -356,6 +356,23 @@ export function SeasonHorizon({
   const nowIndex = Math.max(0, chapters.findIndex((c) => today >= c.start && today <= c.end));
   const [pick, setPick] = useState<number | null>(null);
   const [peek, setPeek] = useState<{ n: number; x: number; pinned: boolean } | null>(null);
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('six.seasonHeader') !== 'closed';
+    } catch {
+      return true;
+    }
+  });
+  const toggleOpen = () => {
+    setOpen((o) => {
+      try {
+        localStorage.setItem('six.seasonHeader', o ? 'closed' : 'open');
+      } catch {
+        /* fine */
+      }
+      return !o;
+    });
+  };
   const ribbonRef = useRef<HTMLDivElement>(null);
   useEffect(() => setPick(null), [current?.id]);
   useEffect(() => {
@@ -399,7 +416,10 @@ export function SeasonHorizon({
     <section className={`season-hz card${overCurrent ? ' drop-on' : ''}`} aria-label="Season" data-drop={`plan:${current.id}`} data-goals={goalsIn(current).join(',')}>
       <div className="season-hz-head">
         <button type="button" className="hz-titlebtn" onClick={() => onSelect('current')} aria-pressed={selected === 'current'}>
-          <span className="hz-title">{current.name}</span>
+          <span className="hz-title">
+            <span className="hz-title-pre">Season: </span>
+            {current.name}
+          </span>
           <span className="small muted">
             {arc.phase === 'before' ? `Starts ${shortDate(current.start_date)} · ${arc.weeks} weeks` : `Week ${arc.week} of ${arc.weeks} · ${phaseWord[arc.phase]} · ends ${shortDate(current.end_date)}`}
           </span>
@@ -474,6 +494,12 @@ export function SeasonHorizon({
         )}
       </div>
 
+      <button type="button" className={`hz-fold${open ? ' open' : ''}`} onClick={toggleOpen} aria-expanded={open} aria-controls="hz-more">
+        <span>{open ? 'Less' : panel ? `${panel.chapter.name} · ${panel.due.length} due in this stretch · ${totals.reviewed ? `${totals.hit} of ${totals.reviewed} weeks hit` : 'first review Saturday'}` : 'More'}</span>
+        <Icon name="chevron" size={14} stroke={2.4} />
+      </button>
+      {open && (
+      <div id="hz-more" className="hz-more">
       <div className="hz-cdates mono" style={{ gridTemplateColumns: grid }} aria-hidden="true">
         {chapters.map((c, i) => (
           <span key={c.phase}>
@@ -572,7 +598,9 @@ export function SeasonHorizon({
           Next season settings
         </button>
       )}
-      {dnd?.drag && <span className="xsmall" style={{ color: 'var(--accent-ink)' }}>Drop on the chapters for this season, or on the next-season line, to move {dnd.drag.group ? dnd.drag.group.name : dnd.drag.goal.title}</span>}
+      </div>
+      )}
+      {dnd?.drag && <span className="xsmall" style={{ color: 'var(--accent-ink)' }}>Drop on the chapters for this season{open && next ? ', or on the next-season line,' : ''} to move {dnd.drag.group ? dnd.drag.group.name : dnd.drag.goal.title}</span>}
     </section>
   );
 }
