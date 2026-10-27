@@ -389,10 +389,10 @@ export function Today({ date }: { date?: ISODate } = {}) {
         {(isToday || isFuture) && <AddTaskOnDay day={day} label={isToday ? 'Add a task' : `Add a task on ${weekdayName(day)}`} />}
 
         {/* What supports the list. On a phone the week's goals sit here; on a computer they sit in the right column under the streak. */}
-        {isToday && <div className="only-narrow"><WeekAhead /></div>}
         {ritual}
         <DayDates day={day} />
         <TodayHabits day={day} />
+        {isToday && <div className="only-narrow"><WeekAhead /></div>}
         {isToday && commitment && commitment.forWeek === weekStart(today) && (
           <CommitmentCard review={commitment.review} text={commitment.text} forWeek={commitment.forWeek} today={today} compact />
         )}
