@@ -65,7 +65,7 @@ function blanks(table: string, row: Record<string, unknown>): Record<string, unk
   const cols = BLANK_TEXT[table];
   if (!cols) return row;
   const out = { ...row };
-  for (const c of cols) if (c in out && (out[c] === null || out[c] === undefined)) out[c] = '';
+  for (const c of cols) if (out[c] === null || out[c] === undefined) out[c] = '';
   return out;
 }
 
@@ -255,7 +255,8 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       let error: { message: string; code?: string } | null = null;
       switch (op.kind) {
         case 'insert':
-          ({ error } = await sb.from(TABLES[op.collection]).insert(op.rows));
+          // Rows in one insert can differ in keys; a key missing on a row must take the column default, not null.
+          ({ error } = await sb.from(TABLES[op.collection]).insert(op.rows, { defaultToNull: false }));
           break;
         case 'insertIgnore':
           ({ error } = await sb.from('sessions').upsert(op.rows, {
@@ -285,7 +286,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       const strip = (table: string, rows: unknown[]) => (rows as Record<string, unknown>[]).map(({ user_id: _u, ...r }) => blanks(table, r));
       const insert = async (table: string, rows: unknown[]) => {
         for (let i = 0; i < rows.length; i += 500) {
-          const { error } = await sb.from(table).insert(strip(table, rows.slice(i, i + 500)));
+          const { error } = await sb.from(table).insert(strip(table, rows.slice(i, i + 500)), { defaultToNull: false });
           if (error) throw new Error(`${table}: ${error.message}`);
         }
       };
