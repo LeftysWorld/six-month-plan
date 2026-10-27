@@ -824,7 +824,9 @@ input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-o
   .only-wide { display: flex !important; }
   .only-narrow { display: none !important; }
   .today-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 32px; align-items: start; }
-  .today-side { position: sticky; top: 28px; }
+  /* Not sticky: with the week's goals in it the column is often taller than the window, and a pinned column that
+     outlasts the viewport scrolls at a different pace from the list. The page scrolls as one. */
+  .today-side { position: static; }
   .goal-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; align-items: start; }
   .review-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 28px; align-items: start; }
   .review-side { position: sticky; top: 24px; }
