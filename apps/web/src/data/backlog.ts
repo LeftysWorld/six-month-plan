@@ -1,4 +1,4 @@
-import { rankAtEnd, rankAtTop, reorder, type GoalIdea, type IdeaStatus } from '@six/core';
+import { bucketOf, rankAt, rankAtEnd, rankAtTop, reorder, type Goal, type GoalIdea, type IdeaBucket, type IdeaStatus } from '@six/core';
 import type { AppData, Op } from './model.ts';
 
 /** Changes to the goal backlog, as ops. Ordering rules live in @six/core (backlog.ts). */
@@ -102,10 +102,44 @@ export function opsMoveIdea(data: AppData, id: string, move: 'up' | 'down' | 'to
   return reorder(data.ideas, id, move).map((r): Op => ({ kind: 'update', collection: 'ideas', id: r.id, patch: { rank: r.rank } }));
 }
 
-/** Discard an idea (it joins the end of the discarded list) or bring one back (to the top of the backlog). */
-export function opsSetStatus(data: AppData, idea: GoalIdea, status: IdeaStatus): Op[] {
-  const rank = status === 'backlog' ? rankAtTop(data.ideas, 'backlog') : rankAtEnd(data.ideas, status);
-  return [{ kind: 'update', collection: 'ideas', id: idea.id, patch: { status, rank } }];
+/**
+ * Move an idea between buckets: discard it (end of the discarded list), bring it back (top of the
+ * backlog), or select it for next (end of that bucket). 'selected' is stored as status 'backlog'
+ * plus shortlisted_at, so the database never sees a new status.
+ */
+export function opsSetStatus(data: AppData, idea: GoalIdea, status: IdeaBucket, at: 'top' | 'end' = status === 'backlog' ? 'top' : 'end'): Op[] {
+  const rank = at === 'top' ? rankAtTop(data.ideas, status) : rankAtEnd(data.ideas, status);
+  const patch: Record<string, unknown> = { rank, status: status === 'selected' ? 'backlog' : status, shortlisted_at: status === 'selected' ? now() : null };
+  return [{ kind: 'update', collection: 'ideas', id: idea.id, patch }];
+}
+
+/** Put an idea at `index` of a bucket (drag and drop), moving it there if it's in another one. */
+export function opsPlaceIdea(data: AppData, idea: GoalIdea, bucket: IdeaBucket, index: number): Op[] {
+  const rank = rankAt(data.ideas, idea.id, bucket, index);
+  const patch: Record<string, unknown> = { rank };
+  if (bucketOf(idea) !== bucket) {
+    patch.status = bucket === 'selected' ? 'backlog' : bucket;
+    patch.shortlisted_at = bucket === 'selected' ? now() : null;
+  }
+  return [{ kind: 'update', collection: 'ideas', id: idea.id, patch }];
+}
+
+/**
+ * Abandon a goal back to the backlog: the goal is archived (its history stays under Completed →
+ * Archived) and its idea returns to the top of the backlog — the one it started from, or a new one
+ * written from the goal.
+ */
+export function opsAbandonGoal(data: AppData, goal: Goal): { ops: Op[]; ideaId: string } {
+  const ops: Op[] = [{ kind: 'update', collection: 'goals', id: goal.id, patch: { archived_at: now() } }];
+  const rank = rankAtTop(data.ideas, 'backlog');
+  const existing = data.ideas.find((i) => i.goal_id === goal.id);
+  if (existing) {
+    ops.push({ kind: 'update', collection: 'ideas', id: existing.id, patch: { status: 'backlog', shortlisted_at: null, goal_id: null, started_at: null, rank, title: goal.title, note: goal.why || existing.note, done_means: goal.done_means || existing.done_means || '' } });
+    return { ops, ideaId: existing.id };
+  }
+  const idea: GoalIdea = { id: crypto.randomUUID(), title: goal.title, note: goal.why, done_means: goal.done_means, status: 'backlog', rank, goal_id: null, created_at: now(), started_at: null, path_id: goal.path_id ?? null };
+  ops.push({ kind: 'insert', collection: 'ideas', rows: [idea as unknown as { id: string } & Record<string, unknown>] });
+  return { ops, ideaId: idea.id };
 }
 
 /** Restore an idea exactly as it was (for Undo). */

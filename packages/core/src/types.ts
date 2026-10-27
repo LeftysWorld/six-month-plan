@@ -328,6 +328,8 @@ export interface ChangeLogEntry {
 
 /** Where a goal idea is in the backlog: waiting, selected for the next commitment, started as a goal, or let go. */
 export type IdeaStatus = 'backlog' | 'started' | 'discarded';
+/** Where an idea sits on the Backlog page: 'selected' is a backlog idea with shortlisted_at set (refined, waiting to be committed). */
+export type IdeaBucket = IdeaStatus | 'selected';
 
 /** A goal you might want: written down in a line, ordered by importance, pulled in when there's room. */
 export interface GoalIdea {
@@ -344,6 +346,8 @@ export interface GoalIdea {
   goal_id: string | null;
   created_at: string;
   started_at: string | null;
+  /** Set when the idea is in "Selected for next" (status stays 'backlog'). Missing on older databases. */
+  shortlisted_at?: string | null;
   /** The Odyssey path this idea belongs to. Missing on older databases. */
   path_id?: string | null;
 }

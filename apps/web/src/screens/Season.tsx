@@ -309,9 +309,10 @@ export function GroupRollup({ group, big = false }: { group: GoalGroup; big?: bo
 /** Goals not in a group, in the same card style. It also takes a goal dragged out of its group. */
 export function LooseCard({ title, members, dnd, onMove }: { title: string; members: Placed[]; dnd?: DragApi; onMove?: (g: Goal) => void }) {
   const over = dnd?.drag?.target === 'loose';
+  const gradient = groupGradient('loose', members.map((m) => m.card.goal.color), 100);
   return (
-    <section className={`season-card${over ? ' drop-on' : ''}`} data-drop="loose" aria-label={title}>
-      <div className="season-card-head">
+    <section className={`season-card group-card${over ? ' drop-on' : ''}`} data-drop="loose" aria-label={title} style={{ ['--group-gradient' as string]: gradient }}>
+      <div className="season-card-head group-head">
         <span className="season-card-title">
           <b>{title}</b>
           {dnd?.drag && !dnd.drag.group && dnd.drag.goal.group_id ? <span className="xsmall muted">Drop here to take it out of its group</span> : null}

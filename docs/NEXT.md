@@ -37,6 +37,8 @@ Run in order; each is safe to run twice:
   count task's logs (`packages/core/src/tally.ts`, `apps/web/src/data/tally.ts`).
 - `20261113000000_goal_order.sql` — `goals.sort_order`, `goal_groups.sort_order`: hand order on the Goals page
   (`apps/web/src/data/order.ts`).
+- `20261114000000_backlog_selected.sql` — `goal_ideas.shortlisted_at`: the Selected for next bucket (status stays
+  'backlog'; `bucketOf` in core/backlog.ts).
 
 ## Still open
 

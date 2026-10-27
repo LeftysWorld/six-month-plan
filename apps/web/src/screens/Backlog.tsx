@@ -1,8 +1,10 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { ageInDays, column, type GoalIdea } from '@six/core';
+import { ageInDays, bucketOf, column, ideaReady, type GoalIdea, type IdeaBucket } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
-import { opsAddIdea, opsDeleteIdea, opsEditIdea, opsMoveIdea, opsRestoreIdea, opsSetStatus } from '../data/backlog.ts';
+import { opsAddIdea, opsDeleteIdea, opsEditIdea, opsPlaceIdea, opsRestoreIdea, opsSetStatus } from '../data/backlog.ts';
+import { useListDrag, type ListDragApi } from '../components/listDrag.ts';
+import { GRIP } from './Season.tsx';
 import { href } from '../router.ts';
 import { opsSetIdeaPath, pathLetter, pathsOf } from '../data/paths.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
@@ -70,8 +72,11 @@ export function IdeaAdd({ placeholder = 'A goal you might want…', after, pathI
 }
 
 /**
- * The backlog: one list of goal ideas in the order you'd start them. Write them down, order them,
- * and when there's room, make the top one a goal. Discarded ideas are kept, folded away.
+ * The backlog, in two buckets. **Backlog**: every goal you might want, one line each, in the order
+ * you'd start them — add fast, order by dragging, tap to fill in why and what done looks like.
+ * **Selected for next**: the few you've refined and mean to start when there's room; they're not
+ * goals yet. The rule to cross over is simple and visible: an idea needs its why and its done-means.
+ * Make it a goal from there. Discarded ideas are kept, folded away.
  */
 export function Backlog() {
   const { data, commit } = useStore();
@@ -80,11 +85,31 @@ export function Backlog() {
   const [editing, setEditing] = useState<GoalIdea | null>(null);
   const paths = pathsOf(data);
   const [pathFilter, setPathFilter] = useState<string | 'all' | 'none'>('all');
+  const byPath = (list: GoalIdea[]) => (pathFilter === 'all' ? list : pathFilter === 'none' ? list.filter((i) => !i.path_id) : list.filter((i) => i.path_id === pathFilter));
   const allIdeas = column(data.ideas, 'backlog');
-  const ideas = pathFilter === 'all' ? allIdeas : pathFilter === 'none' ? allIdeas.filter((i) => !i.path_id) : allIdeas.filter((i) => i.path_id === pathFilter);
+  const allSelected = column(data.ideas, 'selected');
+  const ideas = byPath(allIdeas);
+  const selected = byPath(allSelected);
   const discarded = column(data.ideas, 'discarded');
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   const running = view.activeGoals.length;
+
+  const dnd = useListDrag((id, drop) => {
+    const idea = data.ideas.find((i) => i.id === id);
+    if (!idea) return;
+    const bucket = drop.bucket as IdeaBucket;
+    if (bucket === 'selected' && bucketOf(idea) !== 'selected' && !ideaReady(idea)) {
+      toast(`${idea.title} needs its why and what done looks like before it's selected. Tap it to add them.`);
+      return;
+    }
+    // Index is within the full bucket; with a path filter on, map it onto the filtered list's neighbour.
+    const full = column(data.ideas, bucket);
+    const shown = byPath(full);
+    const neighbour = drop.rowId ? full.findIndex((i) => i.id === drop.rowId) : -1;
+    const index = drop.rowId ? (drop.side === 'before' ? neighbour : neighbour + 1) : full.length;
+    void shown;
+    commit(opsPlaceIdea(data, idea, bucket, index));
+  });
 
   function discard(idea: GoalIdea) {
     commit(opsSetStatus(data, idea, 'discarded'));
@@ -94,12 +119,25 @@ export function Backlog() {
     commit(opsSetStatus(data, idea, 'backlog'));
     toast(`${idea.title} is back in your backlog`, () => commit(opsRestoreIdea(idea)));
   }
+  function select(idea: GoalIdea) {
+    if (!ideaReady(idea)) {
+      setEditing(idea);
+      return;
+    }
+    commit(opsSetStatus(data, idea, 'selected', 'end'));
+    toast(`${idea.title} selected for next`, () => commit(opsRestoreIdea(idea)));
+  }
+  function unselect(idea: GoalIdea) {
+    commit(opsSetStatus(data, idea, 'backlog', 'top'));
+    toast(`${idea.title} is back in the backlog`, () => commit(opsRestoreIdea(idea)));
+  }
+  const dragging = dnd.drag ? data.ideas.find((i) => i.id === dnd.drag!.id) : null;
 
   return (
     <div className="stack rise">
       <div className="topbar">
         <span className="mono">
-          {ideas.length} idea{ideas.length === 1 ? '' : 's'} · {running} goal{running === 1 ? '' : 's'} running
+          {allIdeas.length} idea{allIdeas.length === 1 ? '' : 's'} · {allSelected.length} selected · {running} goal{running === 1 ? '' : 's'} running
         </span>
         <a className="avatar" href={href('/settings')} aria-label="Settings">
           {initial}
@@ -113,35 +151,54 @@ export function Backlog() {
       {paths.length > 0 && (
         <div className="chips" role="radiogroup" aria-label="Show ideas for">
           <button type="button" className="chip" role="radio" aria-checked={pathFilter === 'all'} onClick={() => setPathFilter('all')}>
-            All · {allIdeas.length}
+            All · {allIdeas.length + allSelected.length}
           </button>
           {paths.map((p) => (
             <button key={p.id} type="button" className="chip" role="radio" aria-checked={pathFilter === p.id} onClick={() => setPathFilter(p.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
               <span className="dot" style={{ width: 7, height: 7, background: p.color }} />
-              {pathLetter(data, p)} · {allIdeas.filter((i) => i.path_id === p.id).length}
+              {pathLetter(data, p)} · {[...allIdeas, ...allSelected].filter((i) => i.path_id === p.id).length}
             </button>
           ))}
-          {allIdeas.some((i) => !i.path_id) && (
+          {[...allIdeas, ...allSelected].some((i) => !i.path_id) && (
             <button type="button" className="chip" role="radio" aria-checked={pathFilter === 'none'} onClick={() => setPathFilter('none')}>
-              No path · {allIdeas.filter((i) => !i.path_id).length}
+              No path · {[...allIdeas, ...allSelected].filter((i) => !i.path_id).length}
             </button>
           )}
         </div>
       )}
 
-      {ideas.length === 0 ? (
-        <div className="card empty">
-          <h3 style={{ marginBottom: 6 }}>Nothing waiting{pathFilter !== 'all' ? ' here' : ''}.</h3>
-          Write down goals you might want, one line each. Order them; make the top one a goal when you have room (most people carry 3–4 at a time).
+      {/* Bucket 1: the backlog */}
+      <section className={`card tight stack-sm bucket${dnd.drag?.drop?.bucket === 'backlog' && !dnd.drag.drop.rowId ? ' drop-on' : ''}`} aria-label="Backlog" data-bucket-drop="backlog">
+        <div className="row-between bucket-head">
+          <span className="label">Backlog · {ideas.length}</span>
+          <span className="xsmall muted">Order by dragging · tap to fill in</span>
         </div>
-      ) : (
-        <section className="card tight stack-sm" aria-label="Ideas in order">
-          {ideas.map((idea, i) => (
-            <IdeaRow key={idea.id} idea={idea} index={i} count={ideas.length} onEdit={() => setEditing(idea)} onDiscard={() => discard(idea)} />
-          ))}
-          {running >= 4 && <span className="xsmall muted" style={{ padding: '4px 2px' }}>You have {running} goals running. Finishing one before starting another usually goes better.</span>}
-        </section>
-      )}
+        {ideas.length === 0 && (
+          <span className="small muted" style={{ padding: '6px 2px 10px' }}>
+            {pathFilter !== 'all' ? 'Nothing here for this path.' : 'Write down goals you might want, one line each. Order them, then fill in why and what done looks like before selecting one.'}
+          </span>
+        )}
+        {ideas.map((idea, i) => (
+          <IdeaRow key={idea.id} idea={idea} index={i} bucket="backlog" dnd={dnd} onEdit={() => setEditing(idea)} onDiscard={() => discard(idea)} onSelect={() => select(idea)} />
+        ))}
+      </section>
+
+      {/* Bucket 2: selected for next */}
+      <section className={`card tight stack-sm bucket selected${dnd.drag?.drop?.bucket === 'selected' && !dnd.drag.drop.rowId ? ' drop-on' : ''}`} aria-label="Selected for next" data-bucket-drop="selected">
+        <div className="row-between bucket-head">
+          <span className="label">Selected for next · {selected.length}</span>
+          <span className="xsmall muted">Refined, not started. Make one a goal when there's room.</span>
+        </div>
+        {selected.length === 0 && (
+          <span className="small muted" style={{ padding: '6px 2px 10px' }}>
+            {dragging && bucketOf(dragging) !== 'selected' ? (ideaReady(dragging) ? 'Drop here to select it.' : 'Needs its why and done-means first.') : 'Nothing selected yet. Drag a refined idea here, or use Select on it.'}
+          </span>
+        )}
+        {selected.map((idea, i) => (
+          <IdeaRow key={idea.id} idea={idea} index={i} bucket="selected" dnd={dnd} onEdit={() => setEditing(idea)} onDiscard={() => discard(idea)} onUnselect={() => unselect(idea)} />
+        ))}
+        {running >= 4 && selected.length > 0 && <span className="xsmall muted" style={{ padding: '4px 2px' }}>You have {running} goals running. Finishing one before starting another usually goes better.</span>}
+      </section>
 
       {discarded.length > 0 && (
         <details>
@@ -172,45 +229,95 @@ export function Backlog() {
         </details>
       )}
 
+      {dnd.drag && dragging && (
+        <div className="drag-ghost" style={{ left: dnd.drag.x, top: dnd.drag.y }} aria-hidden="true">
+          {dragging.title}
+          {dnd.drag.drop && (
+            <span className="drag-ghost-hint">
+              {dnd.drag.drop.bucket !== bucketOf(dragging) ? (dnd.drag.drop.bucket === 'selected' ? (ideaReady(dragging) ? 'Select for next' : 'Needs why + done-means') : 'Back to the backlog') : dnd.drag.drop.side === 'before' ? 'Move above' : 'Move below'}
+            </span>
+          )}
+        </div>
+      )}
+
       {editing && <IdeaSheet idea={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }
 
-/** One idea: its place, title, why, and what to do with it: make it a goal, edit, move, discard. */
-function IdeaRow({ idea, index, count, onEdit, onDiscard }: { idea: GoalIdea; index: number; count: number; onEdit: () => void; onDiscard: () => void }) {
-  const { data, commit } = useStore();
+/** One idea: a handle to drag, its place, title and why; then what to do with it for the bucket it's in. */
+function IdeaRow({
+  idea,
+  index,
+  bucket,
+  dnd,
+  onEdit,
+  onDiscard,
+  onSelect,
+  onUnselect,
+}: {
+  idea: GoalIdea;
+  index: number;
+  bucket: IdeaBucket;
+  dnd: ListDragApi;
+  onEdit: () => void;
+  onDiscard: () => void;
+  onSelect?: () => void;
+  onUnselect?: () => void;
+}) {
+  const { data } = useStore();
   const path = idea.path_id ? data.paths.find((p) => p.id === idea.path_id && !p.archived_at) : undefined;
-  const move = (dir: 'up' | 'down' | 'top') => commit(opsMoveIdea(data, idea.id, dir));
   const age = ageInDays(idea);
+  const ready = ideaReady(idea);
+  const lifted = dnd.drag?.id === idea.id;
+  const drop = dnd.drag?.drop;
+  const insert = drop?.rowId === idea.id ? (drop.side === 'before' ? ' insert-before' : ' insert-after') : '';
   return (
-    <div className="idea-row">
-      <span className="idea-moves" aria-label="Reorder">
-        <button type="button" className="icon-btn" aria-label={`Move ${idea.title} up`} disabled={index === 0} onClick={() => move('up')}>
-          <Icon name="chevron" size={14} stroke={2.4} />
-        </button>
-        <button type="button" className="icon-btn down" aria-label={`Move ${idea.title} down`} disabled={index === count - 1} onClick={() => move('down')}>
-          <Icon name="chevron" size={14} stroke={2.4} />
-        </button>
-      </span>
-      <button type="button" className="idea-main" onClick={onEdit} aria-label={`Edit ${idea.title}`}>
+    <div
+      className={`idea-row${lifted ? ' lifted' : ''}${insert}`}
+      data-row-id={idea.id}
+      data-bucket={bucket}
+      data-index={index}
+      onPointerDown={(e) => {
+        if ((e.target as HTMLElement).closest('button, a')) return;
+        dnd.start(e, idea.id);
+      }}
+    >
+      <button type="button" className="season-grip idea-grip" aria-label={`Drag ${idea.title} to reorder`} onPointerDown={(e) => (e.stopPropagation(), dnd.start(e, idea.id, true))} onClick={() => dnd.consumeClick()}>
+        {GRIP}
+      </button>
+      <button type="button" className="idea-main" onClick={() => !dnd.consumeClick() && onEdit()} aria-label={`Edit ${idea.title}`}>
         <span className="idea-title">
           <span className="mono" style={{ marginRight: 8 }}>{index + 1}</span>
           {idea.title}
           {path && <span className="dot" title={`${pathLetter(data, path)} · ${path.name}`} style={{ width: 7, height: 7, background: path.color, marginLeft: 8, verticalAlign: 'middle' }} />}
         </span>
         <span className="xsmall muted">
-          {idea.note.trim() ? idea.note.trim() : 'Tap to say why it matters'}
+          {bucket === 'selected' ? (idea.done_means?.trim() ? `Done: ${idea.done_means.trim()}` : idea.note.trim()) : idea.note.trim() ? idea.note.trim() : 'Tap to say why it matters'}
+          {bucket === 'backlog' && idea.note.trim() && !idea.done_means?.trim() ? ' · what does done look like?' : ''}
           {age >= 60 ? ` · written down ${age} days ago` : ''}
         </span>
       </button>
       <span className="idea-actions">
-        <a className="btn small primary" href={href(`/goals/new?idea=${idea.id}`)}>
-          Make it a goal
-        </a>
-        <button type="button" className="link-btn small" onClick={onDiscard}>
-          Discard
-        </button>
+        {bucket === 'selected' ? (
+          <>
+            <a className="btn small primary" href={href(`/goals/new?idea=${idea.id}`)}>
+              Make it a goal
+            </a>
+            <button type="button" className="link-btn small" onClick={onUnselect}>
+              Back to backlog
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className={`btn small${ready ? ' primary' : ''}`} onClick={onSelect} title={ready ? 'Move to Selected for next' : 'Add why it matters and what done looks like first'}>
+              {ready ? 'Select for next' : 'Fill in to select'}
+            </button>
+            <button type="button" className="link-btn small" onClick={onDiscard}>
+              Discard
+            </button>
+          </>
+        )}
       </span>
     </div>
   );

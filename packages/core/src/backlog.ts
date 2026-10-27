@@ -1,25 +1,35 @@
-import type { GoalIdea, IdeaStatus } from './types.ts';
+import type { GoalIdea, IdeaBucket, IdeaStatus } from './types.ts';
 
 /**
  * The goal backlog: one list of ideas in order of importance. An idea becomes a goal when you
  * make it one, or is discarded. Pure helpers, no UI.
  */
 
-/** Ideas in one column, most important first. */
-export function column(ideas: GoalIdea[], status: IdeaStatus): GoalIdea[] {
+/** The bucket an idea is in: a backlog idea with shortlisted_at set is 'selected'. */
+export function bucketOf(i: Pick<GoalIdea, 'status' | 'shortlisted_at'>): IdeaBucket {
+  return i.status === 'backlog' && i.shortlisted_at ? 'selected' : i.status;
+}
+
+/** Refined enough to select: it says why it matters and what done looks like. */
+export function ideaReady(i: Pick<GoalIdea, 'note' | 'done_means'>): boolean {
+  return i.note.trim().length > 0 && (i.done_means ?? '').trim().length > 0;
+}
+
+/** Ideas in one bucket, most important first. */
+export function column(ideas: GoalIdea[], status: IdeaBucket): GoalIdea[] {
   return ideas
-    .filter((i) => i.status === status)
+    .filter((i) => bucketOf(i) === status)
     .sort((a, b) => a.rank - b.rank || (a.created_at < b.created_at ? -1 : 1));
 }
 
 /** A rank that puts an idea at the end of a column. */
-export function rankAtEnd(ideas: GoalIdea[], status: IdeaStatus): number {
+export function rankAtEnd(ideas: GoalIdea[], status: IdeaBucket): number {
   const list = column(ideas, status);
   return list.length ? list[list.length - 1]!.rank + 1 : 1;
 }
 
 /** A rank that puts an idea at the top of a column. */
-export function rankAtTop(ideas: GoalIdea[], status: IdeaStatus): number {
+export function rankAtTop(ideas: GoalIdea[], status: IdeaBucket): number {
   const list = column(ideas, status);
   return list.length ? list[0]!.rank - 1 : 1;
 }
@@ -31,7 +41,7 @@ export function rankAtTop(ideas: GoalIdea[], status: IdeaStatus): number {
 export function reorder(ideas: GoalIdea[], id: string, move: 'up' | 'down' | 'top'): { id: string; rank: number }[] {
   const idea = ideas.find((i) => i.id === id);
   if (!idea) return [];
-  const list = column(ideas, idea.status);
+  const list = column(ideas, bucketOf(idea));
   const at = list.findIndex((i) => i.id === id);
   if (move === 'top') return at <= 0 ? [] : [{ id, rank: list[0]!.rank - 1 }];
   const other = list[move === 'up' ? at - 1 : at + 1];
@@ -53,7 +63,7 @@ export function ageInDays(idea: Pick<GoalIdea, 'created_at'>, now: Date = new Da
  * A rank that puts an idea at position `index` of a column (0 = top), ignoring where it is now.
  * Used for drag and drop, including moving it into another column.
  */
-export function rankAt(ideas: GoalIdea[], id: string, status: IdeaStatus, index: number): number {
+export function rankAt(ideas: GoalIdea[], id: string, status: IdeaBucket, index: number): number {
   const list = column(ideas, status).filter((i) => i.id !== id);
   const at = Math.max(0, Math.min(index, list.length));
   if (list.length === 0) return 1;

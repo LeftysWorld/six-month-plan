@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { evenSteps, shortDate, tallyText, type Goal, type MeasurementType, type Plan } from '@six/core';
 import { tallyFor } from '../data/tally.ts';
+import { opsAbandonGoal } from '../data/backlog.ts';
 import { findMeasure, measureLabel, measureOnToday } from '../data/connect.ts';
 import { daysText, opsAddPhotoTracker, opsStopPhotoTracker, photoTrackers } from '../data/tracking.ts';
 import { useStore } from '../data/store.tsx';
@@ -390,6 +391,23 @@ export function GoalManage({ goal }: { goal: Goal }) {
         </details>
       )}
 
+          {!goal.archived_at && !goal.completed_at && (
+            <button
+              className="link-btn small"
+              style={{ alignSelf: 'flex-start', paddingLeft: 0 }}
+              onClick={() => {
+                const before = data.ideas.find((i) => i.goal_id === goal.id);
+                const { ops, ideaId } = opsAbandonGoal(data, goal);
+                commit(ops);
+                toast(`${goal.title} is back at the top of your backlog. Its history stays under Completed → Archived.`, () =>
+                  commit([{ kind: 'update', collection: 'goals', id: goal.id, patch: { archived_at: null } }, ...(before ? [{ kind: 'update' as const, collection: 'ideas' as const, id: before.id, patch: before as unknown as Record<string, unknown> }] : [{ kind: 'delete' as const, collection: 'ideas' as const, id: ideaId }])]),
+                );
+                navigate('/goals/backlog');
+              }}
+            >
+              Back to the backlog (abandon this goal)
+            </button>
+          )}
           <button
             className="link-btn small"
             style={{ color: 'var(--danger)', alignSelf: 'flex-start', paddingLeft: 0 }}
