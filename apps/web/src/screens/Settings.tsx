@@ -217,6 +217,7 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
   const toast = useToast();
   const p = data.profile;
   const [name, setName] = useState(p.display_name);
+  const [partner, setPartner] = useState(p.partner_email ?? '');
   const [startOver, setStartOver] = useState(false);
   const [importing, setImporting] = useState(false);
   const [addingIdeas, setAddingIdeas] = useState<false | { initial: { name: string; items: IdeaFileItem[] } | null }>(false);
@@ -271,6 +272,21 @@ export function Settings({ demo, onExitDemo, onSignOut }: ShellProps) {
       </div>
 
       <ReminderSettings />
+
+      <div className="section-label">Accountability partner</div>
+      <div className="card stack">
+        <label className="field">
+          Their email <span style={{ fontWeight: 400 }}>(optional)</span>
+          <input type="email" value={partner} onChange={(e) => setPartner(e.target.value)} onBlur={() => partner.trim() !== (p.partner_email ?? '') && commit(opsProfile({ partner_email: partner.trim() || null }))} placeholder="someone who will ask how it went" />
+        </label>
+        <span className="xsmall muted">
+          Each weekly review ends with your week in a few lines: days you showed up, where each goal stands, prizes earned or still not taken. With an email here, that digest goes to them when you save the review (on Supabase, once <code>send-digests</code> is deployed; in demo mode, use the Send button on the review). Stakes work better when someone else can see them.
+        </span>
+        <label className="check-row small">
+          <input type="checkbox" checked={p.review_reminder ?? true} onChange={(e) => commit(opsProfile({ review_reminder: e.target.checked }))} />
+          <span>Sunday evening reminder: “two minutes to review” (needs reminders on, above)</span>
+        </label>
+      </div>
 
       <div className="section-label">Time available each day</div>
       <div className="card stack-sm">

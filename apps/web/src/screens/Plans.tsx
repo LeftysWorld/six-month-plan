@@ -14,6 +14,8 @@ import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { useGoalDrag } from '../components/goalDrag.ts';
 import { nextSeasonDates, seasonsOf } from '../data/season.ts';
 import { GroupRowsCard, LooseCard, SeasonHorizon, SeasonOutcomes, SeasonStats, dropHint, placeGoals } from './Season.tsx';
+import { SeasonCardButton } from '../components/SeasonCard.tsx';
+import { SeasonStart } from '../components/SeasonStart.tsx';
 import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
 
 /** Start a season: the six-month review calendar goals share (defaults to six months from today). */
@@ -150,6 +152,11 @@ export function Plans() {
   const side = season ? (
     <div className="season-side">
       <SeasonStats season={season} members={inSeason} />
+      <SeasonStart plan={season} goals={inSeason.map((m) => m.card.goal)} />
+      <div className="row-between" style={{ padding: '0 4px' }}>
+        <span className="xsmall muted">The season on one page</span>
+        <SeasonCardButton plan={season} goals={inSeason.map((m) => m.card.goal)} />
+      </div>
       <SeasonOutcomes season={season} members={inSeason} onPlan={selected === 'next' && inSeason.length === 0 ? () => undefined : undefined} />
     </div>
   ) : null;

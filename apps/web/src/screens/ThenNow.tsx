@@ -31,7 +31,14 @@ export function ThenNow({ planId }: { planId?: string | null }) {
   return (
     <div className="stack">
       <BackLink label="Review" fallback="/review" />
-      <h1>Then vs now</h1>
+      <div className="row-between">
+        <h1 style={{ margin: 0 }}>Then vs now</h1>
+        {plan && goals.length > 0 && (
+          <button className="btn small no-print" onClick={() => window.print()}>
+            Save as PDF
+          </button>
+        )}
+      </div>
       {!plan ? (
         <Empty title="Nothing to look back on yet." />
       ) : (

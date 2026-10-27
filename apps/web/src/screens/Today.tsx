@@ -23,6 +23,7 @@ import { EveningWrap, MorningPlan } from './today/Rituals.tsx';
 import { TaskCard } from './today/TaskCard.tsx';
 import { TodayNumbers } from './today/TodayNumbers.tsx';
 import { PrizeCelebration } from '../components/Prize.tsx';
+import { SeasonLine } from '../components/SeasonLine.tsx';
 import { AddTaskOnDay } from './today/AddTaskOnDay.tsx';
 
 
@@ -340,6 +341,10 @@ export function Today({ date }: { date?: ISODate } = {}) {
             <StreakChip streak={streak} />
           )}
         </div>
+
+        {isToday && plan && (
+          <SeasonLine plan={plan} today={today} />
+        )}
 
         <div className="only-narrow" style={{ marginTop: 2 }}>
           {weekStrip}

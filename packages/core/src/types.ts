@@ -25,6 +25,10 @@ export interface Profile {
   evening_reminder?: boolean;
   /** Secret token for the read-only calendar feed. */
   calendar_token?: string | null;
+  /** Someone who gets your weekly digest by email (blank = no one). */
+  partner_email?: string | null;
+  /** Sunday-evening push: "two minutes to review". Default on. */
+  review_reminder?: boolean;
 }
 
 /**
@@ -296,6 +300,9 @@ export interface Review {
   carry_forward?: string;
   minutes_planned?: number;
   minutes_done?: number;
+  /** The weekly digest as text, written when the review is saved; mailed to the partner by send-digests. */
+  digest?: string;
+  digest_sent_at?: string | null;
 }
 
 export interface ChangeLogEntry {
@@ -361,6 +368,25 @@ export interface PathQuestion {
  * if A vanished; Plan C: if money and image didn't matter). Goals and ideas point at a path, so its
  * progress is measured, not guessed.
  */
+/**
+ * A path experiment: a small, dated thing that answers one of a path's questions ("call one
+ * glamping owner and ask what they sold for", by Nov 20). It shows on Today when due and on the
+ * path; finishing it writes the result, and the answer, onto the question.
+ */
+export interface PathExperiment {
+  id: string;
+  path_id: string;
+  /** The question it answers (one of the path's), or null for a free experiment. */
+  question_id: string | null;
+  title: string;
+  due_date: ISODate;
+  note: string;
+  /** What you learned, written when it's done. */
+  result: string;
+  completed_at: string | null;
+  created_at: string;
+}
+
 export interface Path {
   id: string;
   name: string;

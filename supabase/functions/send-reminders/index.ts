@@ -35,12 +35,14 @@ interface SubscriptionRow {
   auth: string;
   last_morning_on: string | null;
   last_evening_on: string | null;
+  last_review_on: string | null;
 }
 interface ProfileRow {
   user_id: string;
   timezone: string | null;
   reminder_time: string | null;
   evening_reminder: boolean | null;
+  review_reminder: boolean | null;
 }
 interface SessionRow {
   title: string;
@@ -58,6 +60,8 @@ interface Payload {
 }
 
 const EVENING_MINUTES = 21 * 60;
+// Sunday from 18:00 local: "two minutes to review" (the weekly review opens Saturday).
+const REVIEW_MINUTES = 18 * 60;
 const MORNING_WINDOW_MIN = 180;
 const DEFAULT_TZ = 'America/New_York';
 const CHECKED_IN = new Set(['done', 'partial', 'minimum']);
@@ -124,6 +128,10 @@ function morningPayload(sessions: SessionRow[], date: string): Payload {
   };
 }
 
+function reviewPayload(date: string): Payload {
+  return { title: 'Two minutes to review', body: 'Your week in a few lines, then next week’s plan.', url: '/#/review/weekly', tag: `review-${date}` };
+}
+
 function eveningPayload(date: string): Payload {
   return { title: 'Keep your streak going', body: 'One small task counts.', url: '/#/today', tag: `evening-${date}` };
 }
@@ -152,7 +160,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const { data: subData, error: subError } = await sb
     .from('push_subscriptions')
-    .select('id, user_id, endpoint, p256dh, auth, last_morning_on, last_evening_on');
+    .select('id, user_id, endpoint, p256dh, auth, last_morning_on, last_evening_on, last_review_on');
   if (subError) return json({ error: `push_subscriptions: ${subError.message}` }, 500);
   const subs = (subData ?? []) as SubscriptionRow[];
   if (subs.length === 0) return json(result);
@@ -160,7 +168,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const userIds = [...new Set(subs.map((s) => s.user_id))];
   const { data: profData, error: profError } = await sb
     .from('profiles')
-    .select('user_id, timezone, reminder_time, evening_reminder')
+    .select('user_id, timezone, reminder_time, evening_reminder, review_reminder')
     .in('user_id', userIds);
   if (profError) return json({ error: `profiles: ${profError.message}` }, 500);
   const profiles = new Map<string, ProfileRow>(((profData ?? []) as ProfileRow[]).map((p) => [p.user_id, p]));
@@ -179,7 +187,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const wantEvening = eveningDue
       ? userSubs.filter((s) => s.last_evening_on !== local.date && !wantMorning.includes(s))
       : [];
-    if (wantMorning.length === 0 && wantEvening.length === 0) continue;
+    // Sunday review nudge: weekday from the local date (0 = Sunday).
+    const sunday = new Date(`${local.date}T12:00:00Z`).getUTCDay() === 0;
+    const reviewDue = sunday && (profile?.review_reminder ?? true) && local.minutes >= REVIEW_MINUTES && local.minutes < EVENING_MINUTES;
+    const wantReview = reviewDue ? userSubs.filter((s) => s.last_review_on !== local.date && !wantMorning.includes(s)) : [];
+    if (wantMorning.length === 0 && wantEvening.length === 0 && wantReview.length === 0) continue;
 
     let sessions: SessionRow[];
     try {
@@ -190,8 +202,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     const checkedIn = sessions.some((s) => CHECKED_IN.has(s.status));
 
-    const jobs: { sub: SubscriptionRow; payload: Payload; field: 'last_morning_on' | 'last_evening_on' }[] = [];
+    const jobs: { sub: SubscriptionRow; payload: Payload; field: 'last_morning_on' | 'last_evening_on' | 'last_review_on' }[] = [];
     for (const sub of wantMorning) jobs.push({ sub, payload: morningPayload(sessions, local.date), field: 'last_morning_on' });
+    for (const sub of wantReview) jobs.push({ sub, payload: reviewPayload(local.date), field: 'last_review_on' });
     if (!checkedIn) {
       for (const sub of wantEvening) jobs.push({ sub, payload: eveningPayload(local.date), field: 'last_evening_on' });
     }

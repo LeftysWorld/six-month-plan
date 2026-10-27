@@ -1289,3 +1289,14 @@ button.gauge-dot:hover { filter: brightness(0.9); }
 .score-bar.earned > span { background: var(--gradient); }
 .score-mark { position: relative; }
 .score-mark::after { content: ''; position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); left: var(--at); opacity: 0.5; }
+
+/* ---------- Season line (Today) ---------- */
+.season-line { display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--ink); padding: 2px 0 0; }
+.season-line-bar { height: 3px; border-radius: 999px; background: var(--fill); overflow: hidden; }
+.season-line-bar > span { display: block; height: 100%; background: var(--gradient); border-radius: 999px; }
+.season-line-text { font-size: 13px; line-height: 1.4; }
+.season-line-say { color: var(--ink-2); }
+@media print { .nav, .topbar, .btn, button, .link-btn, textarea, .no-print { display: none !important; } .card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; } body { background: #fff; color: #000; } }
+.digest-lines { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14.5px; line-height: 1.45; }
+.season-card-text { white-space: pre-wrap; font: 13px/1.5 var(--mono, ui-monospace, monospace); background: var(--fill); border-radius: 12px; padding: 12px 14px; margin: 0; max-height: 50vh; overflow: auto; }
+@media print { .season-card-text { max-height: none; overflow: visible; background: none; padding: 0; } .sheet-backdrop, .sheet { position: static !important; background: none !important; box-shadow: none !important; max-height: none !important; } }

@@ -34,6 +34,9 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261110000000_prizes.sql', table: 'milestones', columns: ['prize', 'prize_claimed_at'] },
   { file: '20261110000000_prizes.sql', table: 'goals', columns: ['prize_on_time', 'target_date_at_set', 'prize_on_time_claimed_at'] },
   { file: '20261110000000_prizes.sql', table: 'goal_groups', columns: ['prize_threshold'] },
+  { file: '20261111000000_digests_and_experiments.sql', table: 'profiles', columns: ['partner_email', 'review_reminder'] },
+  { file: '20261111000000_digests_and_experiments.sql', table: 'reviews', columns: ['digest', 'digest_sent_at'] },
+  { file: '20261111000000_digests_and_experiments.sql', table: 'path_experiments', columns: [], creates: true },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */
@@ -261,6 +264,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       if (pe) throw new Error(`profiles: ${pe.message}`);
       await insert('plans', incoming.plans ?? []);
       await insert('paths', incoming.paths ?? []);
+      await insert('path_experiments', incoming.experiments ?? []);
       await insert('goal_groups', (incoming.groups ?? []).map((g) => without(g, GONE_GROUP_COLUMNS)));
       // Goals and their measurements point at each other: goals first without it, then the link.
       // Older exports may carry columns this version no longer has.
@@ -288,7 +292,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       // Children first so nothing is left pointing at a deleted row (the foreign keys cascade anyway).
       const order = [
         'attachments', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
-        'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
+        'path_experiments', 'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
         'plan_steps', 'plan_goals', 'goals', 'goal_groups', 'plans', 'paths', 'measurement_types',
       ];
       for (const table of order) {

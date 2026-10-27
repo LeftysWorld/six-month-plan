@@ -56,3 +56,23 @@ select cron.schedule(
 -- Recent runs:  select * from cron.job_run_details order by start_time desc limit 10;
 -- Responses:    select id, status_code, content from net._http_response order by created desc limit 10;
 -- Stop it:      select cron.unschedule('send-reminders');
+
+-- Weekly digests to accountability partners: hourly is plenty (a saved review goes out within the hour).
+-- Deploy first: supabase functions deploy send-digests --no-verify-jwt
+-- Secrets:      supabase secrets set RESEND_API_KEY=re_... DIGEST_FROM="Six Months <digest@yourdomain>"
+select cron.schedule(
+  'send-digests',
+  '5 * * * *',
+  $job$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'reminders_project_url')
+           || '/functions/v1/send-digests',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'reminders_cron_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 30000
+  );
+  $job$
+);

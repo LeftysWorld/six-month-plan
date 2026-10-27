@@ -33,6 +33,8 @@ import { useStore } from '../data/store.tsx';
 import { fmt, minutesText, type View } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { allPrizes } from '../data/prizes.ts';
+import { weeklyDigest } from '../data/digest.ts';
+import { DigestCard } from '../components/DigestCard.tsx';
 import { PrizeRow } from '../components/Prize.tsx';
 import { groupScoreText } from '@six/core';
 import type { AppData, Op, ReviewPayload } from '../data/model.ts';
@@ -213,6 +215,8 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
   const trendWeeks = isWeekly || kind === 'block' ? 8 : Math.min(26, Math.max(1, Math.ceil((Date.parse(lookEnd) - Date.parse(period.start)) / (7 * 864e5))));
   const trend = trendPlan && (isWeekly || kind === 'block') ? planTrend(data, trendPlan, lastMonday, today) : trendFor(data, lastMonday, trendWeeks, today, trendPlan ? firstPlanWeek(trendPlan) : undefined);
   const lines = goalLines(data, view, goals, planOf, kind, period);
+  // The week in a few plain lines: shown at the top, copied or mailed to a partner, stored with the review.
+  const digest = isWeekly && trendPlan ? weeklyDigest(data, view, trendPlan, period.start) : null;
 
   // ---- Next week (weekly only) ----
   const existingNext = useMemo(() => data.sessions.filter((s) => s.week_start === nextMonday && s.status !== 'moved'), [data.sessions, nextMonday]);
@@ -362,6 +366,7 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
       ops.push(...more);
       next = withOps(next, more);
     };
+    if (digest) add([{ kind: 'update', collection: 'reviews', id: payload.review.id, patch: { digest: digest.text } }]);
     // A week goal that was hit is marked complete (and unmarked if it wasn't).
     for (const r of results) {
       const step = r.step_id ? next.planSteps.find((s) => s.id === r.step_id) : null;
@@ -438,6 +443,8 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
           </span>
         </a>
       )}
+
+      {digest && <DigestCard digest={digest} />}
 
       {prev?.change_next && (
         <div className="card stack-sm">

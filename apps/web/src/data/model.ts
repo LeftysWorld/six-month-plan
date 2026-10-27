@@ -12,6 +12,7 @@ import type {
   MeasurementType,
   Milestone,
   Path,
+  PathExperiment,
   Plan,
   PlanGoal,
   PlanStep,
@@ -49,6 +50,8 @@ export interface AppData {
   groups: GoalGroup[];
   /** Odyssey paths: the five-year lives goals and ideas are bets on. */
   paths: Path[];
+  /** Small dated experiments that answer a path's questions. */
+  experiments: PathExperiment[];
 }
 
 export type CollectionKey = Exclude<keyof AppData, 'profile'>;
@@ -75,6 +78,7 @@ export const TABLES: Record<CollectionKey, string> = {
   attachments: 'attachments',
   groups: 'goal_groups',
   paths: 'paths',
+  experiments: 'path_experiments',
 };
 
 export const COLLECTIONS = Object.keys(TABLES) as CollectionKey[];
@@ -121,6 +125,7 @@ export function emptyData(): AppData {
     attachments: [],
     groups: [],
     paths: [],
+    experiments: [],
   };
 }
 

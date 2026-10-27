@@ -10,3 +10,5 @@ export * from './workout.ts';
 export * from './steps.ts';
 export * from './habits.ts';
 export * from './prizes.ts';
+export * from './arc.ts';
+export * from './projection.ts';
