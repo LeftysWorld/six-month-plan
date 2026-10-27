@@ -19,7 +19,8 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261025000000_review_overhaul.sql', table: 'reviews', columns: ['commitment_kept', 'goal_results', 'goal_decisions', 'carry_forward', 'minutes_planned', 'minutes_done'] },
   { file: '20261026000000_goal_backlog.sql', table: 'goal_ideas', columns: [], creates: true },
   { file: '20261027000000_completed_goals_and_readiness.sql', table: 'goals', columns: ['completed_at', 'completion_note'] },
-  { file: '20261028000000_idea_prep.sql', table: 'goal_ideas', columns: ['prep'] },
+  // idea_prep added goal_ideas.prep; one_window_per_goal dropped it again, so there is nothing left to probe.
+  { file: '20261028000000_idea_prep.sql', table: 'goal_ideas', columns: [] },
   { file: '20261030000000_attachments.sql', table: 'attachments', columns: [], creates: true },
   { file: '20261031000000_connected_goals.sql', table: 'actions', columns: ['measurement_type_id'] },
   { file: '20261101000000_goal_groups.sql', table: 'goal_groups', columns: [], creates: true },
@@ -61,9 +62,10 @@ function looksMissing(message: string): boolean {
 /** The migration a "missing column or table" error points at, if it does. */
 function migrationFor(message: string, table?: string): (typeof MIGRATIONS)[number] | null {
   if (!looksMissing(message)) return null;
+  const tableMissing = /relation .* does not exist|could not find the table|schema cache/i.test(message);
   for (const m of MIGRATIONS) {
-    if (m.creates && (m.table === table || new RegExp(`\\b${m.table}\\b`).test(message))) return m;
-    if (m.columns.some((c) => message.includes(c))) return m;
+    if (m.creates && tableMissing && (m.table === table || new RegExp(`\\b${m.table}\\b`).test(message))) return m;
+    if (m.columns.some((c) => new RegExp(`\\b${c}\\b`).test(message))) return m;
   }
   // Measure and photo tasks need the connected-goals migration (it widens the allowed task kinds).
   if (/actions_kind_check/.test(message)) return MIGRATIONS.find((m) => m.file.includes('connected_goals')) ?? null;
