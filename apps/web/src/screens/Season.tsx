@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { daysBetween, seasonArc, seasonChapters, shortDate, weekDates, weekStart, type Chapter, type Goal, type GoalGroup, type ISODate, type PaceLabel, type Plan } from '@six/core';
+import { daysBetween, seasonArc, seasonChapters, shortDate, weekDates, weekStart, type Chapter, type Goal, type GoalGroup, type GoalIdea, type ISODate, type PaceLabel, type Plan } from '@six/core';
 import { chapterSpan, chapterView, weekRecord, weekTotals } from '../data/chapters.ts';
 import { useStore } from '../data/store.tsx';
 import { type View } from '../data/derive.ts';
@@ -230,7 +230,25 @@ export function GoalRow({ placed, dnd, onMove, hidePath = false }: { placed: Pla
 }
 
 /** A group's goals in one card: the name and counts in the header (opens the group), goals as rows. */
-export function GroupRowsCard({ group, members, dnd, onMove, onMoveGroup }: { group: GoalGroup; members: Placed[]; dnd?: DragApi; onMove?: (g: Goal) => void; onMoveGroup?: () => void }) {
+/** An idea planned for a season, not a goal yet: a dashed row with its rough dates (it's a dashed bar on the Roadmap too). */
+export function PlannedIdeaRow({ idea, plan }: { idea: GoalIdea; plan: Plan }) {
+  const from = idea.planned_start ?? plan.start_date;
+  const to = idea.planned_end ?? plan.end_date;
+  return (
+    <a className="season-row idea-planned" href={href(idea.group_id ? `/goals/group/${idea.group_id}` : '/goals/backlog')}>
+      <span className="idea-planned-dot" aria-hidden="true" />
+      <span className="idea-planned-text">
+        <b>{idea.title}</b>
+        <span className="xsmall muted">
+          Planned idea · {shortDate(from)} – {shortDate(to)}
+        </span>
+      </span>
+      <Icon name="chevron" size={14} stroke={2.4} />
+    </a>
+  );
+}
+
+export function GroupRowsCard({ group, members, ideas = [], plan, dnd, onMove, onMoveGroup }: { group: GoalGroup; members: Placed[]; ideas?: GoalIdea[]; plan?: Plan | null; dnd?: DragApi; onMove?: (g: Goal) => void; onMoveGroup?: () => void }) {
   const view = useView();
   const groupWait = waitOf(view.data, group, view.today);
   const shared = sharedTasksOf(view, members.map((m) => m.card.goal));
@@ -248,7 +266,7 @@ export function GroupRowsCard({ group, members, dnd, onMove, onMoveGroup }: { gr
       style={{ ['--group-gradient' as string]: gradient }}
     >
       <div className="season-card-head group-head">
-        {dnd && (
+        {dnd && members.length > 0 && (
           <button
             type="button"
             className="season-grip"
@@ -266,6 +284,7 @@ export function GroupRowsCard({ group, members, dnd, onMove, onMoveGroup }: { gr
           <b>{group.name}</b>
           <span className="xsmall muted">
             {members.length} goal{members.length === 1 ? '' : 's'}
+            {ideas.length ? ` · ${ideas.length} planned idea${ideas.length === 1 ? '' : 's'}` : ''}
             {shared.length ? ` · ${shared.length} shared task${shared.length === 1 ? '' : 's'}` : ''}
           </span>
           {groupWait && <WaitBadge info={groupWait} />}
@@ -274,11 +293,12 @@ export function GroupRowsCard({ group, members, dnd, onMove, onMoveGroup }: { gr
           </span>
         </a>
       </div>
-      <GroupRollup group={group} />
+      {members.length > 0 && <GroupRollup group={group} />}
       {over && <span className="season-drop-hint">Release to add to {group.name}</span>}
       {members.map((m) => (
         <GoalRow key={m.card.goal.id} placed={m} dnd={dnd} onMove={onMove} />
       ))}
+      {plan && ideas.map((i) => <PlannedIdeaRow key={i.id} idea={i} plan={plan} />)}
     </section>
   );
 }
@@ -441,7 +461,7 @@ export function SeasonHorizon({
   const totals = weekTotals(cells);
   const cp = firstCheckpoint(current);
   const cpIndex = chapters.findIndex((c) => cp >= c.start && cp <= c.end);
-  const plannedNext = placed.filter((p) => p.season === 'next').length;
+  const plannedNext = placed.filter((p) => p.season === 'next').length + (next ? data.ideas.filter((i) => i.status === 'backlog' && i.plan_id === next.id).length : 0);
   const phaseWord: Record<string, string> = { before: 'Before the start', start: 'The start', build: 'Building', middle: 'The middle', push: 'The push', finish: 'The finish', after: 'Finished' };
   const span = (c: Chapter) => Math.max(1, daysBetween(c.start, c.end) + 1);
   const grid = chapters.map((c) => `${span(c)}fr`).join(' ');
@@ -538,7 +558,7 @@ export function SeasonHorizon({
       </div>
 
       <button type="button" className={`hz-fold${open ? ' open' : ''}`} onClick={toggleOpen} aria-expanded={open} aria-controls="hz-more">
-        <span>{open ? 'Less' : panel ? `${panel.chapter.name} · ${panel.due.length} due in this stretch · ${totals.reviewed ? `${totals.hit} of ${totals.reviewed} weeks hit` : 'first review Saturday'}` : 'More'}</span>
+        <span>{open ? 'Hide season details' : panel ? `${panel.chapter.name} · ${panel.due.length} due in this stretch · ${totals.reviewed ? `${totals.hit} of ${totals.reviewed} weeks hit` : 'first review Saturday'}` : 'More'}</span>
         <Icon name="chevron" size={14} stroke={2.4} />
       </button>
       {open && (
@@ -638,6 +658,8 @@ export function SeasonHorizon({
         </div>
       )}
 
+      </div>
+      )}
       <button
         type="button"
         className={`hz-next${selected === 'next' ? ' on' : ''}${overNext ? ' drop-on' : ''}`}
@@ -651,7 +673,7 @@ export function SeasonHorizon({
           {shortDate(nextDates.start)} – {shortDate(nextDates.end)} · {next ? `${plannedNext} planned` : 'not planned yet'}
         </span>
         <span className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
-          {next ? (selected === 'next' ? 'Showing · back to this season' : 'Show its goals') : 'Plan it'}
+          {next ? (selected === 'next' ? 'Back to this season' : 'Show it') : 'Plan it'}
         </span>
       </button>
       {next && selected === 'next' && (
@@ -659,15 +681,13 @@ export function SeasonHorizon({
           Next season settings
         </button>
       )}
-      </div>
-      )}
-      {dnd?.drag && <span className="xsmall" style={{ color: 'var(--accent-ink)' }}>Drop on the chapters for this season{open && next ? ', or on the next-season line,' : ''} to move {dnd.drag.group ? dnd.drag.group.name : dnd.drag.goal.title}</span>}
+      {dnd?.drag && <span className="xsmall" style={{ color: 'var(--accent-ink)' }}>Drop on the chapters for this season{next ? ', or on the next-season line,' : ''} to move {dnd.drag.group ? dnd.drag.group.name : dnd.drag.goal.title}</span>}
     </section>
   );
 }
 
 /** On pace, the next checkpoint and the next review, as three tiles that wrap instead of crowding. */
-export function SeasonStats({ season, members }: { season: Plan; members: Placed[] }) {
+export function SeasonStats({ season, members, ideas = 0 }: { season: Plan; members: Placed[]; ideas?: number }) {
   const view = useView();
   const { today, data } = useStore();
   const weekReviewed = data.reviews.some((r) => r.kind === 'weekly' && r.status === 'done' && r.period_start === weekStart(today));
@@ -683,6 +703,7 @@ export function SeasonStats({ season, members }: { season: Plan; members: Placed
           <b className="num">
             {members.length} <small>goal{members.length === 1 ? '' : 's'}</small>
           </b>
+          {ideas > 0 && <small>+ {ideas} idea{ideas === 1 ? '' : 's'}</small>}
         </div>
         <div className="season-stat">
           <span className="mono">CHECKPOINT</span>

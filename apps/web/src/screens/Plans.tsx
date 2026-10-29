@@ -13,7 +13,7 @@ import { href } from '../router.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { useGoalDrag } from '../components/goalDrag.ts';
 import { nextSeasonDates, seasonsOf } from '../data/season.ts';
-import { GoalRow, GroupRowsCard, LooseCard, SeasonHorizon, SeasonOutcomes, SeasonStats, dropHint, placeGoals, type Placed } from './Season.tsx';
+import { GoalRow, GroupRowsCard, LooseCard, PlannedIdeaRow, SeasonHorizon, SeasonOutcomes, SeasonStats, dropHint, placeGoals, type Placed } from './Season.tsx';
 import { pathLetter, pathsOf } from '../data/paths.ts';
 import { gradientSlots, groupGradient } from '../data/palette.ts';
 import { byOrder, placeAmong } from '../data/order.ts';
@@ -107,9 +107,12 @@ export function Plans() {
   const inSeason = placed.filter((p) => p.season === selected || (!seasons.current && selected === 'current'));
   const others = placed.filter((p) => p.season === 'other');
   const orderPlaced = (ps: Placed[]) => byOrder(ps.map((p) => ({ id: p.card.goal.id, sort_order: p.card.goal.sort_order, p }))).map((x) => x.p);
+  // Ideas planned for the season you're looking at (not goals yet): they show with their group or path, dashed.
+  const plannedIdeas = season ? data.ideas.filter((i) => i.status === 'backlog' && i.plan_id === season.id).sort((a, b) => ((a.planned_start ?? '') < (b.planned_start ?? '') ? -1 : 1)) : [];
   const groups = byOrder(data.groups)
-    .map((group) => ({ group, members: orderPlaced(inSeason.filter((p) => p.card.goal.group_id === group.id)) }))
-    .filter((g) => g.members.length > 0);
+    .map((group) => ({ group, members: orderPlaced(inSeason.filter((p) => p.card.goal.group_id === group.id)), ideas: plannedIdeas.filter((i) => i.group_id === group.id) }))
+    .filter((g) => g.members.length > 0 || g.ideas.length > 0);
+  const looseIdeas = plannedIdeas.filter((i) => !i.group_id || !groups.some((g) => g.group.id === i.group_id));
   const grouped = new Set(groups.flatMap((g) => g.members.map((m) => m.card.goal.id)));
   const loose = orderPlaced(inSeason.filter((p) => !grouped.has(p.card.goal.id)));
 
@@ -175,9 +178,12 @@ export function Plans() {
   const archived = data.goals.filter((g) => g.archived_at).length;
   const pathList = (
     <div className="season-list">
-      {[...paths.map((p) => ({ path: p, members: orderPlaced(inSeason.filter((m) => m.card.goal.path_id === p.id)) })), { path: null, members: orderPlaced(inSeason.filter((m) => !m.card.goal.path_id || !paths.some((p) => p.id === m.card.goal.path_id))) }]
-        .filter((x) => x.members.length > 0 || x.path)
-        .map(({ path, members }) => (
+      {[
+        ...paths.map((p) => ({ path: p, members: orderPlaced(inSeason.filter((m) => m.card.goal.path_id === p.id)), ideas: plannedIdeas.filter((i) => i.path_id === p.id) })),
+        { path: null, members: orderPlaced(inSeason.filter((m) => !m.card.goal.path_id || !paths.some((p) => p.id === m.card.goal.path_id))), ideas: plannedIdeas.filter((i) => !i.path_id || !paths.some((p) => p.id === i.path_id)) },
+      ]
+        .filter((x) => x.members.length > 0 || x.ideas.length > 0 || x.path)
+        .map(({ path, members, ideas }) => (
           <section
             key={path?.id ?? 'none'}
             className="season-card group-card"
@@ -192,6 +198,7 @@ export function Plans() {
                   </b>
                   <span className="xsmall muted">
                     {members.length} goal{members.length === 1 ? '' : 's'}
+                    {ideas.length ? ` · ${ideas.length} planned idea${ideas.length === 1 ? '' : 's'}` : ''}
                     {path.headline ? ` · ${path.headline}` : ''}
                   </span>
                   <span className="season-open">
@@ -203,6 +210,7 @@ export function Plans() {
                   <b>No path</b>
                   <span className="xsmall muted">
                     {members.length} goal{members.length === 1 ? '' : 's'}
+                    {ideas.length ? ` · ${ideas.length} planned idea${ideas.length === 1 ? '' : 's'}` : ''}
                   </span>
                 </span>
               )}
@@ -210,7 +218,8 @@ export function Plans() {
             {members.map((m) => (
               <GoalRow key={m.card.goal.id} placed={m} hidePath />
             ))}
-            {members.length === 0 && <p className="small muted path-empty">No goals on this path this season.{path ? ' Its ideas wait in the backlog.' : ''}</p>}
+            {season && ideas.map((i) => <PlannedIdeaRow key={i.id} idea={i} plan={season} />)}
+            {members.length === 0 && ideas.length === 0 && <p className="small muted path-empty">No goals on this path this season.{path ? ' Its ideas wait in the backlog.' : ''}</p>}
           </section>
         ))}
     </div>
@@ -218,11 +227,24 @@ export function Plans() {
 
   const list = by === 'path' && paths.length ? pathList : (
     <div className="season-list">
-      {groups.map(({ group, members }) => (
-        <GroupRowsCard key={group.id} group={group} members={members} dnd={dnd} onMove={setMoving} onMoveGroup={() => setMovingGoals({ goals: members.map((m) => m.card.goal), title: group.name, dest: null })} />
+      {groups.map(({ group, members, ideas }) => (
+        <GroupRowsCard key={group.id} group={group} members={members} ideas={ideas} plan={season} dnd={dnd} onMove={setMoving} onMoveGroup={() => setMovingGoals({ goals: members.map((m) => m.card.goal), title: group.name, dest: null })} />
       ))}
       {(loose.length > 0 || (dnd.drag && !dnd.drag.group && dnd.drag.goal.group_id)) && <LooseCard title={groups.length ? 'Not in a group' : 'Your goals'} members={loose} dnd={dnd} onMove={setMoving} onNewGroup={(g) => setNaming([g])} />}
-      {inSeason.length === 0 && selected === 'next' && (
+      {looseIdeas.length > 0 && season && (
+        <section className="season-card group-card" aria-label="Planned ideas">
+          <div className="season-card-head group-head">
+            <span className="season-card-title">
+              <b>{groups.length ? 'Planned ideas, not in a group' : 'Planned ideas'}</b>
+              <span className="xsmall muted">Not goals yet: make one a goal when it's time</span>
+            </span>
+          </div>
+          {looseIdeas.map((i) => (
+            <PlannedIdeaRow key={i.id} idea={i} plan={season} />
+          ))}
+        </section>
+      )}
+      {inSeason.length === 0 && plannedIdeas.length === 0 && selected === 'next' && (
         <div className="card small" style={{ color: 'var(--ink-2)' }}>
           Nothing in next season yet. Drag a goal or a group onto it on the horizon, use Move on a goal, or make a goal from your backlog for it.
         </div>
@@ -236,7 +258,7 @@ export function Plans() {
   );
   const side = season ? (
     <div className="season-side">
-      <SeasonStats season={season} members={inSeason} />
+      <SeasonStats season={season} members={inSeason} ideas={plannedIdeas.length} />
       <SeasonStart plan={season} goals={inSeason.map((m) => m.card.goal)} />
       <div className="row-between" style={{ padding: '0 4px' }}>
         <span className="xsmall muted">The season on one page</span>
@@ -296,7 +318,7 @@ export function Plans() {
       <div className="season-layout">
         <div className="season-main">
           <div className="only-narrow">{side}</div>
-          {paths.length > 0 && placed.length > 0 && (
+          {paths.length > 0 && (placed.length > 0 || plannedIdeas.length > 0) && (
             <div className="row-between" style={{ gap: 8 }}>
               <span className="xsmall muted">Group by</span>
               <div className="seg" role="radiogroup" aria-label="Group goals by">

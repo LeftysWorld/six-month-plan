@@ -1530,6 +1530,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .hz-step .hz-step-now { color: var(--accent-ink); font-weight: 600; }
 .hz-next { display: flex; align-items: center; gap: 10px; padding: 10px 0 2px; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 0; min-height: 44px; }
 .hz-next-pill { border: 1.5px dashed var(--faint); border-radius: 999px; padding: 3px 10px; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.hz-next > .xsmall.muted { flex: 1; min-width: 0; }
 .hz-next.on .hz-next-pill { border-style: solid; border-color: var(--ink); color: var(--ink); }
 .hz-next.drop-on { outline: 3px solid var(--accent-ink); outline-offset: 2px; border-radius: 12px; }
 @media (prefers-reduced-motion: reduce) { .hz-panel, .hz-pop { animation: none; } }
@@ -1652,3 +1653,10 @@ html, body { overflow-x: clip; }
 .idea-row.drop-onto { outline: 2px dashed var(--accent-ink); outline-offset: -2px; background: var(--accent-soft); border-radius: 12px; }
 .idea-group.drop-on { outline: 2px dashed var(--accent-ink); outline-offset: 2px; }
 .idea-group-empty { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 12px; min-height: 64px; }
+
+/* An idea planned for a season (not a goal yet): dashed, like its bar on the Roadmap. */
+.season-row.idea-planned { align-items: center; gap: 12px; padding: 12px 14px; color: inherit; text-decoration: none; }
+.idea-planned-dot { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px dashed var(--muted); }
+.idea-planned-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.idea-planned-text b { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-card > .season-row.idea-planned { border-top: 1px dashed var(--line); }
