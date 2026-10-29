@@ -338,10 +338,10 @@ export function Settings({ demo, email, onExitDemo, onEnterDemo, onSignOut }: Sh
       <div className="section-label">Plans</div>
       <div className="card stack-sm">
         <span className="small">
-          <b>Splits & Backbend Plan</b> (from Nov 2): four flexibility goals, a stretching session after every lift on Mon, Tue, Thu, Fri and Sat, a monthly check, and workouts moved off Wednesday. You see every change before it's made.
+          <b>Splits & Backbend Plan</b> (from Fri Oct 30): four flexibility goals in Body, a timed stretching session after every lift on Mon, Tue, Thu, Fri and Sat, a monthly check, and workouts moved off Wednesday. You see every change before it's made; applied the earlier version? This updates it.
         </span>
         <button type="button" className="btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setPack(true)}>
-          Review and apply
+          Review
         </button>
       </div>
       {pack && <PlanPackSheet onClose={() => setPack(false)} />}

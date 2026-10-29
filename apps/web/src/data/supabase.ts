@@ -46,6 +46,7 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261115000000_session_scheduled_on.sql', table: 'sessions', columns: ['scheduled_on'] },
   { file: '20261117000000_stretching.sql', table: 'stretch_holds', columns: [], creates: true },
   { file: '20261117000000_stretching.sql', table: 'actions', columns: ['stretch_plan'] },
+  { file: '20261118000000_stretch_sets.sql', table: 'stretch_holds', columns: ['set_no', 'seconds', 'reps'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */
@@ -158,6 +159,12 @@ const NUMERIC_FIELDS: Record<string, string[]> = {
   goal_ideas: ['rank'],
 };
 
+/** Columns from recent migrations that a save can do without, by collection (see apply). */
+const OPTIONAL_COLUMNS: Partial<Record<string, string[]>> = {
+  sessions: ['scheduled_on'],
+  stretchHolds: ['set_no', 'seconds', 'reps'],
+};
+
 /** A network failure is worth retrying; a database refusal is not. */
 function toSaveError(error: { message: string; code?: string } | null): SaveError | null {
   if (!error) return null;
@@ -177,6 +184,35 @@ function safeName(name: string): string {
 
 export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
   const urlCache = new Map<string, { url: string; until: number }>();
+  async function applyOnce(op: Op): Promise<{ message: string; code?: string } | null> {
+    let error: { message: string; code?: string } | null = null;
+    switch (op.kind) {
+      case 'insert':
+        // Rows in one insert can differ in keys; a key missing on a row must take the column default, not null.
+        ({ error } = await sb.from(TABLES[op.collection]).insert(op.rows, { defaultToNull: false }));
+        break;
+      case 'insertIgnore':
+        ({ error } = await sb.from('sessions').upsert(op.rows, {
+          onConflict: 'user_id,action_id,week_start,origin,slot',
+          ignoreDuplicates: true,
+        }));
+        break;
+      case 'update':
+        ({ error } = await sb.from(TABLES[op.collection]).update(op.patch).eq('id', op.id));
+        break;
+      case 'delete':
+        ({ error } = await sb.from(TABLES[op.collection]).delete().eq('id', op.id));
+        break;
+      case 'profile':
+        ({ error } = await sb.from('profiles').upsert({ ...op.patch, user_id: userId }));
+        break;
+      case 'review':
+        ({ error } = await sb.rpc('complete_weekly_review', { payload: op.payload }));
+        break;
+    }
+    return error;
+  }
+
   return {
     mode: 'supabase',
     userId,
@@ -259,30 +295,19 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
     },
 
     async apply(op: Op): Promise<void> {
-      let error: { message: string; code?: string } | null = null;
-      switch (op.kind) {
-        case 'insert':
-          // Rows in one insert can differ in keys; a key missing on a row must take the column default, not null.
-          ({ error } = await sb.from(TABLES[op.collection]).insert(op.rows, { defaultToNull: false }));
-          break;
-        case 'insertIgnore':
-          ({ error } = await sb.from('sessions').upsert(op.rows, {
-            onConflict: 'user_id,action_id,week_start,origin,slot',
-            ignoreDuplicates: true,
-          }));
-          break;
-        case 'update':
-          ({ error } = await sb.from(TABLES[op.collection]).update(op.patch).eq('id', op.id));
-          break;
-        case 'delete':
-          ({ error } = await sb.from(TABLES[op.collection]).delete().eq('id', op.id));
-          break;
-        case 'profile':
-          ({ error } = await sb.from('profiles').upsert({ ...op.patch, user_id: userId }));
-          break;
-        case 'review':
-          ({ error } = await sb.rpc('complete_weekly_review', { payload: op.payload }));
-          break;
+      let error = await applyOnce(op);
+      // A database a newer migration hasn't reached yet still saves the row, without the newer
+      // columns (the banner asks for the update): a session keeps its day without scheduled_on, a
+      // stretching set keeps its hold and tick without the set number and time.
+      const optional = 'collection' in op ? OPTIONAL_COLUMNS[op.collection] : undefined;
+      if (error && optional && looksMissing(error.message) && optional.some((c) => new RegExp(`\\b${c}\\b`).test(error!.message))) {
+        const drop = (r: Record<string, unknown>) => Object.fromEntries(Object.entries(r).filter(([k]) => !optional.includes(k)));
+        if (op.kind === 'update') {
+          const patch = drop(op.patch);
+          error = Object.keys(patch).length ? await applyOnce({ ...op, patch }) : null;
+        } else if (op.kind === 'insert' || op.kind === 'insertIgnore') {
+          error = await applyOnce({ ...op, rows: op.rows.map((r) => ({ ...drop(r), id: r.id })) });
+        }
       }
       const saveError = toSaveError(error);
       if (saveError) throw saveError;

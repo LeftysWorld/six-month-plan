@@ -44,6 +44,7 @@ const paths: Record<string, ReactNode> = {
   plus: <path d="M12 5v14M5 12h14" />,
   check: <path d="M5 12l5 5 9-10" />,
   minus: <path d="M6 12h12" />,
+  play: <path d="M8 5.5v13l10-6.5z" />,
   x: <path d="M6 6l12 12M18 6L6 18" />,
   back: <path d="M15 5l-7 7 7 7" />,
   chevron: <path d="M9 6l6 6-6 6" />,

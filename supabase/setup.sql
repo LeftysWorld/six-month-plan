@@ -1409,3 +1409,12 @@ $$;
 
 notify pgrst, 'reload schema';
 
+
+-- ---------- 20261118000000_stretch_sets.sql ----------
+-- Stretching sets: one stretch_holds row per set, with how long it was held. Safe to run twice.
+
+alter table public.stretch_holds add column if not exists set_no int not null default 1;
+alter table public.stretch_holds add column if not exists seconds int;
+alter table public.stretch_holds add column if not exists reps int;
+
+notify pgrst, 'reload schema';

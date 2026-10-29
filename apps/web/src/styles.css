@@ -1569,6 +1569,27 @@ html, body { overflow-x: clip; }
 }
 
 /* ---------- Stretching log ---------- */
+/* Stretching: the workout layout, a timer button per set, and the timer bar's cues. */
+.workout-ex.pain { border-color: var(--amber-ink, #b26b00); }
+.stretch-how summary { cursor: pointer; color: var(--accent-ink); }
+.stretch-set { display: grid; grid-template-columns: 26px minmax(0, 1fr) 76px 44px 44px; gap: 6px; align-items: center; border-radius: 10px; padding: 2px 4px; }
+.stretch-set.head { padding-top: 0; padding-bottom: 0; }
+.stretch-set .input { text-align: center; padding-left: 4px; padding-right: 4px; min-height: 44px; font-size: 16px; }
+.stretch-set .input::placeholder { color: var(--muted); opacity: 1; }
+.stretch-set.done { background: var(--accent-soft); }
+.stretch-set.done .input { background: transparent; }
+.stretch-set.running { background: var(--fill); }
+.set-play { width: 44px; height: 44px; border-radius: 12px; border: 1.5px solid var(--accent); background: none; color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.set-play.on { background: var(--fill); border-color: var(--line); color: var(--muted); }
+.stretch-timer { flex-wrap: wrap; z-index: 2; }
+.stretch-timer .grow { display: flex; flex-direction: column; gap: 1px; flex-basis: 100%; }
+.stretch-timer-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stretch-timer .rest-time { font-size: 30px; line-height: 1.1; }
+.stretch-timer-cue { color: var(--ink-2); }
+.stretch-timer-cue.cue-contract { color: var(--amber-ink, #b26b00); font-weight: 600; }
+.stretch-timer-cue.cue-relax { color: var(--accent-ink); font-weight: 600; }
+.stretch-timer.cue-contract { border-color: var(--amber-ink, #b26b00); }
+.stretch-timer.phase-rest, .stretch-timer.phase-next { background: var(--sheet-bg, var(--surface)); box-shadow: inset 4px 0 0 var(--accent), 0 -6px 18px rgba(0, 0, 0, 0.08); }
 .task-card-plan { display: block; margin-top: 2px; }
 .stretch-hold { border: 1px solid var(--line); border-radius: 14px; padding: 6px 10px 6px 6px; display: flex; flex-direction: column; gap: 6px; background: var(--card); }
 .stretch-hold.done { background: var(--accent-soft); border-color: transparent; }

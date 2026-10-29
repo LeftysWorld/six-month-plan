@@ -407,13 +407,13 @@ for (const [title, note, done, pathId] of ideas) {
   run([{ kind: 'update', collection: 'ideas', id: added.idea.id, patch: { done_means: done, ...(pathId ? { path_id: pathId } : {}) } }]);
 }
 
-// ---------- Splits & Backbend Plan (from Mon Nov 2) ----------
-// The same switch-over the app's Settings → Plans makes: four flexibility goals in their own group,
+// ---------- Splits & Backbend Plan (from Fri Oct 30) ----------
+// The same switch-over the app's Settings → Plans makes: four flexibility goals in the Body group,
 // five stretching sessions (Mon, Tue, Thu, Fri, Sat), the monthly check, the old Stretch task and the
 // splits-gap measure stopped, and the workouts moved off Wednesday (Wed → Thu, Thu → Fri, Fri → Sat).
 {
   const preview = previewSplitsPack(data, TODAY);
-  run(opsApplySplitsPack(data, TODAY, { grouping: 'own', stop: preview.stopping.map((x) => x.action.id), moveWorkouts: true }).ops);
+  run(opsApplySplitsPack(data, TODAY, { grouping: 'body', stop: preview.stopping.map((x) => x.action.id), moveWorkouts: true }).ops);
 }
 
 // ---------- Out ----------

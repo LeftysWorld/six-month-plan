@@ -184,6 +184,12 @@ export interface StretchHoldLog {
   /** Its place in the plan (0-based). */
   position: number;
   hold: string;
+  /** Which set of the hold (1-based): Left is 1, Right is 2. Rows from before sets were kept are 1. */
+  set_no?: number;
+  /** How long it was held, for a timed set. */
+  seconds?: number | null;
+  /** How many, for a counted set. */
+  reps?: number | null;
   done: boolean;
   pain: boolean;
 }

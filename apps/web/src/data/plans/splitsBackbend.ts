@@ -1,7 +1,7 @@
 import type { StretchHold, StretchPlan } from '@six/core';
 
 /**
- * The Splits & Backbend Plan (months 1–9, starting Mon Nov 2 2026), right after every lifting
+ * The Splits & Backbend Plan (months 1–9, starting Fri Oct 30 2026), right after every lifting
  * session: Mon, Tue, Thu, Fri, Sat. Wed and Sun are rest days. All on the floor; gear: bands and blocks.
  *
  * Every session is the Daily Eight (about 24 minutes), then a focus slot of 3–6 minutes that
@@ -9,7 +9,7 @@ import type { StretchHold, StretchPlan } from '@six/core';
  * Fri are easy days (passive, 5–6 out of 10) and the big backbend days.
  */
 
-export const PLAN_START = '2026-11-02';
+export const PLAN_START = '2026-10-30';
 export const PLAN_NAME = 'Splits & Backbend Plan';
 
 const knee = true;
@@ -73,6 +73,7 @@ const DAILY_EIGHT: StretchHold[] = [
   {
     name: 'Sphinx to Cobra',
     dose: '3 × 45 s',
+    rest: '15 s',
     part: 'daily',
     how: 'Face down, forearms on the floor. Squeeze your glutes and pull your belly button in. 3 holds of 45 s with about 15 s lying flat between. A daily backbend balances all the forward folding.',
     push: 'Sphinx, sphinx, then cobra (arms straight) for the third.',
@@ -83,6 +84,7 @@ const DAILY_EIGHT: StretchHold[] = [
 const BRIDGES: StretchHold = {
   name: 'Bridge Holds',
   dose: '3 × 20–30 s',
+  rest: '30 s',
   knee,
   part: 'focus',
   how: 'On your back, feet flat and hip-width apart close to your hips. Squeeze your glutes and press your hips up. Start with a glute bridge (shoulders on the floor). Once that’s easy, put your hands by your ears and press up into a full bridge (wheel pose), pushing your chest toward the wall behind you. Rest 30 s between holds. Knee check: bridges bend the knee under load. If your knee complains, stay with glute bridges and keep the feet a bit further away.',

@@ -221,9 +221,21 @@ export function opsSaveWorkout(data: AppData, sessionId: string, sets: Omit<Work
  * Save a stretching session's holds: which were done and which hurt. Replaces whatever was saved
  * for the session before. Returns the ops and the ones that put the old rows back (for Undo).
  */
-export function opsSaveStretch(data: AppData, sessionId: string, holds: { hold: string; done: boolean; pain: boolean }[]): { ops: Op[]; undo: Op[] } {
+export interface StretchSetInput {
+  hold: string;
+  /** The hold's place in the plan (0-based). */
+  position: number;
+  set_no: number;
+  seconds: number | null;
+  reps: number | null;
+  done: boolean;
+  pain: boolean;
+}
+
+/** Save a stretching session's sets, replacing any saved before (one row per set). */
+export function opsSaveStretch(data: AppData, sessionId: string, sets: StretchSetInput[]): { ops: Op[]; undo: Op[] } {
   const existing = data.stretchHolds.filter((h) => h.session_id === sessionId);
-  const fresh: StretchHoldLog[] = holds.map((h, position) => ({ id: newId(), session_id: sessionId, position, hold: h.hold, done: h.done, pain: h.pain }));
+  const fresh: StretchHoldLog[] = sets.map((h) => ({ id: newId(), session_id: sessionId, position: h.position, set_no: h.set_no, hold: h.hold, seconds: h.seconds, reps: h.reps, done: h.done, pain: h.pain }));
   return {
     ops: [...existing.map((h): Op => ({ kind: 'delete', collection: 'stretchHolds', id: h.id })), ...(fresh.length ? [{ kind: 'insert', collection: 'stretchHolds', rows: rows(fresh) } as Op] : [])],
     undo: [...fresh.map((h): Op => ({ kind: 'delete', collection: 'stretchHolds', id: h.id })), ...(existing.length ? [{ kind: 'insert', collection: 'stretchHolds', rows: rows(existing) } as Op] : [])],

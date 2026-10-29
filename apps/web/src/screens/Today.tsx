@@ -26,6 +26,7 @@ import { PrizeCelebration } from '../components/Prize.tsx';
 import { SeasonLine } from '../components/SeasonLine.tsx';
 import { AddTaskOnDay } from './today/AddTaskOnDay.tsx';
 import { WeekAhead } from './today/WeekAhead.tsx';
+import { PlanPackNudge } from './PlanPackSheet.tsx';
 
 
 const FULL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -352,6 +353,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
         </div>
 
         {isToday && <PrizeCelebration />}
+        {isToday && <PlanPackNudge />}
 
         {summary}
         {segs.length > 0 && (
