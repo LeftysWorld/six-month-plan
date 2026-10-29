@@ -122,10 +122,11 @@ Open http://localhost:5173. With no Supabase settings, the app runs in demo mode
 
 On Vercel (Hobby plan, personal use):
 
-- Import the repository, keep the root directory as the repo root.
-- Build command: `npm run build` · Output directory: `apps/web/dist`.
-- Add the two `VITE_SUPABASE_…` environment variables.
-- Add the deployed URL to Supabase **Redirect URLs**.
+- Import the repository and keep the root directory as the repo root (the app is an npm workspace).
+- `vercel.json` at the repo root sets the build: framework *Other*, install `npm install`, build `npm run build`, output `apps/web/dist`, and the cache headers for the service worker. Leave the dashboard's build settings on their defaults.
+- Environment variables (Production and Preview): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_VAPID_PUBLIC_KEY` if you use push reminders. They're baked in at build time, so redeploy after changing one.
+- In Supabase → Authentication → URL Configuration, set the Site URL to the Vercel URL and add `https://<project>.vercel.app/**` (and `https://<project>-*.vercel.app/**` for preview deploys) to Redirect URLs.
+- Optional: `supabase secrets set APP_URL=https://<project>.vercel.app` for the calendar feed's links.
 
 On Netlify: import the repository; `netlify.toml` at the repo root sets the build (`npm run build`, publish `apps/web/dist`, Node 20), so leave the dashboard's build settings alone. Add the two `VITE_SUPABASE_…` variables under Project configuration → Environment variables, then Deploys → Trigger deploy → Clear cache and deploy (variables are baked in at build time). Any other static host works too (Cloudflare Pages): the app uses `#/` URLs, so no rewrite rules are needed.
 
