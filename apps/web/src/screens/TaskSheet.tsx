@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { addDays, describeSchedule, isoWeekday, rangeLabel, shortDate, weekDates, weekdayName, parseWorkoutPlan, type ActionKind, type Goal, type ISODate, type Plan, type PlanStep } from '@six/core';
+import { addDays, describeSchedule, isoWeekday, rangeLabel, shortDate, weekDates, weekdayName, parseWorkoutPlan, blankStretchPlan, type ActionKind, type Goal, type ISODate, type Plan, type PlanStep } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { opsEnsureStep } from '../data/chain.ts';
@@ -7,6 +7,7 @@ import { applyFrom, blankTask, inputFromTask, isOnce, opsAddTask, opsEditTask, o
 import { matchingTasks, opsShareTask, opsUnshareTask, shareCandidates } from '../data/connect.ts';
 import { Sheet, WEEKDAY_NAMES } from '../components/ui.tsx';
 import { WorkoutPlanEditor, blankExercise } from '../components/Workout.tsx';
+import { StretchPlanEditor } from '../components/Stretch.tsx';
 import { ShareTaskSheet } from '../components/Connections.tsx';
 
 /** "Oct 27 – Nov 2" for a step. */
@@ -73,6 +74,7 @@ export function TaskSheet({
     // A weigh-in or a photo takes no real time: don't count 30 minutes toward the day.
     if ((kind === 'measure' || kind === 'photo') && v.kind !== 'measure' && v.kind !== 'photo') patch.minutes = 0;
     // A new workout starts from the exercises written in details, or one empty exercise.
+    if (kind === 'stretch' && !v.stretchPlan?.holds.length) patch.stretchPlan = blankStretchPlan();
     if (kind === 'workout' && !v.workoutPlan?.length) {
       const fromDetails = v.details?.trim() ? parseWorkoutPlan(v.details) : [];
       patch.workoutPlan = fromDetails.length ? fromDetails : [blankExercise()];
@@ -104,7 +106,7 @@ export function TaskSheet({
     (d) => d >= week.start_date && d <= week.end_date && (d >= from || d === originalDate),
   );
   const measureOk = v.kind !== 'measure' || (v.newMeasure ? v.newMeasure.name.trim().length > 0 : !!v.measurementTypeId);
-  const valid = v.title.trim().length > 0 && (v.kind !== 'workout' || (v.workoutPlan ?? []).some((e) => e.name.trim())) && (v.when !== 'days' || v.days.length > 0) && (v.when !== 'once' || dayChoices.includes(v.date) || v.date >= from) && (v.when === 'once' || !v.through || v.through >= (v.start ?? from)) && measureOk;
+  const valid = v.title.trim().length > 0 && (v.kind !== 'workout' || (v.workoutPlan ?? []).some((e) => e.name.trim())) && (v.kind !== 'stretch' || (v.stretchPlan?.holds ?? []).some((h) => h.name.trim())) && (v.when !== 'days' || v.days.length > 0) && (v.when !== 'once' || dayChoices.includes(v.date) || v.date >= from) && (v.when === 'once' || !v.through || v.through >= (v.start ?? from)) && measureOk;
 
   function save() {
     if (!valid) return;
@@ -138,14 +140,18 @@ export function TaskSheet({
       <div className="stack-sm">
         <span className="xsmall muted">Task type</span>
         <div className="seg" role="tablist" aria-label="Task type">
-          <button role="tab" aria-selected={v.kind !== 'workout'} onClick={() => v.kind === 'workout' && pickKind('check')}>
+          <button role="tab" aria-selected={v.kind !== 'workout' && v.kind !== 'stretch'} onClick={() => (v.kind === 'workout' || v.kind === 'stretch') && pickKind('check')}>
             General
           </button>
           <button role="tab" aria-selected={v.kind === 'workout'} onClick={() => v.kind !== 'workout' && pickKind('workout')}>
             Workout
           </button>
+          <button role="tab" aria-selected={v.kind === 'stretch'} onClick={() => v.kind !== 'stretch' && pickKind('stretch')}>
+            Stretching
+          </button>
         </div>
         {v.kind === 'workout' && <span className="xsmall muted">Plan the exercises with sets, reps and weight. On the day, the log opens with the plan filled in and you enter what you actually did.</span>}
+        {v.kind === 'stretch' && <span className="xsmall muted">Plan the day's holds in order: how long, contract-relax on push days, knee care. On the day, you tick each one off and flag any that hurt.</span>}
       </div>
       {matches.length > 0 && (
         <div className="banner info stack-sm" style={{ alignItems: 'stretch' }}>
@@ -268,7 +274,8 @@ export function TaskSheet({
         </label>
       )}
       {v.kind === 'workout' && <WorkoutPlanEditor plan={v.workoutPlan ?? []} details={v.details ?? ''} unit={data.profile.units} onChange={(p) => set({ workoutPlan: p })} />}
-      {v.kind !== 'workout' && (
+      {v.kind === 'stretch' && <StretchPlanEditor plan={v.stretchPlan ?? blankStretchPlan()} onChange={(p) => set({ stretchPlan: p })} />}
+      {v.kind !== 'workout' && v.kind !== 'stretch' && (
       <div className="stack-sm">
         <span className="xsmall muted">How you log it</span>
         <div className="chips">

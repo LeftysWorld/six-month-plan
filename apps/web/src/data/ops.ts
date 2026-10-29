@@ -17,6 +17,7 @@ import {
   type Profile,
   type Session,
   type SessionStatus,
+  type StretchHoldLog,
   type WorkoutSet,
 } from '@six/core';
 import { applyOp, type AppData, type CollectionKey, type Op, type ReviewPayload } from './model.ts';
@@ -214,6 +215,19 @@ export function opsSaveWorkout(data: AppData, sessionId: string, sets: Omit<Work
     ...existing.map((w): Op => ({ kind: 'delete', collection: 'workoutSets', id: w.id })),
     ...(fresh.length ? [{ kind: 'insert', collection: 'workoutSets', rows: rows(fresh) } as Op] : []),
   ];
+}
+
+/**
+ * Save a stretching session's holds: which were done and which hurt. Replaces whatever was saved
+ * for the session before. Returns the ops and the ones that put the old rows back (for Undo).
+ */
+export function opsSaveStretch(data: AppData, sessionId: string, holds: { hold: string; done: boolean; pain: boolean }[]): { ops: Op[]; undo: Op[] } {
+  const existing = data.stretchHolds.filter((h) => h.session_id === sessionId);
+  const fresh: StretchHoldLog[] = holds.map((h, position) => ({ id: newId(), session_id: sessionId, position, hold: h.hold, done: h.done, pain: h.pain }));
+  return {
+    ops: [...existing.map((h): Op => ({ kind: 'delete', collection: 'stretchHolds', id: h.id })), ...(fresh.length ? [{ kind: 'insert', collection: 'stretchHolds', rows: rows(fresh) } as Op] : [])],
+    undo: [...fresh.map((h): Op => ({ kind: 'delete', collection: 'stretchHolds', id: h.id })), ...(existing.length ? [{ kind: 'insert', collection: 'stretchHolds', rows: rows(existing) } as Op] : [])],
+  };
 }
 
 // ---------- Plans ----------
@@ -531,6 +545,7 @@ export function opsDeleteGoal(data: AppData, goal: Goal): { ops: Op[]; files: st
   const attachments = data.attachments.filter((a) => sessionIds.has(a.session_id) || (a.action_id && own.has(a.action_id)));
   for (const a of attachments) del('attachments', a.id);
   for (const w of data.workoutSets.filter((w) => sessionIds.has(w.session_id))) del('workoutSets', w.id);
+  for (const h of data.stretchHolds.filter((h) => sessionIds.has(h.session_id))) del('stretchHolds', h.id);
   for (const s of sessions) del('sessions', s.id);
   for (const s of data.schedules.filter((x) => own.has(x.action_id))) del('schedules', s.id);
   for (const id of own) del('actions', id);

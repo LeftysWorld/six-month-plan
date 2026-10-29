@@ -21,6 +21,7 @@ import { opsAddPhotoTracker } from '../src/data/tracking.ts';
 import { blankHabit, opsCreateHabit } from '../src/data/habits.ts';
 import { opsSetGroupPrize } from '../src/data/prizes.ts';
 import { opsAddExperiment } from '../src/data/experiments.ts';
+import { opsApplySplitsPack, previewSplitsPack } from '../src/data/planPack.ts';
 // Goal colours (the same set as components/ui.tsx).
 const GOAL_COLORS = ['#5B8CFF', '#22B07D', '#FF7A45', '#E8559B', '#8B6CF6', '#3FB6C9'];
 
@@ -404,6 +405,15 @@ for (const [title, note, done, pathId] of ideas) {
   const added = opsAddIdea(data, title, note);
   run(added.ops);
   run([{ kind: 'update', collection: 'ideas', id: added.idea.id, patch: { done_means: done, ...(pathId ? { path_id: pathId } : {}) } }]);
+}
+
+// ---------- Splits & Backbend Plan (from Mon Nov 2) ----------
+// The same switch-over the app's Settings → Plans makes: four flexibility goals in their own group,
+// five stretching sessions (Mon, Tue, Thu, Fri, Sat), the monthly check, the old Stretch task and the
+// splits-gap measure stopped, and the workouts moved off Wednesday (Wed → Thu, Thu → Fri, Fri → Sat).
+{
+  const preview = previewSplitsPack(data, TODAY);
+  run(opsApplySplitsPack(data, TODAY, { grouping: 'own', stop: preview.stopping.map((x) => x.action.id), moveWorkouts: true }).ops);
 }
 
 // ---------- Out ----------

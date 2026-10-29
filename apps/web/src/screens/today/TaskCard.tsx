@@ -7,6 +7,7 @@ import { readingOn } from '../../data/connect.ts';
 import { talliesFor, tallyFor } from '../../data/tally.ts';
 import { Icon } from '../../components/ui.tsx';
 import { WorkoutCardPlan } from '../../components/Workout.tsx';
+import { StretchCardPlan } from '../../components/Stretch.tsx';
 
 const SWIPE_DONE = 84;
 
@@ -113,6 +114,7 @@ export function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: 
             </span>
           )}
           {action?.kind === 'workout' && action.workout_plan?.length ? <WorkoutCardPlan session={s} plan={action.workout_plan} /> : null}
+          {action?.kind === 'stretch' && action.stretch_plan?.holds.length ? <StretchCardPlan session={s} plan={action.stretch_plan} /> : null}
         </button>
         <button type="button" className={`tick-btn ${ring}`} aria-label={label} onClick={onToggle}>
           {s.status === 'done' || s.status === 'planned' ? <Icon name="check" size={22} stroke={2.6} /> : s.status === 'skipped' ? <Icon name="x" size={20} stroke={2.4} /> : <Icon name="minus" size={22} stroke={2.6} />}

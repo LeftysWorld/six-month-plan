@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { outboxKey, useStore } from '../data/store.tsx';
 import { opsProfile } from '../data/ops.ts';
+import { PlanPackSheet } from './PlanPackSheet.tsx';
 import { resetDemo } from '../data/local.ts';
 import { navigate } from '../router.ts';
 import { opsAddIdeas, parseIdeaFile, type IdeaFileItem } from '../data/backlog.ts';
@@ -216,6 +217,7 @@ export function Settings({ demo, email, onExitDemo, onEnterDemo, onSignOut }: Sh
   const { data, db, commit, today } = useStore();
   const toast = useToast();
   const p = data.profile;
+  const [pack, setPack] = useState(false);
   const [name, setName] = useState(p.display_name);
   const [partner, setPartner] = useState(p.partner_email ?? '');
   const [startOver, setStartOver] = useState(false);
@@ -332,6 +334,17 @@ export function Settings({ demo, email, onExitDemo, onEnterDemo, onSignOut }: Sh
           <span>Sunday evening reminder: “two minutes to review” (needs reminders on, above)</span>
         </label>
       </div>
+
+      <div className="section-label">Plans</div>
+      <div className="card stack-sm">
+        <span className="small">
+          <b>Splits & Backbend Plan</b> (from Nov 2): four flexibility goals, a stretching session after every lift on Mon, Tue, Thu, Fri and Sat, a monthly check, and workouts moved off Wednesday. You see every change before it's made.
+        </span>
+        <button type="button" className="btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setPack(true)}>
+          Review and apply
+        </button>
+      </div>
+      {pack && <PlanPackSheet onClose={() => setPack(false)} />}
 
       <div className="section-label">Time available each day</div>
       <div className="card stack-sm">

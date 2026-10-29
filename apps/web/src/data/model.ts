@@ -19,6 +19,7 @@ import type {
   Profile,
   Review,
   Session,
+  StretchHoldLog,
   WeekPlan,
   WorkoutSet,
 } from '@six/core';
@@ -37,6 +38,8 @@ export interface AppData {
   schedules: ActionSchedule[];
   sessions: Session[];
   workoutSets: WorkoutSet[];
+  /** Holds ticked off in logged stretching sessions. */
+  stretchHolds: StretchHoldLog[];
   measurementTypes: MeasurementType[];
   measurements: Measurement[];
   weekPlans: WeekPlan[];
@@ -69,6 +72,7 @@ export const TABLES: Record<CollectionKey, string> = {
   schedules: 'action_schedules',
   sessions: 'sessions',
   workoutSets: 'workout_sets',
+  stretchHolds: 'stretch_holds',
   measurementTypes: 'measurement_types',
   measurements: 'measurements',
   weekPlans: 'week_plans',
@@ -116,6 +120,7 @@ export function emptyData(): AppData {
     schedules: [],
     sessions: [],
     workoutSets: [],
+    stretchHolds: [],
     measurementTypes: [],
     measurements: [],
     weekPlans: [],

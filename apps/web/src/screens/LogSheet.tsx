@@ -8,6 +8,7 @@ import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
 import { SessionFiles } from '../components/Attachments.tsx';
 import { lastReading, opsRecordReading, opsSetTaskGoals, readingOn } from '../data/connect.ts';
 import { WorkoutSheet } from '../components/Workout.tsx';
+import { StretchSheet } from '../components/Stretch.tsx';
 import { LinkToGoal, needsGoalLink } from '../components/LinkToGoal.tsx';
 import { MoveDayPicker } from '../components/MoveDayPicker.tsx';
 
@@ -76,6 +77,10 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
   if (hasWorkoutLog && !general) {
     return <WorkoutSheet session={session} plan={action!.workout_plan!} onClose={onClose} onGeneral={() => setGeneral(true)} />;
   }
+  const hasStretchLog = action?.kind === 'stretch' && !!action.stretch_plan?.holds.length;
+  if (hasStretchLog && !general) {
+    return <StretchSheet session={session} plan={action!.stretch_plan!} onClose={onClose} onGeneral={() => setGeneral(true)} />;
+  }
 
   return (
     <Sheet title={session.title} onClose={onClose}>
@@ -83,6 +88,11 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
       {hasWorkoutLog && (
         <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start', padding: 0 }} onClick={() => setGeneral(false)}>
           ‹ Log it set by set instead
+        </button>
+      )}
+      {hasStretchLog && (
+        <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start', padding: 0 }} onClick={() => setGeneral(false)}>
+          ‹ Tick off the holds instead
         </button>
       )}
       {action?.details?.trim() && (

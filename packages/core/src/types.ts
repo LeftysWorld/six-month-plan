@@ -4,7 +4,7 @@ import type { ISODate } from './dates.ts';
 
 export type GoalType = 'number' | 'practice' | 'finish';
 /** measure: logging it records a number (e.g. the day's weight); photo: logging it takes a photo. */
-export type ActionKind = 'check' | 'count' | 'minutes' | 'workout' | 'study' | 'measure' | 'photo';
+export type ActionKind = 'check' | 'count' | 'minutes' | 'workout' | 'study' | 'measure' | 'photo' | 'stretch';
 export type SessionStatus = 'planned' | 'done' | 'partial' | 'minimum' | 'skipped' | 'moved';
 export type SessionOrigin = 'scheduled' | 'oneoff' | 'unplanned';
 export type ReviewKind = 'weekly' | 'block' | 'quarter' | 'retro';
@@ -172,7 +172,20 @@ export interface Action {
   details?: string;
   /** A workout task's plan: each exercise with sets, reps and a target weight. Missing on older databases. */
   workout_plan?: import('./workout.ts').PlannedExercise[] | null;
+  /** A stretching task's plan: the holds for that day. Missing on older databases. */
+  stretch_plan?: import('./stretch.ts').StretchPlan | null;
   archived_at: string | null;
+}
+
+/** One hold in a logged stretching session: ticked off, and whether it hurt. */
+export interface StretchHoldLog {
+  id: string;
+  session_id: string;
+  /** Its place in the plan (0-based). */
+  position: number;
+  hold: string;
+  done: boolean;
+  pain: boolean;
 }
 
 export interface ActionGoal {

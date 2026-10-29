@@ -13,3 +13,4 @@ export * from './prizes.ts';
 export * from './arc.ts';
 export * from './projection.ts';
 export * from './tally.ts';
+export * from './stretch.ts';

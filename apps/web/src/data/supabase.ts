@@ -44,6 +44,8 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261113000000_goal_order.sql', table: 'goal_groups', columns: ['sort_order'] },
   { file: '20261114000000_backlog_selected.sql', table: 'goal_ideas', columns: ['shortlisted_at'] },
   { file: '20261115000000_session_scheduled_on.sql', table: 'sessions', columns: ['scheduled_on'] },
+  { file: '20261117000000_stretching.sql', table: 'stretch_holds', columns: [], creates: true },
+  { file: '20261117000000_stretching.sql', table: 'actions', columns: ['stretch_plan'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */
@@ -96,7 +98,7 @@ function migrationFor(message: string, table?: string): (typeof MIGRATIONS)[numb
     if (m.columns.some((c) => new RegExp(`\\b${c}\\b`).test(message))) return m;
   }
   // Measure and photo tasks need the connected-goals migration (it widens the allowed task kinds).
-  if (/actions_kind_check/.test(message)) return MIGRATIONS.find((m) => m.file.includes('connected_goals')) ?? null;
+  if (/actions_kind_check/.test(message)) return MIGRATIONS.find((m) => m.file.includes('stretching')) ?? null;
   return null;
 }
 
@@ -313,7 +315,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       const rest: [string, unknown[] | undefined][] = [
         ['plan_goals', incoming.planGoals], ['goal_targets', incoming.goalTargets], ['plan_steps', incoming.planSteps], ['milestones', incoming.milestones],
         ['actions', incoming.actions], ['action_goals', incoming.actionGoals], ['action_schedules', incoming.schedules], ['sessions', incoming.sessions],
-        ['workout_sets', incoming.workoutSets], ['measurements', incoming.measurements], ['week_plans', incoming.weekPlans], ['reviews', incoming.reviews],
+        ['workout_sets', incoming.workoutSets], ['stretch_holds', incoming.stretchHolds], ['measurements', incoming.measurements], ['week_plans', incoming.weekPlans], ['reviews', incoming.reviews],
         ['change_log', incoming.changeLog], ['goal_ideas', (incoming.ideas ?? []).map((i) => ({ ...without(i, GONE_IDEA_COLUMNS), status: (i as { status: string }).status === 'selected' ? 'backlog' : i.status }))],
       ];
       for (const [table, rows] of rest) if (rows?.length) await insert(table, rows);
@@ -326,7 +328,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       for (let i = 0; i < paths.length; i += 100) await sb.storage.from(BUCKET).remove(paths.slice(i, i + 100));
       // Children first so nothing is left pointing at a deleted row (the foreign keys cascade anyway).
       const order = [
-        'attachments', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'sessions',
+        'attachments', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'stretch_holds', 'sessions',
         'path_experiments', 'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
         'plan_steps', 'plan_goals', 'goals', 'goal_groups', 'plans', 'paths', 'measurement_types',
       ];

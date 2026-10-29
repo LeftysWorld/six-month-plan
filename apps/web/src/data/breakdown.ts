@@ -18,6 +18,8 @@ import {
   type Session,
   parseWorkoutPlan,
   type PlannedExercise,
+  type StretchPlan,
+  cleanStretchPlan,
 } from '@six/core';
 import { applyOp, type AppData, type Op } from './model.ts';
 import { findMeasure } from './connect.ts';
@@ -175,6 +177,8 @@ export interface TaskInput {
   details?: string;
   /** A workout's plan, exercise by exercise. */
   workoutPlan?: PlannedExercise[] | null;
+  /** A stretching task's plan: the day's holds. */
+  stretchPlan?: StretchPlan | null;
 }
 
 /** The measurement a measure task records: an existing one, or a new one created with the task. */
@@ -240,6 +244,7 @@ export function opsAddTask(data: AppData, goal: Goal, step: PlanStep, input: Tas
     // Only sent when used, so a database without the details column still works.
     ...(input.details?.trim() ? { details: input.details.trim() } : {}),
     ...(input.kind === 'workout' && input.workoutPlan?.length ? { workout_plan: cleanPlan(input.workoutPlan) } : {}),
+    ...(input.kind === 'stretch' && input.stretchPlan?.holds.length ? { stretch_plan: cleanStretchPlan(input.stretchPlan) } : {}),
   };
   const schedule = scheduleFor(action.id, input, applyFrom(step, today));
   const ops: Op[] = [
@@ -278,6 +283,7 @@ export function opsEditTask(data: AppData, action: Action, input: TaskInput, fro
         ...(measure.id || action.measurement_type_id ? { measurement_type_id: measure.id } : {}),
         ...(input.details?.trim() || action.details ? { details: input.details?.trim() ?? '' } : {}),
         ...(input.workoutPlan?.length || action.workout_plan?.length ? { workout_plan: input.kind === 'workout' && input.workoutPlan?.length ? cleanPlan(input.workoutPlan) : null } : {}),
+        ...(input.stretchPlan?.holds.length || action.stretch_plan ? { stretch_plan: input.kind === 'stretch' && input.stretchPlan?.holds.length ? cleanStretchPlan(input.stretchPlan) : null } : {}),
       },
     },
   ];
@@ -365,6 +371,7 @@ export function inputFromTask(t: WeekTask, week: PlanStep): TaskInput {
     newMeasure: null,
     details: t.action.details ?? '',
     workoutPlan: t.action.workout_plan ?? null,
+    stretchPlan: t.action.stretch_plan ?? null,
   };
 }
 
