@@ -384,9 +384,8 @@ const doc = goal(
 tasks(doc, [
   // This week: pick the course. Next week: start it.
   { title: 'Compare documentary courses and buy one', kind: 'minutes', minutes: 45, when: 'once', date: '2026-10-28' as ISODate, cue: 'Documentary Fundamentals (docfilmacademy) is the front-runner' },
-  { title: 'Documentary Fundamentals course', kind: 'minutes', minutes: 45, days: [1, 2, 3, 4, 5], start: DOC_COURSE_STARTS, through: '2026-11-30' as ISODate },
-  { title: 'Shoot or edit', kind: 'minutes', minutes: 90, days: [6, 7], start: addDays(DOC_COURSE_STARTS, 5), cue: 'Record the song first, then the interview' },
-  { title: 'Log every clip from the shoot', kind: 'check', minutes: 15, days: [7], start: addDays(DOC_COURSE_STARTS, 6) },
+  // Bought Oct 29: an hour of Doc Film Academy every day from Monday. Practice gets added once the course is going.
+  { title: 'Doc Film Academy: study', kind: 'minutes', minutes: 60, days: [1, 2, 3, 4, 5, 6, 7], start: DOC_COURSE_STARTS, minLabel: '15 minutes: one lesson' },
 ]);
 run(opsCreateGroup(data, 'Documentarian', [doc]).ops);
 

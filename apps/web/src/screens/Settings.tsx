@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { outboxKey, useStore } from '../data/store.tsx';
 import { opsProfile } from '../data/ops.ts';
 import { PlanPackSheet } from './PlanPackSheet.tsx';
+import { AppUpdatesList } from './UpdateSheet.tsx';
 import { resetDemo } from '../data/local.ts';
 import { navigate } from '../router.ts';
 import { opsAddIdeas, parseIdeaFile, type IdeaFileItem } from '../data/backlog.ts';
@@ -343,6 +344,10 @@ export function Settings({ demo, email, onExitDemo, onEnterDemo, onSignOut }: Sh
         <button type="button" className="btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setPack(true)}>
           Review
         </button>
+      </div>
+      <div className="card stack-sm">
+        <span className="xsmall muted">Smaller changes to your plan, applied with one tap:</span>
+        <AppUpdatesList />
       </div>
       {pack && <PlanPackSheet onClose={() => setPack(false)} />}
 

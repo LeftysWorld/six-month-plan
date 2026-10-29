@@ -279,3 +279,7 @@ Each device you enable gets its own reminders; **Turn off** only affects that de
 
 Everything a goal tracks (numbers like a distance or a waist, and photos) sits at the top of the goal page's side column, above milestones: the latest reading, the change since the first, a box to log today's (a second entry the same day replaces the first), every reading, and settings (show on Today, how often, rename, stop). A **group's page** lists everything its goals track, goal by goal, so you can log any of it in one place. **+ Track something** there asks which goal it belongs to, and a measurement's settings can move it to another goal in the group. Code: `apps/web/src/components/Tracking.tsx`.
 
+## App updates
+
+Small changes to your plan ship with the app as one-tap updates (`apps/web/src/data/updates.ts`): Today shows a line while one is waiting, **Review** lists what it changes and any choices, **Apply** makes the change, and Undo puts it back. Settings → Plans lists them all. The first: **Doc Film Academy: an hour a day** — the documentary goal's study task becomes 1 hour every day from Mon Nov 2, the course purchase is ticked, and the shoot/edit practice pauses until you add your own (optionally the drafted milestones go too).
+
