@@ -22,7 +22,7 @@ import { blankHabit, opsCreateHabit } from '../src/data/habits.ts';
 import { opsSetGroupPrize } from '../src/data/prizes.ts';
 import { opsAddExperiment } from '../src/data/experiments.ts';
 import { opsApplySplitsPack, previewSplitsPack } from '../src/data/planPack.ts';
-import { glampGroupUpdate } from '../src/data/updates.ts';
+import { fermentUpdate, glampGroupUpdate } from '../src/data/updates.ts';
 // Goal colours (the same set as components/ui.tsx).
 const GOAL_COLORS = ['#5B8CFF', '#22B07D', '#FF7A45', '#E8559B', '#8B6CF6', '#3FB6C9'];
 
@@ -409,6 +409,8 @@ for (const [title, note, done, pathId] of ideas) {
 // Glamping Site: its own group of four ideas (buy land, an A-frame, 3 domes, 3 tarp sites), selected
 // for next, planned on next season's Roadmap, on Plan C, waiting on the job. The app's one-tap update.
 run(glampGroupUpdate.ops(data, TODAY, {}));
+// Fermentation: kombucha every Sunday, then hard kombucha, mead and koji this season; doburoku and sake next.
+run(fermentUpdate.ops(data, TODAY, {}));
 
 // ---------- Splits & Backbend Plan (from Fri Oct 30) ----------
 // The same switch-over the app's Settings → Plans makes: four flexibility goals in the Body group,

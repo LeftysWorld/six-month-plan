@@ -1,6 +1,6 @@
 import { addDays, rankAtEnd, weekStart, type Action, type ActionSchedule, type Goal, type ISODate } from '@six/core';
 import { applyOp, type AppData, type Op } from './model.ts';
-import { opsCreatePlan, opsEnsureWeek, opsLogSession, opsToggleMilestone } from './ops.ts';
+import { opsCreateGoal, opsCreatePlan, opsEnsureWeek, opsLogSession, opsToggleMilestone } from './ops.ts';
 import { invertOps, opsStopFrom } from './planPack.ts';
 import { MONTHLY_CHECK } from './plans/splitsBackbend.ts';
 
@@ -336,5 +336,203 @@ export const glampGroupUpdate: AppUpdate = {
   },
 };
 
+// ---------- Fermentation: kombucha to sake, every Sunday ----------
+
+const FERMENT_GROUP = 'Fermentation';
+const FERMENT_TASK = 'Fermentation Sunday';
+
+/**
+ * The ladder from the fermentation roadmap: each ferment hands skills to the next. This season:
+ * kombucha (a batch every Sunday), hard kombucha, a hydromel mead, and koji basics (amazake, miso,
+ * growing koji). Next season, as planned ideas: doburoku, then sake. Dates are days from the season's
+ * start (Oct 26) for goals, and from next season's start for ideas.
+ */
+export const FERMENT_GOALS: { title: string; why: string; done: string; from: number; to: number | null; color: string; milestones: { title: string; day: number }[] }[] = [
+  {
+    title: 'Kombucha, dialed in',
+    why: 'The first ferment, and the base for hard kombucha: batch one was okay, batch two or three is the real thing.',
+    done: 'A batch I’d happily pour (batch 2 or 3), brewed every Sunday: 7–14 days first ferment, then 2–4 days in bottles for fizz.',
+    from: 0,
+    to: 34,
+    color: '#F5B83D',
+    milestones: [
+      { title: 'Batch 2 bottled', day: 13 },
+      { title: 'A batch I’d happily pour', day: 34 },
+    ],
+  },
+  {
+    title: 'Hard kombucha',
+    why: 'Kombucha plus champagne yeast under an airlock: the step that teaches the gear and the yeast mead needs.',
+    done: '2–3 batches with one good: 10–14 days normal ferment, 7–14 days under an airlock with EC-1118, 5–7 days conditioning in bottles.',
+    from: 13,
+    to: 97,
+    color: '#FF7A45',
+    milestones: [
+      { title: 'Gear: airlock jar, EC-1118, hydrometer, Star San, Fermaid O', day: 12 },
+      { title: 'Batch 1 under the airlock', day: 20 },
+      { title: 'Batch 1 bottled', day: 48 },
+      { title: 'Batch 2: more nutrient, steady temperature', day: 97 },
+    ],
+  },
+  {
+    title: 'Mead: a hydromel',
+    why: 'Almost all the hard kombucha gear carries over, and a hydromel drinks well in weeks, not a year.',
+    done: 'A 5–8% hydromel I’d pour at 4–6 weeks (staggered nutrients), with batch 2 started before batch 1 was done.',
+    from: 41,
+    to: null,
+    color: '#E8559B',
+    milestones: [
+      { title: 'Gear: 71B or D47 yeast, raw honey (~3 lb/gal), auto-siphon, gram scale', day: 40 },
+      { title: 'Hydromel batch 1 started', day: 41 },
+      { title: 'Batch 2 started', day: 69 },
+      { title: 'Batch 1 tasted at 6 weeks', day: 83 },
+    ],
+  },
+  {
+    title: 'Koji basics: amazake, miso, grown koji',
+    why: 'Koji turning starch into sugar is the step miso, doburoku and sake all depend on: amazake shows it in a day, miso over months.',
+    done: 'Two batches of amazake, a white miso tasted and a red miso aging, and koji grown three times.',
+    from: 55,
+    to: null,
+    color: '#3FB6C9',
+    milestones: [
+      { title: 'Gear: rice koji, probe thermometer, a cooker that holds 140°F, crock, soybeans, salt', day: 54 },
+      { title: 'Amazake batch 1', day: 55 },
+      { title: 'White miso and a red miso started', day: 62 },
+      { title: 'Amazake batch 2', day: 69 },
+      { title: 'Koji incubator: cooler, seedling mat, hygrometer, koji-kin', day: 96 },
+      { title: 'White miso tasted', day: 118 },
+      { title: 'Koji grown: 3 runs', day: 160 },
+    ],
+  },
+];
+
+export const FERMENT_IDEAS: { title: string; note: string; done: string; from: number; to: number | null }[] = [
+  {
+    title: 'Doburoku',
+    note: 'Unfiltered sake: the same rice-and-koji additions as sake, but forgiving. Sake yeast, and the “let it go too far and it sours” lesson, cheaply.',
+    done: '3–4 batches to good: 2–3 weeks each, staged rice and koji additions, sake yeast (Wyeast 4134 or WLP705), caught before it sours.',
+    from: 0,
+    to: 64,
+  },
+  {
+    title: 'Sake',
+    note: 'The goal the whole ladder leads to.',
+    done: 'A first sake in a fridge on a temperature controller at 50–55°F: a 2-week shubo, three staged additions, pressed, pasteurized, aging 1–3 months.',
+    from: 65,
+    to: null,
+  },
+];
+
+const FERMENT_DETAILS = [
+  'One session every Sunday: start or bottle the week’s kombucha, then whatever ferment is in progress.',
+  'Fall: kombucha batch 2, then hard kombucha, then the first hydromel.',
+  'Holidays: amazake, a white miso, mead batch 2; start a red miso.',
+  'Winter: grow koji (3–5 runs, 48 h at 86–90°F, humid). A second red miso if the first looked right.',
+  'Spring–summer (next season): doburoku, then the first sake with a temperature-controlled fridge.',
+  'Most of it is low-touch waiting: three jars going at once is normal after the first month.',
+].join('\n');
+
+function fermentSetup(data: AppData, today: ISODate) {
+  const plans = data.plans.filter((p) => !p.archived_at).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+  const current = plans.find((p) => p.start_date <= today && p.end_date >= today) ?? null;
+  const next = current ? plans.find((p) => p.start_date > current.start_date) ?? null : null;
+  const group = data.groups.find((g) => g.name.trim().toLowerCase() === FERMENT_GROUP.toLowerCase()) ?? null;
+  const goals = data.goals.filter((g) => !g.archived_at && FERMENT_GOALS.some((f) => f.title === g.title));
+  const ideas = data.ideas.filter((i) => i.status !== 'discarded' && FERMENT_IDEAS.some((f) => f.title === i.title));
+  const task = data.actions.find((a) => !a.archived_at && a.title === FERMENT_TASK) ?? null;
+  return { current, next, group, goals, ideas, task };
+}
+
+export const fermentUpdate: AppUpdate = {
+  id: 'fermentation-group-2026-10',
+  title: 'Fermentation: kombucha to sake',
+  nudge: 'Fermentation as a group: kombucha every Sunday, then hard kombucha, mead and koji this season; doburoku and sake next.',
+  preview(data, today) {
+    const p = fermentSetup(data, today);
+    if (!p.current) return { done: true, blocked: 'Start a season first.', lines: [], options: [] };
+    if (p.goals.length === FERMENT_GOALS.length && p.ideas.length === FERMENT_IDEAS.length && p.task) return { done: true, lines: [], options: [] };
+    const S = p.current.start_date;
+    const day = (n: number | null) => (n == null ? p.current!.end_date : addDays(S, n));
+    const lines = [
+      `A “${FERMENT_GROUP}” group, with four goals this season:`,
+      ...FERMENT_GOALS.map((g) => `${g.title}: ${dayLabel(day(g.from))} – ${dayLabel(day(g.to))}`),
+      `“${FERMENT_TASK}”: one session every Sunday from ${dayLabel(nextSunday(today))}, shared by all four (start or bottle the week’s kombucha, then whatever’s in progress). The minimum: start the next kombucha.`,
+      `Each goal has its dates from the roadmap, including when to buy the gear for it.`,
+      `Next season, selected for next and on its Roadmap: Doburoku, then Sake${p.next ? '' : ' (next season is made now)'}.`,
+    ];
+    return { done: false, lines, options: [] };
+  },
+  ops(data, today) {
+    const p = fermentSetup(data, today);
+    if (!p.current) return [];
+    const ops: Op[] = [];
+    let next = data;
+    const add = (more: Op[]) => {
+      ops.push(...more);
+      next = more.reduce(applyOp, next);
+    };
+    const season = p.current;
+    const nowIso = new Date().toISOString();
+    let groupId = p.group?.id;
+    if (!groupId) {
+      groupId = newId();
+      add([{ kind: 'insert', collection: 'groups', rows: [{ id: groupId, name: FERMENT_GROUP, created_at: nowIso } as Row] }]);
+    }
+    // The goals, in the group, with their dates and the roadmap's milestones.
+    const goalIds: string[] = [];
+    for (const f of FERMENT_GOALS) {
+      const have = next.goals.find((g) => !g.archived_at && g.title === f.title);
+      if (have) {
+        goalIds.push(have.id);
+        continue;
+      }
+      const start = addDays(season.start_date, f.from);
+      const end = f.to == null ? season.end_date : addDays(season.start_date, f.to);
+      const made = opsCreateGoal(
+        next,
+        { planId: season.id, title: f.title, type: 'finish', why: f.why, done_means: f.done, color: f.color, unit: '', measureName: '', baseline: null, target: null, targetDate: end, path: [], milestones: f.milestones.map((m) => ({ title: m.title, due_date: addDays(season.start_date, m.day) })), action: null },
+        today,
+      );
+      add(made.ops);
+      add([{ kind: 'update', collection: 'goals', id: made.goalId, patch: { group_id: groupId, ...(start > season.start_date ? { start_date: start } : {}), ...(end < season.end_date ? { target_date: end } : {}) } }]);
+      goalIds.push(made.goalId);
+    }
+    // One Sunday session, shared by all four goals.
+    if (!p.task) {
+      const action: Action = { id: newId(), title: FERMENT_TASK, kind: 'minutes', planned_minutes: 60, planned_count: null, min_label: 'Start the next kombucha', min_minutes: 20, min_count: null, priority: false, archived_at: null, details: FERMENT_DETAILS };
+      const schedule: ActionSchedule = { id: newId(), action_id: action.id, rule: 'days', days: [7], per_week: null, effective_from: today, effective_to: null };
+      add([
+        { kind: 'insert', collection: 'actions', rows: [action as unknown as Row] },
+        { kind: 'insert', collection: 'schedules', rows: [schedule as unknown as Row] },
+        { kind: 'insert', collection: 'actionGoals', rows: goalIds.map((g) => ({ id: newId(), action_id: action.id, goal_id: g })) },
+      ]);
+    }
+    // Next season: doburoku, then sake, as planned ideas in the group.
+    let nextSeason = p.next;
+    if (!nextSeason) {
+      const start = addDays(season.end_date, 1);
+      const end = addDays(start, 182);
+      const made = opsCreatePlan({ name: seasonName(start, end), start, end });
+      add(made.ops);
+      nextSeason = made.plan;
+    }
+    for (const f of FERMENT_IDEAS) {
+      if (next.ideas.some((i) => i.status !== 'discarded' && i.title === f.title)) continue;
+      const from = addDays(nextSeason.start_date, f.from);
+      const to = f.to == null ? nextSeason.end_date : addDays(nextSeason.start_date, f.to);
+      add([{ kind: 'insert', collection: 'ideas', rows: [{ id: newId(), title: f.title, note: f.note, done_means: f.done, status: 'backlog', shortlisted_at: nowIso, rank: rankAtEnd(next.ideas, 'selected'), goal_id: null, created_at: nowIso, started_at: null, group_id: groupId, plan_id: nextSeason.id, planned_start: from, planned_end: to > nextSeason.end_date ? nextSeason.end_date : to } as Row] }]);
+    }
+    add(opsEnsureWeek(next, weekStart(today)));
+    return ops;
+  },
+};
+
+/** The next Sunday on or after a day. */
+function nextSunday(d: ISODate): ISODate {
+  const dow = new Date(`${d}T00:00:00Z`).getUTCDay();
+  return addDays(d, (7 - dow) % 7);
+}
+
 /** Every update the app ships, newest first. */
-export const APP_UPDATES: AppUpdate[] = [glampGroupUpdate, flexMeasuresUpdate, docStudyUpdate];
+export const APP_UPDATES: AppUpdate[] = [fermentUpdate, glampGroupUpdate, flexMeasuresUpdate, docStudyUpdate];
