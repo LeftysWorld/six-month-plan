@@ -11,7 +11,7 @@ import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { ExperimentSheet } from '../components/PathExperiments.tsx';
 import { StartAnywaySheet, WaitBadge, WaitPicker } from '../components/Waiting.tsx';
 import { ideaWait, opsSetWaiting, waitOf, waitValue } from '../data/waiting.ts';
-import { groupIdeas } from '../data/groups.ts';
+import { emptyGroups, groupIdeas, opsJoinIdeaGroup } from '../data/groups.ts';
 import { freeSlot, gradientSlots, groupGradient } from '../data/palette.ts';
 import type { Op } from '../data/model.ts';
 
@@ -107,6 +107,8 @@ export function Backlog() {
     }
   };
   const [newGroup, setNewGroup] = useState(false);
+  const [pairing, setPairing] = useState<[GoalIdea, GoalIdea] | null>(null);
+  const empties = emptyGroups(data);
   const byPath = (list: GoalIdea[]) => (pathFilter === 'all' ? list : pathFilter === 'none' ? list.filter((i) => !i.path_id) : list.filter((i) => i.path_id === pathFilter));
   const allIdeas = column(data.ideas, 'backlog');
   const allSelected = column(data.ideas, 'selected');
@@ -116,9 +118,28 @@ export function Backlog() {
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   const running = view.activeGoals.length;
 
+  /** Put an idea in a group, picking up the group's path, season and wait; say what it picked up. */
+  function joinGroup(idea: GoalIdea, groupId: string) {
+    const group = data.groups.find((g) => g.id === groupId);
+    if (!group || idea.group_id === groupId) return;
+    const { ops, picked } = opsJoinIdeaGroup(data, idea, groupId);
+    if (!ops.length) return;
+    commit(ops);
+    toast(`${idea.title} is in ${group.name}${picked.length ? `: ${picked.join(', ')}` : ''}`, () => commit(opsRestoreIdea(idea)));
+  }
+
   const dnd = useListDrag((id, drop) => {
     const idea = data.ideas.find((i) => i.id === id);
     if (!idea) return;
+    // Dropped onto a group: it joins. Onto another idea: join its group, or make a group of the two.
+    if (drop.onto?.kind === 'group') return joinGroup(idea, drop.onto.id);
+    if (drop.onto?.kind === 'row') {
+      const target = data.ideas.find((i) => i.id === drop.onto!.id);
+      if (!target) return;
+      if (target.group_id && data.groups.some((g) => g.id === target.group_id)) return joinGroup(idea, target.group_id);
+      setPairing([target, idea]);
+      return;
+    }
     const bucket = drop.bucket as IdeaBucket;
     if (bucket === 'selected' && bucketOf(idea) !== 'selected' && !ideaReady(idea)) {
       toast(`${idea.title} needs its why and what done looks like before it's selected. Tap it to add them.`);
@@ -253,7 +274,7 @@ export function Backlog() {
           );
           if (item.kind === 'group')
             return (
-              <IdeaGroupBlock key={`g-${item.group.id}`} group={item.group} count={item.ideas.length}>
+              <IdeaGroupBlock key={`g-${item.group.id}`} group={item.group} count={item.ideas.length} hover={dnd.drag?.drop?.onto?.kind === 'group' && dnd.drag.drop.onto.id === item.group.id}>
                 {item.ideas.map(row)}
               </IdeaGroupBlock>
             );
@@ -274,6 +295,11 @@ export function Backlog() {
           <span className="label">Backlog · {ideas.length}</span>
           <span className="xsmall muted">Order by dragging · tap to fill in</span>
         </div>
+        {empties.map((g) => (
+          <IdeaGroupBlock key={`e-${g.id}`} group={g} count={0} hover={dnd.drag?.drop?.onto?.kind === 'group' && dnd.drag.drop.onto.id === g.id}>
+            <EmptyGroupBody group={g} dragging={!!dnd.drag} />
+          </IdeaGroupBlock>
+        ))}
         {ideas.length === 0 && (
           <span className="small muted" style={{ padding: '6px 2px 10px' }}>
             {pathFilter !== 'all' ? 'Nothing here for this path.' : 'Write down goals you might want, one line each. Order them, then fill in why and what done looks like before selecting one.'}
@@ -285,7 +311,7 @@ export function Backlog() {
           );
           if (item.kind === 'group')
             return (
-              <IdeaGroupBlock key={`g-${item.group.id}`} group={item.group} count={item.ideas.length}>
+              <IdeaGroupBlock key={`g-${item.group.id}`} group={item.group} count={item.ideas.length} hover={dnd.drag?.drop?.onto?.kind === 'group' && dnd.drag.drop.onto.id === item.group.id}>
                 {item.ideas.map(row)}
               </IdeaGroupBlock>
             );
@@ -333,7 +359,23 @@ export function Backlog() {
           {dragging.title}
           {dnd.drag.drop && (
             <span className="drag-ghost-hint">
-              {dnd.drag.drop.bucket !== bucketOf(dragging) ? (dnd.drag.drop.bucket === 'selected' ? (ideaReady(dragging) ? 'Select for next' : 'Needs why + done-means') : 'Back to the backlog') : dnd.drag.drop.side === 'before' ? 'Move above' : 'Move below'}
+              {dnd.drag.drop.onto
+                ? (() => {
+                    const o = dnd.drag.drop.onto;
+                    if (o.kind === 'group') return `Add to ${data.groups.find((g) => g.id === o.id)?.name ?? 'the group'}`;
+                    const target = data.ideas.find((i) => i.id === o.id);
+                    const g = target?.group_id ? data.groups.find((x) => x.id === target.group_id) : undefined;
+                    return g ? `Add to ${g.name}` : `Make a group with ${target?.title ?? 'it'}`;
+                  })()
+                : dnd.drag.drop.bucket !== bucketOf(dragging)
+                  ? dnd.drag.drop.bucket === 'selected'
+                    ? ideaReady(dragging)
+                      ? 'Select for next'
+                      : 'Needs why + done-means'
+                    : 'Back to the backlog'
+                  : dnd.drag.drop.side === 'before'
+                    ? 'Move above'
+                    : 'Move below'}
             </span>
           )}
         </div>
@@ -341,6 +383,7 @@ export function Backlog() {
 
       {editing && <IdeaSheet idea={editing} onClose={() => setEditing(null)} />}
       {newGroup && <NewIdeaGroupSheet onClose={() => setNewGroup(false)} />}
+      {pairing && <PairGroupSheet ideas={pairing} onClose={() => setPairing(null)} />}
     </div>
   );
 }
@@ -349,7 +392,7 @@ export function Backlog() {
  * A group's ideas in the backlog, under the group's tinted header: its name, what it waits on, the
  * season they're planned for, and a link to the group. Each idea becomes a goal in the group.
  */
-function IdeaGroupBlock({ group, count, children }: { group: GoalGroup; count: number; children: ReactNode }) {
+function IdeaGroupBlock({ group, count, children, hover = false }: { group: GoalGroup; count: number; children: ReactNode; hover?: boolean }) {
   const { data, today } = useStore();
   const ideas = groupIdeas(data, group.id);
   const wait = waitOf(data, group, today);
@@ -358,12 +401,12 @@ function IdeaGroupBlock({ group, count, children }: { group: GoalGroup; count: n
   const path = pathIds.length === 1 ? data.paths.find((p) => p.id === pathIds[0] && !p.archived_at) : undefined;
   const goals = data.goals.filter((g) => g.group_id === group.id && !g.archived_at).length;
   return (
-    <section className="idea-group" style={{ ['--group-gradient' as string]: groupGradient(group.id, data.goals.filter((g) => g.group_id === group.id && !g.archived_at).map((g) => g.color), 100, gradientSlots(data).get(group.id)) }} aria-label={`Group: ${group.name}`}>
+    <section className={`idea-group${hover ? ' drop-on' : ''}`} data-group-drop={group.id} style={{ ['--group-gradient' as string]: groupGradient(group.id, data.goals.filter((g) => g.group_id === group.id && !g.archived_at).map((g) => g.color), 100, gradientSlots(data).get(group.id)) }} aria-label={`Group: ${group.name}`}>
       <a className="idea-group-head" href={href(`/goals/group/${group.id}`)}>
         <span className="grow" style={{ minWidth: 0 }}>
           <b>{group.name}</b>
           <span className="xsmall muted" style={{ display: 'block' }}>
-            {count} idea{count === 1 ? '' : 's'} here{goals ? ` · ${goals} goal${goals === 1 ? '' : 's'} running` : ''}
+            {count ? `${count} idea${count === 1 ? '' : 's'} here` : 'Empty'}{goals ? ` · ${goals} goal${goals === 1 ? '' : 's'} running` : ''}
             {path ? ` · ${pathLetter(data, path)}` : ''}
             {plans.length ? ` · planned for ${plans.map((p) => p.name).join(', ')}` : ''}
           </span>
@@ -482,6 +525,80 @@ function NewIdeaGroupSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** An empty group in the backlog: where to drop ideas, and a way to delete it. */
+function EmptyGroupBody({ group, dragging }: { group: GoalGroup; dragging: boolean }) {
+  const { commit } = useStore();
+  const toast = useToast();
+  return (
+    <div className="idea-group-empty small muted">
+      <span>{dragging ? `Drop an idea here to add it to ${group.name}.` : 'Drag ideas onto this group, or pick it in an idea.'}</span>
+      {(
+        <button
+          type="button"
+          className="link-btn xsmall"
+          style={{ visibility: dragging ? 'hidden' : undefined }}
+          onClick={() => {
+            commit([{ kind: 'delete', collection: 'groups', id: group.id }]);
+            toast(`${group.name} deleted`, () => commit([{ kind: 'insert', collection: 'groups', rows: [group as unknown as { id: string } & Record<string, unknown>] }]));
+          }}
+        >
+          Delete group
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Two ideas dropped onto each other: name the group they start. */
+function PairGroupSheet({ ideas, onClose }: { ideas: [GoalIdea, GoalIdea]; onClose: () => void }) {
+  const { data, commit } = useStore();
+  const toast = useToast();
+  const [name, setName] = useState('');
+  const taken = data.groups.some((g) => g.name.trim().toLowerCase() === name.trim().toLowerCase());
+  return (
+    <Sheet title="New group" onClose={onClose}>
+      <span className="small muted" style={{ marginTop: -8 }}>
+        {ideas[1].title} and {ideas[0].title}, together. Each becomes a goal in the group when you make it one.
+      </span>
+      <label className="field">
+        Name
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Documentary gear" />
+      </label>
+      {taken && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>You already have a group called that.</span>}
+      <div className="btn-row">
+        <button type="button" className="btn" onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn primary"
+          disabled={!name.trim() || taken}
+          onClick={() => {
+            const id = crypto.randomUUID();
+            const group: GoalGroup = { id, name: name.trim(), created_at: new Date().toISOString(), gradient_slot: freeSlot(data) };
+            let next = data;
+            const ops: Op[] = [{ kind: 'insert', collection: 'groups', rows: [group as unknown as { id: string } & Record<string, unknown>] }];
+            next = { ...next, groups: [...next.groups, group] };
+            // The second takes what the first already has (path, season), as if it joined it.
+            const first = { ...ideas[0], group_id: id };
+            next = { ...next, ideas: next.ideas.map((i) => (i.id === first.id ? first : i)) };
+            ops.push({ kind: 'update', collection: 'ideas', id: first.id, patch: { group_id: id } });
+            const joined = opsJoinIdeaGroup(next, ideas[1], id);
+            ops.push(...joined.ops);
+            commit(ops);
+            toast(`${group.name} made with ${ideas[0].title} and ${ideas[1].title}${joined.picked.length ? `: ${joined.picked.join(', ')}` : ''}`, () =>
+              commit([...ideas.map((i) => opsRestoreIdea(i)).flat(), { kind: 'delete', collection: 'groups', id }]),
+            );
+            onClose();
+          }}
+        >
+          Make the group
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
 /** One idea: a handle to drag, its place, title and why; then what to do with it for the bucket it's in. */
 function IdeaRow({
   idea,
@@ -517,10 +634,12 @@ function IdeaRow({
   const lifted = dnd.drag?.id === idea.id;
   const drop = dnd.drag?.drop;
   const insert = drop?.rowId === idea.id ? (drop.side === 'before' ? ' insert-before' : ' insert-after') : '';
+  const onto = drop?.onto?.kind === 'row' && drop.onto.id === idea.id;
   return (
     <div
-      className={`idea-row${lifted ? ' lifted' : ''}${insert}`}
+      className={`idea-row${lifted ? ' lifted' : ''}${onto ? ' drop-onto' : insert}`}
       data-row-id={idea.id}
+      data-onto="1"
       data-bucket={bucket}
       data-index={index}
       onPointerDown={(e) => {

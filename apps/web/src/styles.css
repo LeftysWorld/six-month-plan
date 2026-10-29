@@ -1649,3 +1649,6 @@ html, body { overflow-x: clip; }
 .rm-plan-span { position: absolute; top: 17px; height: 6px; border: 1.5px dashed var(--muted); border-radius: 4px; }
 .rm-row.planned .rm-title { color: var(--ink-2); }
 .lg-plan { display: inline-block; width: 18px; height: 9px; border: 1.5px dashed var(--muted); border-radius: 3px; background: var(--fill); vertical-align: middle; }
+.idea-row.drop-onto { outline: 2px dashed var(--accent-ink); outline-offset: -2px; background: var(--accent-soft); border-radius: 12px; }
+.idea-group.drop-on { outline: 2px dashed var(--accent-ink); outline-offset: 2px; }
+.idea-group-empty { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 12px; min-height: 64px; }

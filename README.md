@@ -318,7 +318,11 @@ glamping sites, filled in, selected for next, on Path C, planned for next season
 the group waiting on the AI job. Needs `supabase/migrations/20261120000000_idea_groups_and_plans.sql`.
 
 **Backlog:** **+ New group** makes a group from the backlog: name it, tick the ideas that go in it
-(even ones in another group), and what it waits on. **Arrange by Groups / Paths** shows the ideas by
+(even ones in another group), and what it waits on. An empty group shows at the top of the backlog
+until something's in it (with Delete group). Drag an idea **onto** another idea (its middle) to make
+a group of the two (you name it), or onto a group (its header, or an empty group) to add it. An idea
+that joins a group takes the group's path and the season its ideas are planned for, when they share
+one and the idea has none, and waits on what the group waits on. **Arrange by Groups / Paths** shows the ideas by
 group (each row shows its path, "Path C") or by path (Path A, B, C, no path; each row shows its
 group). A group's page lists its ideas under **In the backlog**.
 

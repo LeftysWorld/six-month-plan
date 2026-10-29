@@ -7,6 +7,11 @@ export interface ListDrop {
   /** The row the line is drawn against, and which side. */
   rowId: string | null;
   side: 'before' | 'after';
+  /**
+   * Dropped onto something instead of between rows: a row that takes drops onto it (data-onto, the
+   * middle half of it) or a group (an element with data-group-drop="<group id>").
+   */
+  onto?: { kind: 'row' | 'group'; id: string } | null;
 }
 
 export interface ListDrag {
@@ -39,7 +44,14 @@ export function useListDrag(onDrop: (id: string, drop: ListDrop) => void) {
       const side: 'before' | 'after' = y < box.top + box.height / 2 ? 'before' : 'after';
       const i = Number(row.dataset.index ?? 0);
       if (row.dataset.rowId === id) return null;
-      return { bucket: row.dataset.bucket, index: side === 'before' ? i : i + 1, rowId: row.dataset.rowId, side };
+      // The middle half of a row that takes drops: onto it (make a group with it, or join its group).
+      const onto = row.dataset.onto === '1' && y > box.top + box.height * 0.25 && y < box.bottom - box.height * 0.25;
+      return { bucket: row.dataset.bucket, index: side === 'before' ? i : i + 1, rowId: row.dataset.rowId, side, onto: onto ? { kind: 'row', id: row.dataset.rowId } : null };
+    }
+    const group = under?.closest('[data-group-drop]') as HTMLElement | null;
+    if (group?.dataset.groupDrop) {
+      const bucket = (group.closest('[data-bucket-drop]') as HTMLElement | null)?.dataset.bucketDrop ?? '';
+      return { bucket, index: 0, rowId: null, side: 'after', onto: { kind: 'group', id: group.dataset.groupDrop } };
     }
     const list = under?.closest('[data-bucket-drop]') as HTMLElement | null;
     if (list?.dataset.bucketDrop) {

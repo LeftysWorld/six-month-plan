@@ -111,3 +111,44 @@ export function suggestGroupNames(goals: Goal[]): string[] {
 
 const short = (t: string) => (t.length > 16 ? `${t.slice(0, 15).trim()}…` : t);
 
+
+/**
+ * Put a backlog idea in a group, connected the way the group already is: it takes the group's path
+ * when the group's goals and ideas share one (and it has none), and the season its ideas are planned
+ * for when they share one (and it isn't planned yet). What it waits on comes from the group. Returns
+ * what it picked up, for the message.
+ */
+export function opsJoinIdeaGroup(data: AppData, idea: GoalIdea, groupId: string): { ops: Op[]; picked: string[] } {
+  const group = data.groups.find((g) => g.id === groupId);
+  if (!group) return { ops: [], picked: [] };
+  const others = groupIdeas(data, groupId).filter((i) => i.id !== idea.id);
+  const goals = data.goals.filter((g) => g.group_id === groupId && !g.archived_at);
+  const patch: Record<string, unknown> = {};
+  const picked: string[] = [];
+  if (idea.group_id !== groupId) patch.group_id = groupId;
+  const pathIds = [...new Set([...others.map((i) => i.path_id ?? null), ...goals.map((g) => g.path_id ?? null)])];
+  if (!idea.path_id && pathIds.length === 1 && pathIds[0]) {
+    patch.path_id = pathIds[0];
+    const path = data.paths.find((p) => p.id === pathIds[0]);
+    if (path) picked.push(`on ${path.name}`);
+  }
+  const planIds = [...new Set(others.map((i) => i.plan_id ?? null))];
+  if (!idea.plan_id && planIds.length === 1 && planIds[0]) {
+    patch.plan_id = planIds[0];
+    const plan = data.plans.find((p) => p.id === planIds[0]);
+    if (plan) picked.push(`planned for ${plan.name}`);
+  }
+  // The group decides what it waits on now.
+  if ((group.waits_on_goal_id || group.waits_on_milestone_id) && (idea.waits_on_goal_id || idea.waits_on_milestone_id)) {
+    patch.waits_on_goal_id = null;
+    patch.waits_on_milestone_id = null;
+    patch.waiting_since = null;
+  }
+  if (group.waits_on_goal_id || group.waits_on_milestone_id) picked.push('waiting with the group');
+  return { ops: Object.keys(patch).length ? [{ kind: 'update', collection: 'ideas', id: idea.id, patch }] : [], picked };
+}
+
+/** Groups with nothing in them yet: no goals ever, no ideas in the backlog (just made, or emptied). */
+export function emptyGroups(data: AppData): GoalGroup[] {
+  return data.groups.filter((g) => !data.goals.some((x) => x.group_id === g.id) && groupIdeas(data, g.id).length === 0);
+}
