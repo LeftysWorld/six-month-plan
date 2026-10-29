@@ -45,7 +45,7 @@ test('a path rolls up its goals: done, running and pace, time logged, ideas wait
   assert.equal(p.days, 1);
   assert.equal(p.waiting.length, 1);
   assert.ok(p.prog > 50 && p.prog <= 100, `finished counts fully, the running goal by its track: ${p.prog}`);
-  assert.equal(pathLetter(d, b), 'Plan B');
+  assert.equal(pathLetter(d, b), 'Path B');
   assert.equal(pathProgress(view, view.data.paths[0]!).goals.length, 0);
   assert.equal(gaugeAverage(b.gauges), 3.5);
   assert.equal(gaugeAverage({}), null);

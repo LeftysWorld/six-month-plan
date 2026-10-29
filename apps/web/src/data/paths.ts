@@ -30,10 +30,10 @@ export function pathsOf(data: AppData): Path[] {
   return data.paths.filter((p) => !p.archived_at).sort((a, b) => a.rank - b.rank || (a.created_at < b.created_at ? -1 : 1));
 }
 
-/** "Plan A", "Plan B"… from a path's place in the list. */
+/** "Path A", "Path B"… from a path's place in the list. */
 export function pathLetter(data: AppData, path: Path): string {
   const i = pathsOf(data).findIndex((p) => p.id === path.id);
-  return `Plan ${PATH_LETTERS[i] ?? String(i + 1)}`;
+  return `Path ${PATH_LETTERS[i] ?? String(i + 1)}`;
 }
 
 export function blankPath(data: AppData, today: ISODate): Path {

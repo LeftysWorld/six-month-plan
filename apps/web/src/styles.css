@@ -583,7 +583,8 @@ input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-o
 .seg { display: flex; gap: 2px; background: var(--card); border: 1px solid var(--line); padding: 4px; border-radius: 999px; }
 .seg button { border: 0; background: none; color: var(--muted); font-size: 13px; font-weight: 600; padding: 0 14px; min-height: 36px; border-radius: 999px; cursor: pointer; flex: 1; transition: background 0.25s var(--ease), color 0.2s; white-space: nowrap; }
 .seg button:hover { color: var(--ink); }
-.seg button[aria-selected='true'], .seg button[aria-pressed='true'] { background: var(--ink); color: var(--ground); }
+.seg button[aria-selected='true'], .seg button[aria-pressed='true'], .seg button[aria-checked='true'] { background: var(--ink); color: var(--ground); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.seg button[aria-checked='true']:hover { color: var(--ground); }
 .stepper { display: flex; align-items: center; gap: 12px; }
 .stepper button { width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--fill-strong); color: var(--ink); font-size: 22px; cursor: pointer; transition: transform 0.15s var(--spring); }
 .stepper button:active { transform: scale(0.9); }

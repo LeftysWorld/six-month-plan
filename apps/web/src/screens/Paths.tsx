@@ -31,8 +31,8 @@ import { IdeaAdd } from './Backlog.tsx';
 import { PathExperiments, PathReportCard, TimeByPath } from '../components/PathExperiments.tsx';
 
 /**
- * Odyssey paths: the three five-year lives you could live, side by side. Plan A is where you're
- * heading; Plan B is what you'd do if A vanished; Plan C is what you'd do if money and image didn't
+ * Odyssey paths: the three five-year lives you could live, side by side. Path A is where you're
+ * heading; Path B is what you'd do if A vanished; Path C is what you'd do if money and image didn't
  * matter. Each shows its headline, its year-by-year sketch, your four gauges, and progress measured
  * from the goals on it. A season's goals are how you prototype a path.
  */
@@ -70,7 +70,7 @@ export function Paths() {
             path, so each path's progress is measured, not guessed.
           </p>
           <button className="btn primary" onClick={() => setAdding(true)}>
-            Sketch Plan A
+            Sketch Path A
           </button>
         </div>
       ) : (

@@ -171,7 +171,7 @@ export function GoalRow({ placed, dnd, onMove, hidePath = false }: { placed: Pla
           {path && !hidePath && (
             <span className="path-chip" title={path.name}>
               <i style={{ background: path.color }} />
-              {pathLetter(view.data, path).replace('Plan ', '')}
+              {pathLetter(view.data, path).replace('Path ', '')}
             </span>
           )}
           <span className="season-row-status" style={{ color: ink }}>

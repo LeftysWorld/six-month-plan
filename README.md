@@ -194,7 +194,7 @@ After pulling a new version, run any migration in `supabase/migrations/` you hav
 
 ## Odyssey paths
 
-**Goals → Paths** (or press P) is the layer above the seasons: the three five-year lives you could live, from *Designing Your Life*. **Plan A** is the life you're already heading toward; **Plan B** is what you'd do if A vanished tomorrow; **Plan C** is what you'd do if money and image didn't matter. Each path has a name, a six-word headline, why this life, a line per year, four **gauges** you rate 1–5 (resources, likability, confidence, coherence), and the **questions** a small experiment would answer.
+**Goals → Paths** (or press P) is the layer above the seasons: the three five-year lives you could live, from *Designing Your Life*. **Path A** is the life you're already heading toward; **Path B** is what you'd do if A vanished tomorrow; **Path C** is what you'd do if money and image didn't matter. Each path has a name, a six-word headline, why this life, a line per year, four **gauges** you rate 1–5 (resources, likability, confidence, coherence), and the **questions** a small experiment would answer.
 
 Goals and backlog ideas point at a path (pick one when you make a goal, on a goal's edit sheet, or on an idea), so a path's progress is measured, not guessed: goals finished, goals running and their pace, time put in, ideas waiting. A season's goals are how you prototype a path: **Prototype this: make a goal** on a path starts one with the path filled in; answer a question with what you learned when it's done. The 3-month checkpoint asks you to re-rate every path's gauges (the log shows them move season by season); the retrospective asks what the season taught you about each path. On Supabase, run `supabase/migrations/20261109000000_odyssey_paths.sql`.
 
@@ -314,12 +314,12 @@ bars, by group. Ideas in a group wait on whatever the group waits on. **Make it 
 the planned season and dates and puts the goal in the group; pick this season instead to pull it
 forward. A group with only ideas stays until they're all made goals or discarded. The one-tap
 **Glamping Site** update sets this up: Buy land, Build an A-frame, Build 3 domes and Build 3 tarp
-glamping sites, filled in, selected for next, on Plan C, planned for next season (made if needed),
+glamping sites, filled in, selected for next, on Path C, planned for next season (made if needed),
 the group waiting on the AI job. Needs `supabase/migrations/20261120000000_idea_groups_and_plans.sql`.
 
 **Backlog:** **+ New group** makes a group from the backlog: name it, tick the ideas that go in it
 (even ones in another group), and what it waits on. **Arrange by Groups / Paths** shows the ideas by
-group (each row shows its plan, "Plan C") or by path (Plan A, B, C, no path; each row shows its
+group (each row shows its path, "Path C") or by path (Path A, B, C, no path; each row shows its
 group). A group's page lists its ideas under **In the backlog**.
 
 **Group colours** are kept per group and path (`gradient_slot`, `20261121000000_gradient_slots.sql`).

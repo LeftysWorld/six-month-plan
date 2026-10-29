@@ -97,7 +97,7 @@ test('Glamping Site: a group of four ideas, selected for next, planned next seas
   assert.equal(land.waits_on_goal_id, null);
   assert.equal(land.planned_start, '2027-04-27');
   assert.equal(land.planned_end, '2027-06-30');
-  // All selected for next, on Plan C, planned next season, filled in.
+  // All selected for next, on Path C, planned next season, filled in.
   assert.equal(column(after.ideas, 'selected').filter((i) => i.group_id === group.id).length, 4);
   assert.ok(ideas.every((i) => i.path_id === 'planC' && i.plan_id === next.id && i.note && i.done_means));
   // Undo puts it all back; running again changes nothing.

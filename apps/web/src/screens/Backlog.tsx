@@ -158,7 +158,7 @@ export function Backlog() {
   type Block = { kind: 'idea'; idea: GoalIdea; i: number } | { kind: 'group'; group: GoalGroup; ideas: { idea: GoalIdea; i: number }[] } | { kind: 'path'; path: Path | null; ideas: { idea: GoalIdea; i: number }[] };
   /**
    * A bucket's ideas arranged: by group (each group's ideas together, where its first one sits) or by
-   * path (Plan A, B, C, then no path). Numbers stay the bucket's order.
+   * path (Path A, B, C, then no path). Numbers stay the bucket's order.
    */
   function grouped(list: GoalIdea[]): Block[] {
     const out: Block[] = [];
@@ -378,7 +378,7 @@ function IdeaGroupBlock({ group, count, children }: { group: GoalGroup; count: n
   );
 }
 
-/** A path's ideas in the backlog (Plan A, B, C, or no path), under the same tinted header as a group. */
+/** A path's ideas in the backlog (Path A, B, C, or no path), under the same tinted header as a group. */
 function IdeaPathBlock({ path, count, children }: { path: Path | null; count: number; children: ReactNode }) {
   const { data } = useStore();
   const slots = gradientSlots(data);
