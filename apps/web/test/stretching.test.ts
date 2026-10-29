@@ -81,7 +81,7 @@ test('applying it: four goals in Body, sharing five stretching days and the mont
   assert.deepEqual(after.schedules.filter((s) => stretch.some((a) => a.id === s.action_id)).map((s) => `${s.days[0]}@${s.effective_from}`).sort(), ['1@2026-10-30', '2@2026-10-30', '4@2026-10-30', '5@2026-10-30', '6@2026-10-30']);
   const check = after.actions.find((a) => a.title === 'Monthly flexibility check')!;
   assert.equal(after.schedules.filter((s) => s.action_id === check.id).length, 6);
-  assert.equal(after.measurementTypes.filter((t) => goalIds.includes(t.goal_id ?? '')).length, 6);
+  assert.deepEqual(after.measurementTypes.filter((t) => goalIds.includes(t.goal_id ?? '')).map((t) => `${t.name}:${t.cadence_days}`).sort(), ['Center split:1', 'Front split (left): front hip to floor:1', 'Front split (right): front hip to floor:1', 'Standing fold: chest to knees:28']);
 });
 
 test('this week: stretching Friday and Saturday, one workout a day Thu–Sat, the old Stretch until today', () => {
@@ -173,7 +173,7 @@ function appliedNov2(): AppData {
   for (const s of v1.schedules) if (stretchIds.has(s.action_id)) ops.push({ kind: 'update', collection: 'schedules', id: s.id, patch: { effective_from: '2026-11-02' } });
   for (const x of v1.sessions) if (stretchIds.has(x.action_id ?? '') && x.week_start === '2026-10-26') ops.push({ kind: 'delete', collection: 'sessions', id: x.id });
   for (const a of v1.actions) if (stretchIds.has(a.id)) ops.push({ kind: 'update', collection: 'actions', id: a.id, patch: { stretch_plan: { ...a.stretch_plan!, holds: a.stretch_plan!.holds.map(({ rest: _r, ...h }) => h) } } });
-  for (const t of v1.measurementTypes) if (t.name === 'Bridge: hands to heels') ops.push({ kind: 'delete', collection: 'measurementTypes', id: t.id });
+  for (const t of v1.measurementTypes) if (t.name === 'Standing fold: chest to knees') ops.push({ kind: 'delete', collection: 'measurementTypes', id: t.id });
   for (const g of v1.goals) if (g.start_date === '2026-10-30') ops.push({ kind: 'update', collection: 'goals', id: g.id, patch: { start_date: '2026-11-02' } });
   for (const id of ['stretch', 'gap']) {
     const s = v1.schedules.find((x) => x.action_id === id)!;
@@ -200,7 +200,7 @@ test('already applied the Nov 2 version: the update moves it up to tomorrow, int
   assert.ok(p.updates.some((u) => /Fri Oct 30 instead of Mon Nov 2/.test(u)), p.updates.join(' | '));
   assert.ok(p.updates.some((u) => /into Body/.test(u)));
   assert.ok(p.updates.some((u) => /sets and timers/.test(u)));
-  assert.ok(p.updates.some((u) => /Bridge: hands to heels/.test(u)), p.updates.join(' | '));
+  assert.ok(p.updates.some((u) => /Standing fold/.test(u)), p.updates.join(' | '));
 
   const { ops, undo } = opsApplySplitsPack(v1, TODAY, all(v1));
   let after = run(v1, ops);
@@ -219,9 +219,8 @@ test('already applied the Nov 2 version: the update moves it up to tomorrow, int
   assert.ok(pack.every((g) => g.group_id === 'body'));
   assert.ok(!after.groups.some((g) => g.name === 'Splits & backbend'));
   assert.ok(pack.filter((g) => g.id !== 'splits').every((g) => g.start_date === '2026-10-30'));
-  // Every goal has a distance to measure; the backbend's is new.
-  for (const g of pack) assert.ok(after.measurementTypes.some((t) => t.goal_id === g.id && !t.archived_at), g.title);
-  assert.equal(after.measurementTypes.filter((t) => t.name === 'Bridge: hands to heels').length, 1);
+  // A measurement the plan has that was missing is added once.
+  assert.equal(after.measurementTypes.filter((t) => t.name === 'Standing fold: chest to knees').length, 1);
   // The holds have their rest times back.
   assert.ok(after.actions.filter((a) => a.kind === 'stretch').every((a) => a.stretch_plan!.holds.some((h) => h.rest)));
   // Next week as before: Wed and Sun off.

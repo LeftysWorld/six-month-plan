@@ -2,6 +2,7 @@ import { addDays, weekStart, type Action, type ActionSchedule, type Goal, type I
 import { applyOp, type AppData, type Op } from './model.ts';
 import { opsEnsureWeek, opsLogSession, opsToggleMilestone } from './ops.ts';
 import { invertOps, opsStopFrom } from './planPack.ts';
+import { MONTHLY_CHECK } from './plans/splitsBackbend.ts';
 
 /**
  * Small changes to your plan, shipped with the app and applied on your data with one tap (Today
@@ -151,5 +152,76 @@ export const docStudyUpdate: AppUpdate = {
   },
 };
 
+// ---------- Flexibility measurements: daily, and only the ones you can take ----------
+
+const FRONT = ['Front split (left): front hip to floor', 'Front split (right): front hip to floor'];
+const CENTER = 'Center split';
+
+function flexParts(data: AppData) {
+  const types = data.measurementTypes.filter((t) => !t.archived_at);
+  const goal = (re: RegExp) => data.goals.find((g) => live(g) && re.test(g.title)) ?? null;
+  const front = goal(/^front splits/i) ?? goal(/split/i);
+  const side = goal(/side \(center\) split|center split/i);
+  const fold = goal(/chest to shins/i);
+  const back = goal(/backbend/i);
+  const of = (g: Goal | null) => (g ? types.filter((t) => t.goal_id === g.id) : []);
+  return {
+    front,
+    side,
+    // On the front-splits goal: the old single gap number goes; left and right stay, daily.
+    gap: of(front).filter((t) => /splits? gap/i.test(t.name)),
+    frontTypes: of(front).filter((t) => FRONT.includes(t.name)),
+    // The side split's measurement becomes "Center split", daily.
+    sideType: of(side).find((t) => t.name === CENTER) ?? of(side).find((t) => /side split|crotch/i.test(t.name)) ?? null,
+    seated: of(fold).filter((t) => /seated/i.test(t.name)),
+    backTypes: of(back),
+  };
+}
+
+export const flexMeasuresUpdate: AppUpdate = {
+  id: 'flex-measures-2026-10',
+  title: 'Flexibility measurements',
+  nudge: 'Front splits (left and right) and the center split, logged daily on Today; the gap, seated fold and backbend numbers removed.',
+  preview(data) {
+    const p = flexParts(data);
+    if (!p.front || !p.side) return { done: true, blocked: 'There are no splits goals to update.', lines: [], options: [] };
+    const lines: string[] = [];
+    for (const t of p.gap) lines.push(`“${t.name}” removed from ${p.front.title} (the left and right measurements are the gap)`);
+    for (const name of FRONT) {
+      const t = p.frontTypes.find((x) => x.name === name);
+      if (!t) lines.push(`“${name}” added, logged daily on Today`);
+      else if (t.cadence_days > 1) lines.push(`“${name}”: logged daily on Today`);
+    }
+    if (!p.sideType) lines.push(`“${CENTER}” added to ${p.side.title}, logged daily on Today`);
+    else if (p.sideType.name !== CENTER || p.sideType.cadence_days > 1) lines.push(`“${p.sideType.name}” becomes “${CENTER}”, logged daily on Today`);
+    for (const t of p.seated) lines.push(`“${t.name}” removed`);
+    for (const t of p.backTypes) lines.push(`“${t.name}” removed from the backbend`);
+    if (lines.length) lines.push('Readings already logged stay in your history.');
+    return { done: lines.length === 0, lines, options: [] };
+  },
+  ops(data) {
+    const p = flexParts(data);
+    if (!p.front || !p.side) return [];
+    const ops: Op[] = [];
+    const stop = (id: string): Op => ({ kind: 'update', collection: 'measurementTypes', id, patch: { archived_at: new Date().toISOString() } });
+    for (const t of [...p.gap, ...p.seated, ...p.backTypes]) {
+      ops.push(stop(t.id));
+      // A goal measured by one of these is measured by nothing now (the goal itself stays).
+      for (const g of data.goals.filter((x) => x.measurement_type_id === t.id)) ops.push({ kind: 'update', collection: 'goals', id: g.id, patch: { measurement_type_id: null } });
+    }
+    for (const name of FRONT) {
+      const t = p.frontTypes.find((x) => x.name === name);
+      if (!t) ops.push({ kind: 'insert', collection: 'measurementTypes', rows: [{ id: newId(), name, unit: 'in', cadence_days: 1, goal_id: p.front.id, archived_at: null, on_today: true }] });
+      else if (t.cadence_days > 1 || t.on_today !== true) ops.push({ kind: 'update', collection: 'measurementTypes', id: t.id, patch: { cadence_days: 1, on_today: true } });
+    }
+    if (!p.sideType) ops.push({ kind: 'insert', collection: 'measurementTypes', rows: [{ id: newId(), name: CENTER, unit: 'in', cadence_days: 1, goal_id: p.side.id, archived_at: null, on_today: true }] });
+    else if (p.sideType.name !== CENTER || p.sideType.cadence_days > 1 || p.sideType.on_today !== true) ops.push({ kind: 'update', collection: 'measurementTypes', id: p.sideType.id, patch: { name: CENTER, cadence_days: 1, on_today: true } });
+    // The monthly check's notes follow: photos, and only the standing fold measured there.
+    const check = data.actions.find((a) => !a.archived_at && a.title === MONTHLY_CHECK.title);
+    if (check && check.details !== MONTHLY_CHECK.details) ops.push({ kind: 'update', collection: 'actions', id: check.id, patch: { details: MONTHLY_CHECK.details } });
+    return ops;
+  },
+};
+
 /** Every update the app ships, newest first. */
-export const APP_UPDATES: AppUpdate[] = [docStudyUpdate];
+export const APP_UPDATES: AppUpdate[] = [flexMeasuresUpdate, docStudyUpdate];

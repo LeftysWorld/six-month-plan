@@ -10,7 +10,7 @@ import { NumberInput } from './ui.tsx';
 
 /**
  * Tracking, shared by a goal's page and a group's page: one row per thing tracked (a number like
- * "Side split: crotch to floor", or a photo), with its latest reading and the change since the
+ * "Center split", or a photo), with its latest reading and the change since the
  * first, a box to log today's, and the form to track something new and link it to a goal.
  */
 
@@ -76,7 +76,7 @@ export function TrackForm({ goals, goalId: initialGoal, onDone }: { goals: Goal[
           <div className="grid-3">
             <label className="field">
               Name
-              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Bridge: hands to heels" />
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Waist" />
             </label>
             <label className="field">
               Unit

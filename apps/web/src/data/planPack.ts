@@ -86,6 +86,13 @@ export function firstMondays(start: ISODate, end: ISODate): ISODate[] {
 }
 
 const live = (g: Goal) => !g.archived_at && !g.completed_at;
+
+/** Older names a plan measurement went by, so an update doesn't add it twice. */
+const MEASURE_ALIASES: Record<string, RegExp> = { 'Center split': /^(center split|side split: crotch to floor)$/i };
+export function hasMeasure(data: AppData, goalId: string, name: string): boolean {
+  const alias = MEASURE_ALIASES[name];
+  return data.measurementTypes.some((t) => !t.archived_at && t.goal_id === goalId && (t.name === name || (alias?.test(t.name) ?? false)));
+}
 const packTitles = new Set(STRETCH_DAYS.map((d) => d.title));
 const stretchActions = (data: AppData) => data.actions.filter((a) => !a.archived_at && a.kind === 'stretch' && packTitles.has(a.title));
 
@@ -174,7 +181,7 @@ export function previewSplitsPack(data: AppData, today: ISODate): PackPreview {
     if (stale.length) updates.push('The stretching sessions get sets and timers (Left and Right, 3 × 45 s, rest between)');
     if (stopping.length) updates.push(`${stopping.map((s) => s.action.title).join(' and ')} stop${stopping.length === 1 ? 's' : ''} after ${dayLabel(addDays(start, -1))}`);
     if (moving.length) updates.push(`Workouts move off Wednesday from this week, not from Nov 2`);
-    const missing = FLEX_GOALS.flatMap((g) => (goals[g.key] ? g.measures.filter((m) => !data.measurementTypes.some((t) => !t.archived_at && t.goal_id === goals[g.key]!.id && t.name === m.name)) : []));
+    const missing = FLEX_GOALS.flatMap((g) => (goals[g.key] ? g.measures.filter((m) => !hasMeasure(data, goals[g.key]!.id, m.name)) : []));
     if (missing.length) updates.push(`New measurement${missing.length === 1 ? '' : 's'} to track: ${missing.map((m) => m.name).join(', ')}`);
     state = updates.length || extras.length ? 'older' : 'current';
   }
@@ -316,8 +323,8 @@ export function opsApplySplitsPack(data: AppData, today: ISODate, choices: PackC
     // 2. What the monthly check records, on each goal's page (not on Today: it's monthly).
     for (const g of FLEX_GOALS) {
       for (const m of g.measures) {
-        if (next.measurementTypes.some((t) => !t.archived_at && t.goal_id === goalIds[g.key] && t.name === m.name)) continue;
-        add([{ kind: 'insert', collection: 'measurementTypes', rows: [{ id: newId(), name: m.name, unit: m.unit, cadence_days: 28, goal_id: goalIds[g.key]!, archived_at: null, on_today: false }] }]);
+        if (hasMeasure(next, goalIds[g.key]!, m.name)) continue;
+        add([{ kind: 'insert', collection: 'measurementTypes', rows: [{ id: newId(), name: m.name, unit: m.unit, cadence_days: m.cadence ?? 28, goal_id: goalIds[g.key]!, archived_at: null, on_today: false }] }]);
       }
       for (const m of g.milestones) {
         const due = addDays(start, Math.round(m.monthsIn * 30.4));
@@ -341,8 +348,8 @@ export function opsApplySplitsPack(data: AppData, today: ISODate, choices: PackC
     for (const g of FLEX_GOALS) {
       if (!goalIds[g.key]) continue;
       for (const m of g.measures) {
-        if (next.measurementTypes.some((t) => !t.archived_at && t.goal_id === goalIds[g.key] && t.name === m.name)) continue;
-        add([{ kind: 'insert', collection: 'measurementTypes', rows: [{ id: newId(), name: m.name, unit: m.unit, cadence_days: 28, goal_id: goalIds[g.key]!, archived_at: null, on_today: false }] }]);
+        if (hasMeasure(next, goalIds[g.key]!, m.name)) continue;
+        add([{ kind: 'insert', collection: 'measurementTypes', rows: [{ id: newId(), name: m.name, unit: m.unit, cadence_days: m.cadence ?? 28, goal_id: goalIds[g.key]!, archived_at: null, on_today: false }] }]);
       }
     }
   }

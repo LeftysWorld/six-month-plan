@@ -216,15 +216,15 @@ export const STRETCH_DETAILS = [
 ].join('\n');
 
 /** The four goals the plan serves. `key` matches a goal you may already have. */
-export const FLEX_GOALS: { key: 'front' | 'side' | 'fold' | 'backbend'; title: string; why: string; doneMeans: string; measures: { name: string; unit: string }[]; milestones: { title: string; monthsIn: number }[] }[] = [
+export const FLEX_GOALS: { key: 'front' | 'side' | 'fold' | 'backbend'; title: string; why: string; doneMeans: string; measures: { name: string; unit: string; cadence?: number }[]; milestones: { title: string; monthsIn: number }[] }[] = [
   {
     key: 'front',
     title: 'Front splits, both sides',
     why: 'Mobility I will keep for decades, and the hip flexors my backbend needs.',
     doneMeans: 'Front splits flat on both sides, hips square. 6–9 months is realistic; expect one side to lag.',
     measures: [
-      { name: 'Front split (left): front hip to floor', unit: 'in' },
-      { name: 'Front split (right): front hip to floor', unit: 'in' },
+      { name: 'Front split (left): front hip to floor', unit: 'in', cadence: 1 },
+      { name: 'Front split (right): front hip to floor', unit: 'in', cadence: 1 },
     ],
     milestones: [],
   },
@@ -233,7 +233,7 @@ export const FLEX_GOALS: { key: 'front' | 'side' | 'fold' | 'backbend'; title: s
     title: 'Side (center) split',
     why: 'The hardest of the four; daily time is what moves it.',
     doneMeans: 'Within about 4 inches (10 cm) of the floor by month 9, then keep going. Most adults take 12+ months to go flat.',
-    measures: [{ name: 'Side split: crotch to floor', unit: 'in' }],
+    measures: [{ name: 'Center split', unit: 'in', cadence: 1 }],
     milestones: [],
   },
   {
@@ -242,7 +242,6 @@ export const FLEX_GOALS: { key: 'front' | 'side' | 'fold' | 'backbend'; title: s
     why: 'The same hamstrings as the front split, plus folding strength: each makes the other faster.',
     doneMeans: 'Chest on shins in the seated pike fold and the standing fold. 6–9 months is realistic.',
     measures: [
-      { name: 'Seated fold: chest to knees', unit: 'in' },
       { name: 'Standing fold: chest to knees', unit: 'in' },
     ],
     milestones: [],
@@ -252,7 +251,7 @@ export const FLEX_GOALS: { key: 'front' | 'side' | 'fold' | 'backbend'; title: s
     title: 'Full backbend',
     why: 'Upper back and shoulders open first, then a floor bridge, a straight-arm bridge, and later walking down a wall. Being 39 doesn’t stop it.',
     doneMeans: 'A full bridge (wheel) in 4–8 months; a drop-back is a 12–24 month aim.',
-    measures: [{ name: 'Bridge: hands to heels', unit: 'in' }],
+    measures: [],
     milestones: [{ title: 'Full bridge (wheel) held 20–30 s', monthsIn: 6 }],
   },
 ];
@@ -263,10 +262,10 @@ export const MONTHLY_CHECK = {
   minutes: 15,
   details: [
     'Phone on a tripod at hip height, same spot and distance every month. Use the remote so you can take the photo while holding the position.',
-    'Front splits: side-view photo of each side; measure front hip to floor.',
-    'Side split: front-view photo; measure crotch to floor.',
-    'Chest to shins: side photos of the seated and standing folds; measure chest to knees.',
-    'Backbend: side photo of your best bridge; measure hands to heels (fingertips to the back of your heels, on the floor).',
+    'Front splits: side-view photo of each side. (Front hip to floor is logged daily on Today.)',
+    'Center split: front-view photo. (Crotch to floor is logged daily on Today.)',
+    'Chest to shins: side photo of the standing fold; measure chest to knees.',
+    'Backbend: side photo of your best bridge.',
     'Add the photos to this task, and the measurements on each goal’s page.',
   ].join('\n'),
 };
