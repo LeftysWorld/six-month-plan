@@ -201,10 +201,19 @@ export function opsMergeDuplicateMeasures(data: AppData): Op[] {
   return ops;
 }
 
-/** Whether a measurement shows in Today's numbers (archived ones never do). */
+/** A measurement taken every day: it always shows on Today, whatever "Show on Today" says. */
+export function measuredDaily(t: { cadence_days: number }): boolean {
+  return t.cadence_days <= 1;
+}
+
+/**
+ * Whether a measurement shows in Today's numbers (archived ones never do): one taken every day,
+ * one turned on with "Show on Today", or a goal's main number unless it was turned off.
+ */
 export function measureOnToday(data: AppData, typeId: string): boolean {
   const t = data.measurementTypes.find((m) => m.id === typeId);
   if (!t || t.archived_at) return false;
+  if (measuredDaily(t)) return true;
   return t.on_today ?? data.goals.some((g) => g.measurement_type_id === typeId);
 }
 

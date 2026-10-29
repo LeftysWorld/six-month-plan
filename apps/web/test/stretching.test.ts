@@ -324,3 +324,16 @@ test('after a save, the database hands the plan back with its keys re-sorted: st
   const p = previewSplitsPack(reloaded, TODAY);
   assert.equal(p.state, 'current', p.updates.join(' | '));
 });
+
+test('a measurement taken every day shows on Today, even if it was added with Show on Today off', async () => {
+  const { measureOnToday } = await import('../src/data/connect.ts');
+  const d = base();
+  const types = [
+    { id: 'daily', name: 'Side split: crotch to floor', unit: 'in', cadence_days: 1, goal_id: 'splits', archived_at: null, on_today: false },
+    { id: 'monthly', name: 'Seated fold: chest to knees', unit: 'in', cadence_days: 28, goal_id: 'splits', archived_at: null, on_today: false },
+    { id: 'shown', name: 'Bridge: hands to heels', unit: 'in', cadence_days: 28, goal_id: 'splits', archived_at: null, on_today: true },
+    { id: 'stopped', name: 'Old', unit: 'in', cadence_days: 1, goal_id: 'splits', archived_at: '2026-10-29T00:00:00Z', on_today: true },
+  ];
+  const x = { ...d, measurementTypes: types };
+  assert.deepEqual(types.filter((t) => measureOnToday(x, t.id)).map((t) => t.id), ['daily', 'shown']);
+});

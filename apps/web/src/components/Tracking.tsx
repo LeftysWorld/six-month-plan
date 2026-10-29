@@ -3,7 +3,7 @@ import { addDays, shortDate, type Goal, type MeasurementType } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { fmt } from '../data/derive.ts';
-import { findMeasure, measureLabel, measureOnToday } from '../data/connect.ts';
+import { findMeasure, measureLabel, measureOnToday, measuredDaily } from '../data/connect.ts';
 import { daysText, opsAddPhotoTracker, opsStopPhotoTracker, photoTrackers } from '../data/tracking.ts';
 import { opsAddMeasurementType, opsDeleteMeasurement, opsLogReading, opsUpdateGoal } from '../data/ops.ts';
 import { NumberInput } from './ui.tsx';
@@ -88,7 +88,7 @@ export function TrackForm({ goals, goalId: initialGoal, onDone }: { goals: Goal[
             </label>
           </div>
           <NumberInput label={`Today's reading (${unit || 'optional'}), optional`} value={first} onChange={setFirst} />
-          <span className="xsmall muted">It stays off Today until you turn on “Show on Today”.</span>
+          <span className="xsmall muted">{cadence <= 1 ? 'Every day: it shows on Today with your other numbers.' : 'It shows on its goal page and the group page; turn on “Show on Today” in its settings to log it from Today too.'}</span>
           <button className="btn small primary" type="submit" disabled={!name.trim() || !goal}>
             Track it
           </button>
@@ -187,7 +187,8 @@ export function MeasureRow({ type, goal, goals, canLog = true, onMsg }: { type: 
           <span className="track-row-name">
             <b className="small">{type.name}</b>
             <span className="xsmall muted">
-              {main ? 'main number · ' : ''}every {type.cadence_days === 1 ? 'day' : `${type.cadence_days} days`}
+              {main ? 'main number · ' : ''}every {type.cadence_days <= 1 ? 'day' : `${type.cadence_days} days`}
+              {onToday ? ' · on Today' : ''}
               {due && canLog ? ' · due' : ''}
             </span>
           </span>
@@ -243,16 +244,17 @@ export function MeasureRow({ type, goal, goals, canLog = true, onMsg }: { type: 
       </div>
       {settings && (
         <div className="stack-sm track-settings">
-          <label className="row-start small" style={{ gap: 6, cursor: 'pointer' }}>
+          <label className="row-start small" style={{ gap: 6, cursor: measuredDaily(type) ? 'default' : 'pointer' }}>
             <input
               type="checkbox"
               checked={onToday}
+              disabled={measuredDaily(type)}
               onChange={(e) => {
                 update({ on_today: e.target.checked });
                 onMsg(e.target.checked ? `Showing ${type.name.toLowerCase()} on Today` : `Hidden ${type.name.toLowerCase()} from Today`);
               }}
             />
-            Show on Today
+            {measuredDaily(type) ? 'On Today every day (it’s a daily number)' : 'Show on Today'}
           </label>
           <label className="row-start small" style={{ gap: 6 }}>
             Every
