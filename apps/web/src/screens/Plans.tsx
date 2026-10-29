@@ -80,12 +80,12 @@ export function Plans() {
   const [menuFor, setMenuFor] = useState<Plan | null>(null);
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<'current' | 'next'>('current');
-  // Group by your groups (the default) or by path: the life each goal is a bet on.
+  // Group by path (the default: the life each goal is a bet on) or by your groups.
   const [by, setByState] = useState<'group' | 'path'>(() => {
     try {
-      return localStorage.getItem('six.goals.by') === 'path' ? 'path' : 'group';
+      return localStorage.getItem('six.goals.by') === 'group' ? 'group' : 'path';
     } catch {
-      return 'group';
+      return 'path';
     }
   });
   const setBy = (v: 'group' | 'path') => {
@@ -300,11 +300,11 @@ export function Plans() {
             <div className="row-between" style={{ gap: 8 }}>
               <span className="xsmall muted">Group by</span>
               <div className="seg" role="radiogroup" aria-label="Group goals by">
-                <button role="radio" aria-checked={by === 'group'} onClick={() => setBy('group')}>
-                  Groups
-                </button>
                 <button role="radio" aria-checked={by === 'path'} onClick={() => setBy('path')}>
                   Paths
+                </button>
+                <button role="radio" aria-checked={by === 'group'} onClick={() => setBy('group')}>
+                  Groups
                 </button>
               </div>
             </div>
