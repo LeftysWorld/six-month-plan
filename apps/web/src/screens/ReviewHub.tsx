@@ -168,6 +168,9 @@ export function ReviewHub() {
               <a className="btn ghost small" href={href('/progress')}>
                 All charts ›
               </a>
+              <a className="btn ghost small" href={href('/workouts/report')}>
+                Workout report ›
+              </a>
             </div>
           )}
         </div>

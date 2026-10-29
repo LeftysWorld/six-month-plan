@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt } from '../data/derive.ts';
@@ -168,7 +168,17 @@ interface Row {
   weight: string;
   reps: string;
   done: boolean;
+  /** Reps left in the tank once the set was done (0–3, 3 meaning 3 or more); null until you say. */
+  rir?: number | null;
 }
+
+/** "How many more could you have done?" Three or more counts as 3. */
+const RIR_CHOICES: { value: number; label: string }[] = [
+  { value: 0, label: '0' },
+  { value: 1, label: '1' },
+  { value: 2, label: '2' },
+  { value: 3, label: '3+' },
+];
 
 /** The sets of this task's last logged workout before `session`, by exercise. */
 function lastTime(data: AppData, session: Session): Map<string, DoneSet[]> {
@@ -192,6 +202,8 @@ type Extra = PlannedExercise & { keep?: boolean };
 interface Draft {
   rows: Row[][];
   extras: Extra[];
+  /** Per exercise: it hurt. */
+  pain?: boolean[];
 }
 
 function readDraft(sessionId: string): Draft | null {
@@ -256,13 +268,17 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
       // Extra sets you added last time you saved come back too.
       Array.from({ length: Math.max(e.sets, ...saved.filter((w) => w.exercise.toLowerCase() === e.name.toLowerCase()).map((w) => w.set_no)) }, (_, k) => {
         const s = saved.find((w) => w.exercise.toLowerCase() === e.name.toLowerCase() && w.set_no === k + 1);
-        if (s) return { weight: s.weight == null ? '' : String(s.weight), reps: s.reps == null ? '' : String(s.reps), done: s.done };
+        if (s) return { weight: s.weight == null ? '' : String(s.weight), reps: s.reps == null ? '' : String(s.reps), done: s.done, rir: s.rir ?? null };
         // Start from the plan: weight (or last time's) and the top of the rep range, ready to tick or type over.
         const w = suggestions[plan.indexOf(e)]!.weight;
         return { weight: w == null ? '' : String(w), reps: String(e.reps_max), done: false };
       }),
     );
   });
+  // Per exercise: it hurt (from the draft, or from the sets you saved before).
+  const [pain, setPain] = useState<boolean[]>(() => draft?.pain ?? plan.map((e) => saved.some((w) => w.exercise.toLowerCase() === e.name.toLowerCase() && !!w.pain)));
+  // The set just ticked, waiting for "how many more could you have done?" (optional).
+  const [asking, setAsking] = useState<{ i: number; k: number } | null>(null);
   const firstOpen = (r: Row[][]) => r.findIndex((sets) => sets.some((x) => !x.done));
   const [open, setOpen] = useState<number>(() => Math.max(0, firstOpen(rows)));
   const [note, setNote] = useState(session.note);
@@ -272,11 +288,11 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   useEffect(() => {
     if (future) return;
     try {
-      localStorage.setItem(draftKey(session.id), JSON.stringify({ rows, extras } satisfies Draft));
+      localStorage.setItem(draftKey(session.id), JSON.stringify({ rows, extras, pain } satisfies Draft));
     } catch {
       // storage blocked: the draft just isn't kept
     }
-  }, [rows, extras, future, session.id]);
+  }, [rows, extras, pain, future, session.id]);
 
   // The rest timer counts to a time (not by ticks), so it stays right after the phone sleeps.
   useEffect(() => {
@@ -304,12 +320,14 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   const tick = (i: number, k: number) => {
     const r = rows[i]![k]!;
     if (r.done) {
-      setRow(i, k, { done: false });
+      setRow(i, k, { done: false, rir: null });
+      if (asking?.i === i && asking.k === k) setAsking(null);
       return;
     }
     const a = actual(i, k);
-    const next = rows.map((sets, x) => (x === i ? sets.map((y, z) => (z === k ? { weight: a.weight == null ? '' : String(a.weight), reps: a.reps == null ? '' : String(a.reps), done: true } : y)) : sets));
+    const next = rows.map((sets, x) => (x === i ? sets.map((y, z) => (z === k ? { weight: a.weight == null ? '' : String(a.weight), reps: a.reps == null ? '' : String(a.reps), done: true, rir: y.rir ?? null } : y)) : sets));
     setRows(next);
+    setAsking({ i, k });
     const secs = restSeconds(plan[i]!.rest);
     const exerciseDone = next[i]!.every((y) => y.done);
     if (exerciseDone) {
@@ -328,7 +346,10 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   };
   /** One more set on an exercise, starting from the weight of its last set. */
   const addSet = (i: number) => setRows((all) => all.map((r, a) => (a === i ? [...r, { weight: r.at(-1)?.weight ?? '', reps: r.at(-1)?.reps ?? String(plan[i]!.reps_max), done: false }] : r)));
-  const removeSet = (i: number, k: number) => setRows((all) => all.map((r, a) => (a === i ? r.filter((_, b) => b !== k) : r)));
+  const removeSet = (i: number, k: number) => {
+    setRows((all) => all.map((r, a) => (a === i ? r.filter((_, b) => b !== k) : r)));
+    setAsking(null);
+  };
   const [another, setAnother] = useState(false);
   const [adding, setAdding] = useState<{ name: string; sets: string; reps: string; weight: string; keep: boolean } | null>(null);
   const [moving, setMoving] = useState(false);
@@ -347,6 +368,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     const ex: Extra = { ...(like ?? {}), name: adding.name.trim(), sets, reps_min: like && like.reps_max === reps ? like.reps_min : reps, reps_max: reps, weight, weight_note: '', rest: like?.rest ?? '', note: like?.note ?? '', keep: adding.keep };
     setExtras((x) => [...x, ex]);
     setRows((r) => [...r, Array.from({ length: sets }, () => ({ weight: weight == null ? '' : String(weight), reps: String(reps), done: false }))]);
+    setPain((p) => [...p, false]);
     setOpen(plan.length);
     setAdding(null);
   }
@@ -354,6 +376,8 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     const x = i - basePlan.length;
     setExtras((all) => all.filter((_, j) => j !== x));
     setRows((all) => all.filter((_, j) => j !== i));
+    setPain((p) => p.filter((_, j) => j !== i));
+    setAsking(null);
     setOpen(-1);
   }
   const canMove = moveDatesFor(view, session, today).length > 0;
@@ -364,7 +388,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   function finish() {
     const before = session;
     const sets: Omit<WorkoutSet, 'id' | 'session_id'>[] = plan.flatMap((e, i) =>
-      rows[i]!.map((r, k) => ({ exercise: e.name, set_no: k + 1, ...actual(i, k), done: r.done })).filter((s, k) => s.done || rows[i]![k]!.reps.trim() !== ''),
+      rows[i]!.map((r, k) => ({ exercise: e.name, set_no: k + 1, ...actual(i, k), done: r.done, rir: r.done ? r.rir ?? null : null, pain: !!pain[i] })).filter((s, k) => s.done || rows[i]![k]!.reps.trim() !== ''),
     );
     const status = doneCount >= total ? 'done' : 'partial';
     const saveOps = opsSaveWorkout(data, session.id, sets);
@@ -444,7 +468,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
           const done = mine.filter((r) => r.done).length;
           const finished = done >= mine.length;
           const isOpen = open === i;
-          const did = mine.map((r, k) => ({ ...actual(i, k), done: r.done })).filter((s) => s.done);
+          const did = mine.map((r, k) => ({ ...actual(i, k), done: r.done, rir: r.rir ?? null })).filter((s) => s.done);
           return (
             <section key={i} className={`workout-ex${isOpen ? ' open' : ''}`} aria-label={e.name}>
               <button type="button" className="workout-ex-head" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? -1 : i)}>
@@ -456,6 +480,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
                       {did.map((s, k) => (
                         <span key={k} className={`workout-chip${(s.reps ?? 0) < e.reps_min ? ' short' : ''}`}>
                           {s.weight == null ? 'BW' : fmt(s.weight)} × {s.reps ?? '?'}
+                          {s.rir != null ? ` @${s.rir}` : ''}
                         </span>
                       ))}
                       {done < mine.length && <span className="xsmall muted">{mine.length - done} not done</span>}
@@ -507,7 +532,8 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
                       {mine.map((r, k) => {
                         const p = prev?.[k];
                         return (
-                          <div key={k} className={`workout-set${r.done ? ' done' : ''}`} role="row">
+                          <Fragment key={k}>
+                          <div className={`workout-set${r.done ? ' done' : ''}`} role="row">
                             <span className="num small">{k + 1}</span>
                             <button type="button" className="workout-prev num" disabled={!p || future} onClick={() => copyPrevious(i, k)} aria-label={p ? `Copy last time: ${p.weight ?? 'bodyweight'} by ${p.reps}` : 'No previous set'}>
                               {p ? `${p.weight == null ? 'BW' : fmt(p.weight)} × ${p.reps ?? '?'}` : '—'}
@@ -552,6 +578,29 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
                               </button>
                             )}
                           </div>
+                          {!future && r.done && asking?.i === i && asking.k === k && (
+                            <div className="rir-ask" role="group" aria-label={`Set ${k + 1}: how many more reps could you have done?`}>
+                              <span className="xsmall muted">More reps in the tank?</span>
+                              {RIR_CHOICES.map((c) => (
+                                <button
+                                  key={c.value}
+                                  type="button"
+                                  className={`chip small${r.rir === c.value ? ' on' : ''}`}
+                                  aria-pressed={r.rir === c.value}
+                                  onClick={() => {
+                                    setRow(i, k, { rir: c.value });
+                                    setAsking(null);
+                                  }}
+                                >
+                                  {c.label}
+                                </button>
+                              ))}
+                              <button type="button" className="link-btn xsmall" onClick={() => setAsking(null)}>
+                                Skip
+                              </button>
+                            </div>
+                          )}
+                          </Fragment>
                         );
                       })}
                       {!future && (
@@ -561,6 +610,16 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
                       )}
                       {!future && i === firstOpen(rows) && doneCount === 0 && (
                         <span className="xsmall muted">Each set starts at the plan ({repsText(e)} reps). Did it as planned? Tick it. Otherwise tap the weight or reps, type what you did, then tick.</span>
+                      )}
+                      {!future && (
+                        <button
+                          type="button"
+                          className={`pain-toggle${pain[i] ? ' on' : ''}`}
+                          aria-pressed={!!pain[i]}
+                          onClick={() => setPain((p) => plan.map((_, j) => (j === i ? !p[j] : !!p[j])))}
+                        >
+                          {pain[i] ? '⚠ This hurt (tap to undo)' : 'This hurt or felt wrong'}
+                        </button>
                       )}
                     </div>
                   )}

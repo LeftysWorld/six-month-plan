@@ -29,6 +29,8 @@ export interface Profile {
   partner_email?: string | null;
   /** Sunday-evening push: "two minutes to review". Default on. */
   review_reminder?: boolean;
+  /** Whether the workout history report (and so the workout coach) includes your weekly body weight. Default on. */
+  coach_share_bodyweight?: boolean;
 }
 
 /**
@@ -242,6 +244,42 @@ export interface WorkoutSet {
   weight: number | null;
   reps: number | null;
   done: boolean;
+  /** Reps left in the tank (0–5), when you said. Missing on older rows and older databases. */
+  rir?: number | null;
+  /** The exercise hurt (marked once per exercise, stored on each of its sets). Missing on older databases. */
+  pain?: boolean;
+}
+
+/** One version of a workout's plan, recorded by the database whenever the plan changes. */
+export interface WorkoutPlanVersion {
+  id: string;
+  action_id: string;
+  plan: import('./workout.ts').PlannedExercise[];
+  details: string;
+  effective_on: ISODate;
+  /** 'app' for edits, 'backfill' for the plan as it stood when history began. */
+  source: string;
+  reason: string;
+  created_at: string;
+}
+
+/** A coach report from the workout coach agent, with your verdict on it. */
+export interface WorkoutReport {
+  id: string;
+  kind: 'coach';
+  as_of: ISODate;
+  months: number;
+  schema_version: string;
+  snapshot_hash: string;
+  content_md: string;
+  decision: Record<string, unknown>;
+  recommendation: 'hold' | 'change' | 'none';
+  change_level: number;
+  model: string;
+  prompt_version: string;
+  user_status: 'applied' | 'partly' | 'declined' | null;
+  user_note: string;
+  created_at: string;
 }
 
 export interface MeasurementType {
