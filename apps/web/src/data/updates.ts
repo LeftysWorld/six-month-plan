@@ -441,17 +441,46 @@ function fermentSetup(data: AppData, today: ISODate) {
   const goals = data.goals.filter((g) => !g.archived_at && FERMENT_GOALS.some((f) => f.title === g.title));
   const ideas = data.ideas.filter((i) => i.status !== 'discarded' && FERMENT_IDEAS.some((f) => f.title === i.title));
   const task = data.actions.find((a) => !a.archived_at && a.title === FERMENT_TASK) ?? null;
-  return { current, next, group, goals, ideas, task };
+  // A season it's in that's still running (or ahead): a goal in no live season shows nowhere.
+  const live = new Set(plans.filter((p) => p.end_date >= today).map((p) => p.id));
+  const inSeason = (goalId: string) => data.planGoals.some((pg) => pg.goal_id === goalId && live.has(pg.plan_id));
+  const linked = (goalId: string) => !!task && data.actionGoals.some((ag) => ag.action_id === task.id && ag.goal_id === goalId);
+  const scheduled = !!task && data.schedules.some((s) => s.action_id === task.id && (s.effective_to == null || s.effective_to >= today));
+  // Everything still missing, in words: the update is done only when this is empty.
+  const missing: string[] = [];
+  if (!group) missing.push(`the “${FERMENT_GROUP}” group`);
+  for (const f of FERMENT_GOALS) {
+    const g = goals.find((x) => x.title === f.title);
+    if (!g) missing.push(`the goal “${f.title}”`);
+    else {
+      if (!group || g.group_id !== group.id) missing.push(`“${f.title}” in the group`);
+      if (!inSeason(g.id)) missing.push(`“${f.title}” in this season`);
+      if (task && !linked(g.id)) missing.push(`“${f.title}” on the Sunday task`);
+    }
+  }
+  if (!task) missing.push(`the “${FERMENT_TASK}” task`);
+  else if (!scheduled) missing.push(`Sunday on the “${FERMENT_TASK}” schedule`);
+  for (const f of FERMENT_IDEAS) {
+    const i = ideas.find((x) => x.title === f.title);
+    if (!i) missing.push(`the idea “${f.title}”`);
+    else if (!group || i.group_id !== group.id) missing.push(`“${f.title}” in the group`);
+  }
+  return { current, next, group, goals, ideas, task, missing, inSeason, linked, scheduled };
 }
 
 export const fermentUpdate: AppUpdate = {
-  id: 'fermentation-group-2026-10',
+  // A new id (was fermentation-group-2026-10): a "Not now" on the first one doesn't hide this one.
+  id: 'fermentation-group-2026-10-b',
   title: 'Fermentation: kombucha to sake',
   nudge: 'Fermentation as a group: kombucha every Sunday, then hard kombucha, mead and koji this season; doburoku and sake next.',
   preview(data, today) {
     const p = fermentSetup(data, today);
     if (!p.current) return { done: true, blocked: 'Start a season first.', lines: [], options: [] };
-    if (p.goals.length === FERMENT_GOALS.length && p.ideas.length === FERMENT_IDEAS.length && p.task) return { done: true, lines: [], options: [] };
+    if (p.missing.length === 0) return { done: true, lines: [], options: [] };
+    // Part of it is there already (a save that didn't finish): say what's left.
+    if (p.group || p.goals.length || p.task || p.ideas.length) {
+      return { done: false, lines: ['Part of the fermentation setup is here; this finishes it:', ...p.missing.map((m) => `Adds ${m}`)], options: [] };
+    }
     const S = p.current.start_date;
     const day = (n: number | null) => (n == null ? p.current!.end_date : addDays(S, n));
     const lines = [
@@ -479,12 +508,14 @@ export const fermentUpdate: AppUpdate = {
       groupId = newId();
       add([{ kind: 'insert', collection: 'groups', rows: [{ id: groupId, name: FERMENT_GROUP, created_at: nowIso } as Row] }]);
     }
-    // The goals, in the group, with their dates and the roadmap's milestones.
+    // The goals, in the group and this season, with their dates and the roadmap's milestones.
     const goalIds: string[] = [];
     for (const f of FERMENT_GOALS) {
       const have = next.goals.find((g) => !g.archived_at && g.title === f.title);
       if (have) {
         goalIds.push(have.id);
+        if (have.group_id !== groupId) add([{ kind: 'update', collection: 'goals', id: have.id, patch: { group_id: groupId } }]);
+        if (!p.inSeason(have.id)) add([{ kind: 'insert', collection: 'planGoals', rows: [{ id: newId(), plan_id: season.id, goal_id: have.id }] }]);
         continue;
       }
       const start = addDays(season.start_date, f.from);
@@ -507,6 +538,11 @@ export const fermentUpdate: AppUpdate = {
         { kind: 'insert', collection: 'schedules', rows: [schedule as unknown as Row] },
         { kind: 'insert', collection: 'actionGoals', rows: goalIds.map((g) => ({ id: newId(), action_id: action.id, goal_id: g })) },
       ]);
+    } else {
+      const task = p.task;
+      const unlinked = goalIds.filter((g) => !next.actionGoals.some((ag) => ag.action_id === task.id && ag.goal_id === g));
+      if (unlinked.length) add([{ kind: 'insert', collection: 'actionGoals', rows: unlinked.map((g) => ({ id: newId(), action_id: task.id, goal_id: g })) }]);
+      if (!p.scheduled) add([{ kind: 'insert', collection: 'schedules', rows: [{ id: newId(), action_id: task.id, rule: 'days', days: [7], per_week: null, effective_from: today, effective_to: null } as unknown as Row] }]);
     }
     // Next season: doburoku, then sake, as planned ideas in the group.
     let nextSeason = p.next;
@@ -518,7 +554,11 @@ export const fermentUpdate: AppUpdate = {
       nextSeason = made.plan;
     }
     for (const f of FERMENT_IDEAS) {
-      if (next.ideas.some((i) => i.status !== 'discarded' && i.title === f.title)) continue;
+      const have = next.ideas.find((i) => i.status !== 'discarded' && i.title === f.title);
+      if (have) {
+        if (have.group_id !== groupId) add([{ kind: 'update', collection: 'ideas', id: have.id, patch: { group_id: groupId } }]);
+        continue;
+      }
       const from = addDays(nextSeason.start_date, f.from);
       const to = f.to == null ? nextSeason.end_date : addDays(nextSeason.start_date, f.to);
       add([{ kind: 'insert', collection: 'ideas', rows: [{ id: newId(), title: f.title, note: f.note, done_means: f.done, status: 'backlog', shortlisted_at: nowIso, rank: rankAtEnd(next.ideas, 'selected'), goal_id: null, created_at: nowIso, started_at: null, group_id: groupId, plan_id: nextSeason.id, planned_start: from, planned_end: to > nextSeason.end_date ? nextSeason.end_date : to } as Row] }]);

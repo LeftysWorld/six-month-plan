@@ -54,3 +54,31 @@ test('Fermentation: four goals this season in the group, one shared Sunday sessi
   assert.equal(norm(run(run(d, ops), undo)), norm(d));
   void invertOps;
 });
+
+test('Fermentation: a setup that only half saved shows again and finishes, without duplicates', () => {
+  const d = base();
+  const full = run(d, applyUpdate(fermentUpdate, d, TODAY, {}).ops);
+  const group = full.groups.find((g) => g.name === 'Fermentation')!;
+  const goals = full.goals.filter((g) => g.group_id === group.id);
+  // The goals saved, but not their season, the group or the task links.
+  const half: AppData = {
+    ...full,
+    groups: full.groups.filter((g) => g.id !== group.id),
+    goals: full.goals.map((g) => (g.group_id === group.id ? { ...g, group_id: null } : g)),
+    planGoals: full.planGoals.filter((pg) => !goals.some((g) => g.id === pg.goal_id)),
+    actionGoals: full.actionGoals.filter((ag) => !goals.some((g) => g.id === ag.goal_id)),
+  };
+  const p = fermentUpdate.preview(half, TODAY);
+  assert.equal(p.done, false);
+  assert.ok(p.lines.some((l) => l.includes('in this season')));
+  const fixed = run(half, applyUpdate(fermentUpdate, half, TODAY, {}).ops);
+  assert.equal(fermentUpdate.preview(fixed, TODAY).done, true);
+  const g2 = fixed.groups.filter((g) => g.name === 'Fermentation');
+  assert.equal(g2.length, 1);
+  assert.equal(fixed.goals.filter((g) => goals.some((x) => x.id === g.id) && g.group_id === g2[0]!.id).length, 4);
+  assert.equal(fixed.goals.length, full.goals.length);
+  assert.ok(goals.every((g) => fixed.planGoals.some((pg) => pg.goal_id === g.id && pg.plan_id === 'season')));
+  const task = fixed.actions.find((a) => a.title === 'Fermentation Sunday')!;
+  assert.equal(fixed.actionGoals.filter((x) => x.action_id === task.id).length, 4);
+  assert.ok(fixed.ideas.filter((i) => i.group_id === g2[0]!.id).length === 2);
+});
