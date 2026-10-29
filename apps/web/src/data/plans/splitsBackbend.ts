@@ -252,7 +252,7 @@ export const FLEX_GOALS: { key: 'front' | 'side' | 'fold' | 'backbend'; title: s
     title: 'Full backbend',
     why: 'Upper back and shoulders open first, then a floor bridge, a straight-arm bridge, and later walking down a wall. Being 39 doesn’t stop it.',
     doneMeans: 'A full bridge (wheel) in 4–8 months; a drop-back is a 12–24 month aim.',
-    measures: [],
+    measures: [{ name: 'Bridge: hands to heels', unit: 'in' }],
     milestones: [{ title: 'Full bridge (wheel) held 20–30 s', monthsIn: 6 }],
   },
 ];
@@ -266,7 +266,7 @@ export const MONTHLY_CHECK = {
     'Front splits: side-view photo of each side; measure front hip to floor.',
     'Side split: front-view photo; measure crotch to floor.',
     'Chest to shins: side photos of the seated and standing folds; measure chest to knees.',
-    'Backbend: side photo of your best bridge.',
+    'Backbend: side photo of your best bridge; measure hands to heels (fingertips to the back of your heels, on the floor).',
     'Add the photos to this task, and the measurements on each goal’s page.',
   ].join('\n'),
 };

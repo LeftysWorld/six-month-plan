@@ -155,6 +155,8 @@ export function previewSplitsPack(data: AppData, today: ISODate): PackPreview {
     if (stale.length) updates.push('The stretching sessions get sets and timers (Left and Right, 3 × 45 s, rest between)');
     if (stopping.length) updates.push(`${stopping.map((s) => s.action.title).join(' and ')} stop${stopping.length === 1 ? 's' : ''} after ${dayLabel(addDays(start, -1))}`);
     if (moving.length) updates.push(`Workouts move off Wednesday from this week, not from Nov 2`);
+    const missing = FLEX_GOALS.flatMap((g) => (goals[g.key] ? g.measures.filter((m) => !data.measurementTypes.some((t) => !t.archived_at && t.goal_id === goals[g.key]!.id && t.name === m.name)) : []));
+    if (missing.length) updates.push(`New measurement${missing.length === 1 ? '' : 's'} to track: ${missing.map((m) => m.name).join(', ')}`);
     state = updates.length || extras.length ? 'older' : 'current';
   }
 
@@ -315,6 +317,16 @@ export function opsApplySplitsPack(data: AppData, today: ISODate, choices: PackC
     }
   }
   const ids = FLEX_GOALS.map((g) => goalIds[g.key]).filter((id): id is string => !!id);
+  if (p.state === 'older') {
+    // Measurements the plan added since: on each goal's page, the group's page and the monthly check.
+    for (const g of FLEX_GOALS) {
+      if (!goalIds[g.key]) continue;
+      for (const m of g.measures) {
+        if (next.measurementTypes.some((t) => !t.archived_at && t.goal_id === goalIds[g.key] && t.name === m.name)) continue;
+        add([{ kind: 'insert', collection: 'measurementTypes', rows: [{ id: newId(), name: m.name, unit: m.unit, cadence_days: 28, goal_id: goalIds[g.key]!, archived_at: null, on_today: false }] }]);
+      }
+    }
+  }
 
   // 3. The group: Body by default (where your splits goal was), or one of their own.
   const ownBefore = next.groups.find((x) => x.name === OWN_GROUP);
@@ -356,6 +368,8 @@ export function opsApplySplitsPack(data: AppData, today: ISODate, choices: PackC
       if (JSON.stringify(a.stretch_plan) !== JSON.stringify(d.plan) || a.details !== STRETCH_DETAILS) add([{ kind: 'update', collection: 'actions', id: a.id, patch: { stretch_plan: d.plan, details: STRETCH_DETAILS, planned_minutes: d.minutes } }]);
       for (const s of next.schedules.filter((x) => x.action_id === a.id && x.effective_from > start)) add([{ kind: 'update', collection: 'schedules', id: s.id, patch: { effective_from: start } }]);
     }
+    const check = next.actions.find((a) => !a.archived_at && a.title === MONTHLY_CHECK.title);
+    if (check && check.details !== MONTHLY_CHECK.details) add([{ kind: 'update', collection: 'actions', id: check.id, patch: { details: MONTHLY_CHECK.details } }]);
   }
 
   // 6. The old stretching task stops the day before (history kept).

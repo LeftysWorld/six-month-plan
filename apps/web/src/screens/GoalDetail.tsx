@@ -2,29 +2,26 @@ import { useState } from 'react';
 import { evenSteps, shortDate, tallyText, type Goal, type MeasurementType, type Plan } from '@six/core';
 import { tallyFor } from '../data/tally.ts';
 import { opsAbandonGoal } from '../data/backlog.ts';
-import { findMeasure, measureLabel, measureOnToday } from '../data/connect.ts';
-import { daysText, opsAddPhotoTracker, opsStopPhotoTracker, photoTrackers } from '../data/tracking.ts';
+import { photoTrackers } from '../data/tracking.ts';
 import { useStore } from '../data/store.tsx';
 import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import {
-  opsAddMeasurement,
-  opsAddMeasurementType,
   opsAddMilestone,
   opsArchiveGoal,
   opsCompleteGoal,
   opsReopenGoal,
-  opsDeleteMeasurement,
   opsToggleMilestone,
   opsUpdateGoal,
 } from '../data/ops.ts';
 import { navigate } from '../router.ts';
-import { Icon, NumberInput, useToast } from '../components/ui.tsx';
+import { Icon, useToast } from '../components/ui.tsx';
 import { MilestoneSheet } from '../components/MilestoneSheet.tsx';
 import { PrizeTag } from '../components/Prize.tsx';
 import { goalPrizes } from '../data/prizes.ts';
 import { WeightChart } from '../components/WeightChart.tsx';
 import { GoalFiles } from '../components/Attachments.tsx';
+import { MeasureRow, PhotoRow, TrackForm } from '../components/Tracking.tsx';
 import { GoalGroupCard } from '../components/Connections.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 
@@ -98,6 +95,8 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
         </div>
       )}
 
+      <Measurements goal={goal} types={types} onAdd={toast} />
+
       <GoalFiles actionIds={actionIds} />
 
       {(goal.type === 'finish' || milestones.length > 0) && (
@@ -163,8 +162,6 @@ export function GoalExtras({ goal, plan }: { goal: Goal; plan: Plan | null }) {
           </form>
         </div>
       )}
-
-      <Measurements goal={goal} types={types} onAdd={(msg) => toast(/^(Stopped|Already|Renamed|Showing|Hidden)/.test(msg) ? msg : `Added ${msg}`)} />
 
       {history.length > 0 && (
         <details className="card tight">
@@ -255,6 +252,8 @@ export function GoalRecord({ goal }: { goal: Goal }) {
   const prizeOf = (id: string) => prizes.find((p) => p.key === `m:${id}`);
   return (
     <>
+      {/* What it tracks first: the numbers you log, above the dates you're working toward. */}
+      <Measurements goal={goal} types={types} onAdd={toast} />
       {/* Every goal can have milestones: checkpoints inside it (class begins, exam booked, module 5). */}
       {(
         <div className="card stack-sm">
@@ -338,7 +337,6 @@ export function GoalRecord({ goal }: { goal: Goal }) {
 
       {msEditing && <MilestoneSheet milestone={msEditing} onClose={() => setEditingMs(null)} />}
       <GoalFiles actionIds={actionIds} goalId={goal.id} />
-      <Measurements goal={goal} types={types} onAdd={(msg) => toast(/^(Stopped|Already|Renamed|Showing|Hidden)/.test(msg) ? msg : `Added ${msg}`)} />
     </>
   );
 }
@@ -523,26 +521,14 @@ export function GoalEdit({ goal, onSaved }: { goal: Goal; onSaved?: () => void }
 }
 
 /**
- * Every number this goal tracks. Each one can be renamed, shown on Today (for daily entry) or not,
- * and stopped. A number goal's main measurement is charted and logged in the progress card, so it
- * has no log box here and can't be stopped (it's what the goal is measured by).
+ * Everything this goal tracks: its numbers (each with its latest reading, the change since the
+ * first and a box to log today's) and photos, and the form to track something new. A number goal's
+ * main measurement is logged and charted in its progress card, so it isn't logged here.
  */
 function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementType[]; onAdd: (msg: string) => void }) {
-  const { data, today, commit } = useStore();
-  const view = useView();
-  const [values, setValues] = useState<Record<string, number | null>>({});
-  const [newName, setNewName] = useState('');
-  const [newUnit, setNewUnit] = useState('in');
-  const [cadence, setCadence] = useState(7);
+  const { data, today } = useStore();
   const [adding, setAdding] = useState(false);
-  const [renaming, setRenaming] = useState<{ id: string; name: string; unit: string } | null>(null);
-  const [kind, setKind] = useState<'number' | 'photo'>('number');
-  const [photoName, setPhotoName] = useState('Progress photo');
-  const [photoDays, setPhotoDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const photos = photoTrackers(data, goal.id, today);
-  const update = (id: string, patch: Partial<MeasurementType>) => commit([{ kind: 'update', collection: 'measurementTypes', id, patch }]);
-  const sorted = [...types].sort((a, b) => Number(b.id === goal.measurement_type_id) - Number(a.id === goal.measurement_type_id));
-
   return (
     <div className="card stack-sm">
       <div className="row-between">
@@ -552,238 +538,22 @@ function Measurements({ goal, types, onAdd }: { goal: Goal; types: MeasurementTy
         </button>
       </div>
       {adding && (
-        <div className="seg" role="tablist" aria-label="What to track">
-          <button role="tab" aria-selected={kind === 'number'} onClick={() => setKind('number')}>
-            A number
-          </button>
-          <button role="tab" aria-selected={kind === 'photo'} onClick={() => setKind('photo')}>
-            A photo
-          </button>
-        </div>
-      )}
-      {adding && kind === 'photo' && (
-        <form
-          className="stack-sm"
-          onSubmit={(e) => {
-            e.preventDefault();
-            commit(opsAddPhotoTracker(data, goal.id, photoName, photoDays, today));
-            onAdd(photoName.trim() || 'Progress photo');
-            setAdding(false);
+        <TrackForm
+          goals={[goal]}
+          goalId={goal.id}
+          onDone={(msg) => {
+            onAdd(msg);
+            if (!/^Already/.test(msg)) setAdding(false);
           }}
-        >
-          <label className="field">
-            Name
-            <input value={photoName} onChange={(e) => setPhotoName(e.target.value)} placeholder="Progress photo" />
-          </label>
-          <div className="stack-sm">
-            <span className="xsmall muted">Which days</span>
-            <div className="chips" role="group" aria-label="Days">
-              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => {
-                const on = photoDays.includes(i + 1);
-                return (
-                  <button key={d} type="button" className="chip" aria-pressed={on} onClick={() => setPhotoDays(on ? photoDays.filter((x) => x !== i + 1) : [...photoDays, i + 1])}>
-                    {d}
-                  </button>
-                );
-              })}
-              <button type="button" className="chip" onClick={() => setPhotoDays([1, 2, 3, 4, 5, 6, 7])}>
-                Every day
-              </button>
-            </div>
-          </div>
-          <span className="xsmall muted">On those days it shows on Today with your numbers, with a camera button. Photos are saved to the day and collect on this goal.</span>
-          <button className="btn small" type="submit" disabled={photoDays.length === 0}>
-            Track this photo
-          </button>
-        </form>
+        />
       )}
-      {adding && kind === 'number' && (
-        <form
-          className="stack-sm"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!newName.trim()) return;
-            if (findMeasure(data, goal.id, newName, newUnit)) {
-              onAdd(`Already tracking ${newName.trim().toLowerCase()}`);
-              return;
-            }
-            commit(opsAddMeasurementType({ name: newName.trim(), unit: newUnit.trim(), cadence_days: cadence, goal_id: goal.id }));
-            onAdd(newName.trim());
-            setNewName('');
-            setAdding(false);
-          }}
-        >
-          <div className="grid-3">
-            <label className="field">
-              Name
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Waist" />
-            </label>
-            <label className="field">
-              Unit
-              <input value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
-            </label>
-            <label className="field">
-              Every (days)
-              <input type="number" min={1} max={90} value={cadence} onChange={(e) => setCadence(Number(e.target.value))} />
-            </label>
-          </div>
-          <span className="xsmall muted">New measurements stay off Today until you turn on “Show on Today”.</span>
-          <button className="btn small" type="submit">
-            Add measurement
-          </button>
-        </form>
-      )}
-      {sorted.length === 0 && photos.length === 0 && !adding && <span className="small muted">Track a number (like arm size) or a photo (like a weekly progress photo).</span>}
-      {photos.map(({ action, schedule }) => {
-        const taken = data.attachments.filter((f) => data.sessions.some((s) => s.id === f.session_id && s.action_id === action.id));
-        const lastDay = data.sessions.filter((s) => s.action_id === action.id && data.attachments.some((f) => f.session_id === s.id)).map((s) => s.date ?? '').sort().at(-1);
-        return (
-          <div key={action.id} className="stack-sm" style={{ borderTop: '1px solid var(--line-2)', paddingTop: 8 }}>
-            <div className="row-between small">
-              <b>
-                {action.title} <span className="xsmall muted" style={{ fontWeight: 400 }}>· photo · {schedule ? daysText(schedule.days) : ''}</span>
-              </b>
-              <span className="muted">
-                {taken.length ? `${taken.length} photo${taken.length === 1 ? '' : 's'} · last ${shortDate(lastDay!)}` : 'No photos yet'}
-              </span>
-            </div>
-            <div className="row-start" style={{ gap: 14 }}>
-              <span className="xsmall muted">Shows on Today on its days</span>
-              <button
-                type="button"
-                className="link-btn xsmall"
-                onClick={() => {
-                  commit(opsStopPhotoTracker(data, action, today));
-                  onAdd(`Stopped tracking ${action.title.toLowerCase()}`);
-                }}
-              >
-                Stop tracking
-              </button>
-            </div>
-          </div>
-        );
-      })}
-      {sorted.map((t) => {
-        const main = t.id === goal.measurement_type_id;
-        const readings = view.measurementsFor(t.id);
-        const first = readings[0];
-        const last = readings.at(-1);
-        const onToday = measureOnToday(data, t.id);
-        return (
-          <div key={t.id} className="stack-sm" style={{ borderTop: '1px solid var(--line-2)', paddingTop: 8 }}>
-            {renaming?.id === t.id ? (
-              <form
-                className="row-start"
-                style={{ flexWrap: 'nowrap' }}
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!renaming.name.trim()) return;
-                  update(t.id, { name: renaming.name.trim(), unit: renaming.unit.trim() });
-                  if (main && goal.unit !== renaming.unit.trim()) commit(opsUpdateGoal(goal, { unit: renaming.unit.trim() }));
-                  onAdd(`Renamed to ${measureLabel({ name: renaming.name.trim(), unit: renaming.unit })}`);
-                  setRenaming(null);
-                }}
-              >
-                <input className="input" aria-label="Measurement name" autoFocus value={renaming.name} onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} />
-                <input className="input" aria-label="Unit" style={{ width: 72, flex: 'none' }} value={renaming.unit} onChange={(e) => setRenaming({ ...renaming, unit: e.target.value })} />
-                <button className="btn small primary" type="submit" style={{ flex: 'none', minHeight: 44 }}>
-                  Save
-                </button>
-                <button className="btn small" type="button" style={{ flex: 'none', minHeight: 44 }} onClick={() => setRenaming(null)}>
-                  Cancel
-                </button>
-              </form>
-            ) : (
-              <div className="row-between small">
-                <b>
-                  {measureLabel(t)}
-                  {main && <span className="xsmall muted" style={{ fontWeight: 400 }}> · main number, charted above</span>}
-                </b>
-                <span className="muted">
-                  {last ? `${fmt(last.value)} ${t.unit} · ${shortDate(last.measured_on)}` : 'No readings'}
-                  {first && last && first !== last ? ` · start ${fmt(first.value)}` : ''}
-                </span>
-              </div>
-            )}
-            <div className="row-start" style={{ gap: 14 }}>
-              <label className="row-start small" style={{ gap: 6, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={onToday}
-                  onChange={(e) => {
-                    update(t.id, { on_today: e.target.checked });
-                    onAdd(e.target.checked ? `Showing ${t.name.toLowerCase()} on Today` : `Hidden ${t.name.toLowerCase()} from Today`);
-                  }}
-                />
-                Show on Today
-              </label>
-              {renaming?.id !== t.id && (
-                <button type="button" className="link-btn xsmall" onClick={() => setRenaming({ id: t.id, name: t.name, unit: t.unit })}>
-                  Rename
-                </button>
-              )}
-              {!main && (
-                <button
-                  type="button"
-                  className="link-btn xsmall"
-                  onClick={() => {
-                    // Archived, not deleted: past readings stay in your export.
-                    update(t.id, { archived_at: new Date().toISOString() });
-                    onAdd(`Stopped tracking ${t.name.toLowerCase()}`);
-                  }}
-                >
-                  Stop tracking
-                </button>
-              )}
-            </div>
-            {!main && (
-              <form
-                className="grid-3"
-                style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const v = values[t.id];
-                  if (v == null) return;
-                  commit(opsAddMeasurement(t.id, v, today));
-                  setValues({ ...values, [t.id]: null });
-                }}
-              >
-                <NumberInput label={`Today's ${t.name.toLowerCase()} (${t.unit})`} value={values[t.id] ?? null} onChange={(v) => setValues({ ...values, [t.id]: v })} />
-                <button className="btn small" type="submit" style={{ alignSelf: 'end', minHeight: 44 }}>
-                  Log
-                </button>
-              </form>
-            )}
-            {!main && readings.length > 0 && (
-              <details>
-                <summary className="xsmall muted" style={{ cursor: 'pointer' }}>
-                  All {readings.length} readings
-                </summary>
-                <table className="table">
-                  <tbody>
-                    {[...readings].reverse().map((r) => (
-                      <tr key={r.id}>
-                        <td>{shortDate(r.measured_on)}</td>
-                        <td>
-                          {fmt(r.value)} {t.unit}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <button className="link-btn xsmall" onClick={() => commit(opsDeleteMeasurement(r.id))} aria-label={`Delete reading from ${shortDate(r.measured_on)}`}>
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </details>
-            )}
-          </div>
-        );
-      })}
+      {types.length === 0 && photos.length === 0 && !adding && <span className="small muted">Track a number (like a distance with a tape measure) or a photo (like a monthly progress photo).</span>}
+      {types.map((t) => (
+        <MeasureRow key={t.id} type={t} goal={goal} canLog={t.id !== goal.measurement_type_id || goal.type !== 'number'} onMsg={onAdd} />
+      ))}
+      <PhotoRow goalId={goal.id} onMsg={onAdd} />
     </div>
   );
 }
-
 
 /** Where this goal is right now in its breakdown: 3 months → month → week → today's tasks. */

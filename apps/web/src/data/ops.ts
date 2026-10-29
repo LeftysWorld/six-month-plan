@@ -512,6 +512,12 @@ export function opsAddMeasurement(typeId: string, value: number, date: ISODate, 
   return [{ kind: 'insert', collection: 'measurements', rows: rows([{ id: newId(), type_id: typeId, value, measured_on: date, source: 'manual', note }]) }];
 }
 
+/** Log a reading for today (or `date`): a second one the same day replaces the first. */
+export function opsLogReading(data: AppData, typeId: string, value: number, date: ISODate): Op[] {
+  const same = data.measurements.filter((m) => m.type_id === typeId && m.measured_on === date);
+  return [...same.map((m): Op => ({ kind: 'delete', collection: 'measurements', id: m.id })), ...opsAddMeasurement(typeId, value, date)];
+}
+
 export function opsDeleteMeasurement(id: string): Op[] {
   return [{ kind: 'delete', collection: 'measurements', id }];
 }

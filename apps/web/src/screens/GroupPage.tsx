@@ -13,10 +13,12 @@ import { BackLink, Empty, useToast } from '../components/ui.tsx';
 import { GoalRow, GroupRollup, WeekStrip, placeGoals } from './Season.tsx';
 import { GroupPrizeCard } from '../components/Prize.tsx';
 import { GroupWeekCard } from '../components/GroupWeek.tsx';
+import { GroupTracking } from '../components/Tracking.tsx';
 
 /**
- * A group's own page, like an open folder: its goals this season and next as rows, the tasks they
- * share with this week's days logged, and its actions (edit, move, ungroup).
+ * A group's own page, like an open folder: its goals this season and next as rows, everything they
+ * track (log any of it here, or track something new for one of them), the tasks they share with
+ * this week's days logged, and its actions (edit, move, ungroup).
  */
 export function GroupPage({ id }: { id: string }) {
   const { data, today, commit } = useStore();
@@ -63,6 +65,7 @@ export function GroupPage({ id }: { id: string }) {
           {now.length > 0 && card(seasons.current ? `THIS SEASON · BY ${shortDate(seasons.current.end_date).toUpperCase()}` : 'NOW', now)}
           {later.length > 0 && card(seasons.next ? `NEXT SEASON · BY ${shortDate(seasons.next.end_date).toUpperCase()}` : 'NEXT SEASON', later)}
           {placed.length === 0 && <div className="card small muted">None of this group’s goals are running right now.</div>}
+          {members.length > 0 && <GroupTracking goals={members} onMsg={(m) => toast(m)} />}
         </div>
         <aside className="season-aside">
           <section className="season-card" aria-label="Shared this week">
