@@ -4,6 +4,7 @@ import type { Db } from './db.ts';
 import { SaveError } from './db.ts';
 import { applyOp, type AppData, type Op } from './model.ts';
 import { opsEnsureWeek } from './ops.ts';
+import { slotPatches } from './palette.ts';
 import { opsMergeDuplicateMeasures } from './connect.ts';
 import { opsFillWorkoutPlans } from './breakdown.ts';
 import { opsAutoLinkTallies, opsSettleTallies } from './tally.ts';
@@ -176,6 +177,14 @@ export function StoreProvider({ db, initial, children }: { db: Db; initial: AppD
     // Only when the app opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Every group and path keeps a gradient of its own: a new one takes the lowest free one.
+  useEffect(() => {
+    if (db.schemaWarning?.()) return;
+    const ops = slotPatches(data).map((x): Op => ({ kind: 'update', collection: x.collection, id: x.id, patch: { gradient_slot: x.slot } }));
+    if (ops.length > 0) commit(ops);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.groups.length, data.paths.length]);
 
   // A date that is a running total (250 applications) ticks itself off once the logs reach it.
   useEffect(() => {

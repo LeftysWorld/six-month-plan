@@ -317,3 +317,13 @@ forward. A group with only ideas stays until they're all made goals or discarded
 glamping sites, filled in, selected for next, on Plan C, planned for next season (made if needed),
 the group waiting on the AI job. Needs `supabase/migrations/20261120000000_idea_groups_and_plans.sql`.
 
+**Backlog:** **+ New group** makes a group from the backlog: name it, tick the ideas that go in it
+(even ones in another group), and what it waits on. **Arrange by Groups / Paths** shows the ideas by
+group (each row shows its plan, "Plan C") or by path (Plan A, B, C, no path; each row shows its
+group). A group's page lists its ideas under **In the backlog**.
+
+**Group colours** are kept per group and path (`gradient_slot`, `20261121000000_gradient_slots.sql`).
+A new group or path takes the lowest of the 32 gradients not worn by a group still going (a goal
+running, or ideas in the backlog) or a path that isn't archived. When a group's goals are all
+finished or archived, or a path is archived, its gradient is free again; nobody else's colour shifts.
+

@@ -1437,3 +1437,9 @@ alter table public.goal_ideas add column if not exists planned_start date;
 alter table public.goal_ideas add column if not exists planned_end date;
 
 notify pgrst, 'reload schema';
+
+-- ---------- 20261121000000_gradient_slots.sql ----------
+alter table public.goal_groups add column if not exists gradient_slot int;
+alter table public.paths add column if not exists gradient_slot int;
+
+notify pgrst, 'reload schema';

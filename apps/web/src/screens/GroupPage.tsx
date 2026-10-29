@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { shortDate } from '@six/core';
+import { bucketOf, shortDate } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { seasonsOf } from '../data/season.ts';
-import { groupMembers, opsUngroup } from '../data/groups.ts';
+import { groupIdeas, groupMembers, opsUngroup } from '../data/groups.ts';
 import { runningSchedule } from '../data/connect.ts';
 import { describeSchedule } from '@six/core';
 import { GroupSheet, sharedTasksOf } from '../components/Connections.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
-import { navigate } from '../router.ts';
-import { BackLink, Empty, useToast } from '../components/ui.tsx';
+import { href, navigate } from '../router.ts';
+import { BackLink, Empty, Icon, useToast } from '../components/ui.tsx';
 import { GoalRow, GroupRollup, WeekStrip, placeGoals } from './Season.tsx';
 import { GroupPrizeCard } from '../components/Prize.tsx';
 import { GroupWeekCard } from '../components/GroupWeek.tsx';
@@ -35,6 +35,7 @@ export function GroupPage({ id }: { id: string }) {
   const now = placed.filter((p) => p.season !== 'next');
   const later = placed.filter((p) => p.season === 'next');
   const members = groupMembers(data, group.id);
+  const ideas = groupIdeas(data, group.id);
   const shared = sharedTasksOf(view, members);
   const card = (title: string, rows: typeof placed) => (
     <section className="season-card" aria-label={title}>
@@ -70,7 +71,33 @@ export function GroupPage({ id }: { id: string }) {
         <div className="season-main">
           {now.length > 0 && card(seasons.current ? `THIS SEASON · BY ${shortDate(seasons.current.end_date).toUpperCase()}` : 'NOW', now)}
           {later.length > 0 && card(seasons.next ? `NEXT SEASON · BY ${shortDate(seasons.next.end_date).toUpperCase()}` : 'NEXT SEASON', later)}
-          {placed.length === 0 && <div className="card small muted">None of this group’s goals are running right now.</div>}
+          {placed.length === 0 && ideas.length === 0 && <div className="card small muted">None of this group’s goals are running right now.</div>}
+          {ideas.length > 0 && (
+            <section className="season-card" aria-label="In the backlog">
+              <div className="season-card-head">
+                <span className="season-card-title">
+                  <span className="mono">IN THE BACKLOG · {ideas.length}</span>
+                </span>
+                <a className="season-open" href={href('/goals/backlog')}>
+                  Backlog <Icon name="chevron" size={14} stroke={2.4} />
+                </a>
+              </div>
+              {ideas.map((i) => {
+                const plan = i.plan_id ? data.plans.find((p) => p.id === i.plan_id) : undefined;
+                return (
+                  <div key={i.id} className="list-row small" style={{ padding: '10px 16px', gap: 10 }}>
+                    <span className="grow" style={{ minWidth: 0 }}>
+                      <b style={{ display: 'block' }}>{i.title}</b>
+                      <span className="xsmall muted">
+                        {bucketOf(i) === 'selected' ? 'Selected for next' : 'Backlog'}
+                        {plan ? ` · planned ${i.planned_start ? `${shortDate(i.planned_start)} – ${shortDate(i.planned_end ?? plan.end_date)}` : `for ${plan.name}`}` : ''}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+            </section>
+          )}
           {members.length > 0 && <GroupTracking goals={members} onMsg={(m) => toast(m)} />}
         </div>
         <aside className="season-aside">

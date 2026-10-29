@@ -47,16 +47,84 @@ export const GROUP_GRADIENTS: [string, string, string][] = [
   ['#E64980', '#BE4BDB', '#4DABF7'],
 ];
 
+type SlotData = {
+  groups: { id: string; created_at: string; gradient_slot?: number | null }[];
+  paths?: { id: string; rank: number; archived_at?: string | null; gradient_slot?: number | null }[];
+  goals?: { group_id?: string | null; completed_at?: string | null; archived_at?: string | null }[];
+  ideas?: { group_id?: string | null; status: string }[];
+};
+
 /**
- * Each group's and path's place in the palette: groups in the order they were made, then paths in
- * their order, then the "Not in a group" and "No path" cards. A new group takes the next gradient,
- * so adding groups keeps them distinct (after 32 the palette starts over).
+ * A group still going: a goal of it not finished or archived, or ideas of it in the backlog. A group
+ * with nothing in it yet counts as going (it was just made). A group whose goals are all finished is
+ * done, and its gradient is free for the next new one. A path is going until it's archived.
  */
-export function gradientSlots(data: { groups: { id: string; created_at: string }[]; paths?: { id: string; rank: number; archived_at?: string | null }[] }): Map<string, number> {
+function groupGoing(data: SlotData, groupId: string): boolean {
+  const goals = (data.goals ?? []).filter((g) => g.group_id === groupId);
+  const ideas = (data.ideas ?? []).filter((i) => i.group_id === groupId && i.status === 'backlog');
+  if (ideas.length) return true;
+  if (!goals.length) return true;
+  return goals.some((g) => !g.completed_at && !g.archived_at);
+}
+
+/** The gradients worn by groups and paths still going. */
+function takenSlots(data: SlotData): Set<number> {
+  const taken = new Set<number>();
+  for (const g of data.groups) if (g.gradient_slot != null && groupGoing(data, g.id)) taken.add(g.gradient_slot);
+  for (const p of data.paths ?? []) if (p.gradient_slot != null && !p.archived_at) taken.add(p.gradient_slot);
+  return taken;
+}
+
+/** The lowest gradient no group or path still going wears (the palette starts over once all 32 are worn). */
+export function freeSlot(data: SlotData, alsoTaken: Iterable<number> = []): number {
+  const taken = takenSlots(data);
+  for (const s of alsoTaken) taken.add(s);
+  for (let i = 0; i < GROUP_GRADIENTS.length; i++) if (!taken.has(i)) return i;
+  return taken.size % GROUP_GRADIENTS.length;
+}
+
+/**
+ * Give every group and path still going that has no gradient yet the lowest free one: groups in
+ * the order they were made, then paths in their order. Runs when the app opens and when a group or
+ * path is added; what's already given never changes.
+ */
+export function slotPatches(data: SlotData): { collection: 'groups' | 'paths'; id: string; slot: number }[] {
+  const out: { collection: 'groups' | 'paths'; id: string; slot: number }[] = [];
+  const given: number[] = [];
   const groups = [...data.groups].sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1));
+  for (const g of groups) {
+    if (g.gradient_slot != null || !groupGoing(data, g.id)) continue;
+    const slot = freeSlot(data, given);
+    given.push(slot);
+    out.push({ collection: 'groups', id: g.id, slot });
+  }
   const paths = [...(data.paths ?? [])].filter((p) => !p.archived_at).sort((a, b) => a.rank - b.rank);
-  const keys = [...groups.map((g) => g.id), ...paths.map((p) => p.id), 'loose', 'no-path'];
-  return new Map(keys.map((k, i) => [k, i % GROUP_GRADIENTS.length]));
+  for (const p of paths) {
+    if (p.gradient_slot != null) continue;
+    const slot = freeSlot(data, given);
+    given.push(slot);
+    out.push({ collection: 'paths', id: p.id, slot });
+  }
+  return out;
+}
+
+/**
+ * Each group's and path's gradient: the one it keeps (gradient_slot), or, before it has one, the one
+ * it would get. The "Not in a group" and "No path" cards take the next free ones (not kept).
+ */
+export function gradientSlots(data: SlotData): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const g of data.groups) if (g.gradient_slot != null) map.set(g.id, g.gradient_slot);
+  for (const p of data.paths ?? []) if (p.gradient_slot != null) map.set(p.id, p.gradient_slot);
+  const pending = slotPatches(data);
+  for (const x of pending) map.set(x.id, x.slot);
+  // Done groups and archived paths without a kept slot: anything stable.
+  for (const g of data.groups) if (!map.has(g.id)) map.set(g.id, Math.floor(seed(g.id) * GROUP_GRADIENTS.length));
+  const used = [...takenSlots(data), ...pending.map((x) => x.slot)];
+  const loose = freeSlot(data, used);
+  map.set('loose', loose);
+  map.set('no-path', freeSlot(data, [...used, loose]));
+  return map;
 }
 
 /**

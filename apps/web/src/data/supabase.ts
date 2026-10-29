@@ -50,6 +50,8 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261119000000_waiting_on.sql', table: 'goal_ideas', columns: ['waits_on_goal_id', 'waits_on_milestone_id', 'waiting_since'] },
   { file: '20261119000000_waiting_on.sql', table: 'goal_groups', columns: ['waits_on_goal_id', 'waits_on_milestone_id', 'waiting_since'] },
   { file: '20261120000000_idea_groups_and_plans.sql', table: 'goal_ideas', columns: ['group_id', 'plan_id', 'planned_start', 'planned_end'] },
+  { file: '20261121000000_gradient_slots.sql', table: 'goal_groups', columns: ['gradient_slot'] },
+  { file: '20261121000000_gradient_slots.sql', table: 'paths', columns: ['gradient_slot'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */
@@ -166,6 +168,8 @@ const NUMERIC_FIELDS: Record<string, string[]> = {
 const OPTIONAL_COLUMNS: Partial<Record<string, string[]>> = {
   sessions: ['scheduled_on'],
   stretchHolds: ['set_no', 'seconds', 'reps'],
+  groups: ['gradient_slot'],
+  paths: ['gradient_slot'],
 };
 
 /** A network failure is worth retrying; a database refusal is not. */
