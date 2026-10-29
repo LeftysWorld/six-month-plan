@@ -284,12 +284,12 @@ Everything a goal tracks (numbers like a distance or a waist, and photos) sits a
 
 Small changes to your plan ship with the app as one-tap updates (`apps/web/src/data/updates.ts`): Today shows a line while one is waiting, **Review** lists what it changes and any choices, **Apply** makes the change, and Undo puts it back. Settings → Plans lists them all. The first: **Doc Film Academy: an hour a day** — the documentary goal's study task becomes 1 hour every day from Mon Nov 2, the course purchase is ticked, and the shoot/edit practice pauses until you add your own (optionally the drafted milestones go too).
 
-## Goals: Backlog, Now, Timeline
+## Goals: Backlog, Now, Roadmap
 
 The bottom bar is Today, Goals, Calendar, Habits, Review. **Goals** has three views of the same goals,
 in the order a goal moves: **Backlog** (ideas and Selected for next), **Now** (what's running, grouped
-by your groups or by path, each path in a card like a group's) and **Timeline** (the roadmap: dates,
-drag to change them; `/roadmap` still works). **Done** and **Paths** are links
+by your groups or by path, each path in a card like a group's) and **Roadmap** (dates, drag to change
+them, and backlog ideas planned into a season as dashed bars; `/roadmap` and `/goals/timeline` still work). **Done** and **Paths** are links
 under Now. Paths are a lens, not a tab: each goal and idea carries a small path chip, Now can group by
 path, the goal page links to its path, and the season start and reviews still walk through them.
 
@@ -303,4 +303,17 @@ it under **Still waiting**. When the goal (or milestone, like "Offer signed") is
 **Prepare it**. Set it in the idea's sheet, or for a group in Edit group. A group waits on one
 keystone, not on all of another group, so it fires when the job lands. Needs
 `supabase/migrations/20261119000000_waiting_on.sql`.
+
+## Ideas in groups, planned into a season
+
+A group can hold backlog ideas as well as goals, so a whole project can be laid out before any of it
+starts. In an idea's sheet, pick its **Group** (or make a new one) and what it's **Planned for**: a
+season and rough dates. The backlog shows a group's ideas together under the group's header (what it
+waits on, its path, the season it's planned for); the Roadmap shows them on that season as dashed
+bars, by group. Ideas in a group wait on whatever the group waits on. **Make it a goal** starts from
+the planned season and dates and puts the goal in the group; pick this season instead to pull it
+forward. A group with only ideas stays until they're all made goals or discarded. The one-tap
+**Glamping Site** update sets this up: Buy land, Build an A-frame, Build 3 domes and Build 3 tarp
+glamping sites, filled in, selected for next, on Plan C, planned for next season (made if needed),
+the group waiting on the AI job. Needs `supabase/migrations/20261120000000_idea_groups_and_plans.sql`.
 

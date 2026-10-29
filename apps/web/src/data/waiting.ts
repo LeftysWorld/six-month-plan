@@ -50,6 +50,14 @@ export function waitOf(data: AppData, item: Waits, today: ISODate): WaitInfo | n
   };
 }
 
+/** What an idea waits on: its own wait, else its group's ("Buy land" waits because Glamping Site does). */
+export function ideaWait(data: AppData, idea: GoalIdea, today: ISODate): WaitInfo | null {
+  const own = waitOf(data, idea, today);
+  if (own) return own;
+  const group = idea.group_id ? data.groups.find((g) => g.id === idea.group_id) : undefined;
+  return group ? waitOf(data, group, today) : null;
+}
+
 export type Waiter = { kind: 'idea'; idea: GoalIdea; title: string; id: string; info: WaitInfo } | { kind: 'group'; group: GoalGroup; title: string; id: string; info: WaitInfo };
 
 /** Everything waiting on something: ideas still in the backlog, and groups. */

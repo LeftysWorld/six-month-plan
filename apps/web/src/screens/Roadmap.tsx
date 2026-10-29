@@ -7,7 +7,7 @@ import { goalTrack, groupTrack, seasonsOf } from '../data/season.ts';
 import { clampDates, dateLimits, opsRestoreDates, opsSetGoalDates } from '../data/dates.ts';
 import { href, navigate } from '../router.ts';
 import { GoalsSwitch } from './Backlog.tsx';
-import { waiters } from '../data/waiting.ts';
+import { waiters, waitOf } from '../data/waiting.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { LoadStrip } from '../components/LoadStrip.tsx';
 import { MilestoneSheet } from '../components/MilestoneSheet.tsx';
@@ -150,6 +150,14 @@ export function Roadmap() {
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   const goalCount = rows.reduce((n, r) => n + (r.kind === 'group' ? r.goals.length : 1), 0);
   const waiting = waiters(data, today).filter((w) => !w.info.met);
+  // Ideas planned into this season: dashed bars, by group (still ideas until they're made goals).
+  const planned = season ? data.ideas.filter((i) => i.status === 'backlog' && i.plan_id === season.id).sort((a, b) => ((a.planned_start ?? '') < (b.planned_start ?? '') ? -1 : 1)) : [];
+  const plannedGroups = [...new Set(planned.map((i) => i.group_id).filter((x): x is string => !!x))]
+    .map((id) => data.groups.find((g) => g.id === id))
+    .filter((g): g is NonNullable<typeof g> => !!g)
+    .map((group) => ({ group, ideas: planned.filter((i) => i.group_id === group.id) }));
+  const plannedLoose = planned.filter((i) => !i.group_id || !data.groups.some((g) => g.id === i.group_id));
+  const hasRows = rows.length > 0 || planned.length > 0;
 
   function startDrag(e: ReactPointerEvent, r: GoalRow, m: Drag['mode']) {
     if (e.button !== 0) return;
@@ -408,6 +416,34 @@ export function Roadmap() {
     );
   };
 
+  /** An idea planned into this season: a dashed bar from its planned dates (the season, if none). */
+  const plannedRow = (i: (typeof planned)[number], inGroup: boolean) => {
+    const from = i.planned_start ?? season!.start_date;
+    const to = i.planned_end ?? season!.end_date;
+    const path = i.path_id ? data.paths.find((p) => p.id === i.path_id) : undefined;
+    const left = pct(from);
+    return (
+      <div key={`pi-${i.id}`} className={`rm-row goal planned${inGroup ? ' in-group' : ''}`}>
+        <div className="rm-label">
+          <a href={href('/goals/backlog')} className="rm-name" title="An idea in your backlog: make it a goal there">
+            <span className="dot" style={{ background: 'transparent', border: `1.5px dashed ${path?.color ?? 'var(--muted)'}` }} />
+            <span className="rm-title">{i.title}</span>
+          </a>
+          <span className="rm-meta">
+            Idea · {shortDate(from)} – {shortDate(to)}
+          </span>
+        </div>
+        <div className="rm-track">
+          {months.map((m) => (
+            <span key={m} className="rm-grid" style={{ left: `${pct(m)}%` }} />
+          ))}
+          {today >= lo && today <= hi && <span className="rm-today" style={{ left: `${pct(today)}%` }} />}
+          <span className="rm-plan" style={{ left: `${left}%`, width: `${Math.max(1.2, pct(to) - left)}%`, ['--c' as string]: path?.color ?? 'var(--muted)' }} title={`${i.title}: planned ${shortDate(from)} – ${shortDate(to)}`} />
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="stack rise">
       <div className="topbar">
@@ -436,7 +472,7 @@ export function Roadmap() {
           <span className="small muted">{season ? `${season.name}` : ''}</span>
         )}
         <div className="row-start" style={{ gap: 8 }}>
-        {season && rows.length > 0 && (
+        {season && hasRows && (
           <button className="btn small" onClick={() => setMsSheet({ goalIds: rows.flatMap((r) => (r.kind === 'group' ? r.goals : [r])).filter((r) => !r.done).map((r) => r.goal.id) })}>
             <Icon name="plus" size={14} stroke={2.4} /> Add a date
           </button>
@@ -453,10 +489,10 @@ export function Roadmap() {
       </div>
 
       {!season && <div className="card small muted">No season yet. Start one on the Goals page, then commit goals from your backlog.</div>}
-      {season && rows.length === 0 && <div className="card small muted">Nothing in this season yet. Commit goals from your backlog and they appear here with their dates.</div>}
+      {season && !hasRows && <div className="card small muted">Nothing in this season yet. Commit goals from your backlog, or plan backlog ideas into it (in the idea), and they appear here with their dates.</div>}
 
-      {season && rows.length > 0 && mode === 'timeline' && (
-        <section className="card rm" aria-label="Timeline">
+      {season && hasRows && mode === 'timeline' && (
+        <section className="card rm" aria-label="Roadmap">
           <div className="rm-head">
             <div className="rm-label rm-label-head">
               <span className="xsmall muted">Drag a bar or its ends to change dates; tap it for exact dates. Tap an empty spot or + Date to add a date.</span>
@@ -507,6 +543,34 @@ export function Roadmap() {
                 </div>
               ),
             )}
+            {plannedGroups.map(({ group, ideas }) => {
+              const from = ideas.map((i) => i.planned_start ?? season!.start_date).sort()[0]!;
+              const to = ideas.map((i) => i.planned_end ?? season!.end_date).sort().at(-1)!;
+              const gw = waitOf(data, group, today);
+              return (
+                <div key={`pg-${group.id}`} className="rm-groupblock">
+                  <div className="rm-row group planned">
+                    <div className="rm-label">
+                      <a href={href(`/goals/group/${group.id}`)} className="rm-name">
+                        <span className="rm-title">{group.name}</span>
+                      </a>
+                      <span className="rm-meta">
+                        {ideas.length} planned idea{ideas.length === 1 ? '' : 's'} · in the backlog{gw && !gw.met ? ` · waits on ${gw.label}` : ''}
+                      </span>
+                    </div>
+                    <div className="rm-track">
+                      {months.map((m) => (
+                        <span key={m} className="rm-grid" style={{ left: `${pct(m)}%` }} />
+                      ))}
+                      {today >= lo && today <= hi && <span className="rm-today" style={{ left: `${pct(today)}%` }} />}
+                      <span className="rm-plan-span" style={{ left: `${pct(from)}%`, width: `${Math.max(1.2, pct(to) - pct(from))}%` }} />
+                    </div>
+                  </div>
+                  {ideas.map((i) => plannedRow(i, true))}
+                </div>
+              );
+            })}
+            {plannedLoose.map((i) => plannedRow(i, false))}
             {which === 'current' &&
               waiting.map((w) => {
                 // Not a date: the lane starts where what it waits on is due (or today), dashed.
@@ -540,6 +604,11 @@ export function Roadmap() {
               })}
           </div>
           <div className="rm-legend" aria-label="Key">
+            {planned.length > 0 && (
+              <span>
+                <span className="lg-plan" /> Planned idea (not a goal yet)
+              </span>
+            )}
             {which === 'current' && waiting.length > 0 && (
               <span>
                 <span className="lg-wait" /> Waiting on something, not a date

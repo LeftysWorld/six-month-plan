@@ -1429,3 +1429,11 @@ alter table public.goal_groups add column if not exists waits_on_milestone_id uu
 alter table public.goal_groups add column if not exists waiting_since timestamptz;
 
 notify pgrst, 'reload schema';
+
+-- ---------- 20261120000000_idea_groups_and_plans.sql ----------
+alter table public.goal_ideas add column if not exists group_id uuid references public.goal_groups(id) on delete set null;
+alter table public.goal_ideas add column if not exists plan_id uuid references public.plans(id) on delete set null;
+alter table public.goal_ideas add column if not exists planned_start date;
+alter table public.goal_ideas add column if not exists planned_end date;
+
+notify pgrst, 'reload schema';

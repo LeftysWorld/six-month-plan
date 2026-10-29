@@ -616,7 +616,7 @@ export function SeasonHorizon({
               </a>
             ))}
             {panel.due.length > 6 && (
-              <a href={href('/goals/timeline')} className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600, padding: '6px 4px' }}>
+              <a href={href('/goals/roadmap')} className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600, padding: '6px 4px' }}>
                 +{panel.due.length - 6} more on the roadmap
               </a>
             )}

@@ -1,5 +1,5 @@
-import { useRef, useState, type FormEvent } from 'react';
-import { ageInDays, bucketOf, column, ideaReady, type GoalIdea, type IdeaBucket } from '@six/core';
+import { useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { ageInDays, bucketOf, column, ideaReady, shortDate, type GoalGroup, type GoalIdea, type IdeaBucket } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { opsAddIdea, opsDeleteIdea, opsEditIdea, opsPlaceIdea, opsRestoreIdea, opsSetStatus } from '../data/backlog.ts';
@@ -10,12 +10,14 @@ import { opsSetIdeaPath, pathLetter, pathsOf } from '../data/paths.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { ExperimentSheet } from '../components/PathExperiments.tsx';
 import { StartAnywaySheet, WaitBadge, WaitPicker } from '../components/Waiting.tsx';
-import { opsSetWaiting, waitOf, waitValue } from '../data/waiting.ts';
+import { ideaWait, opsSetWaiting, waitOf, waitValue } from '../data/waiting.ts';
+import { groupIdeas } from '../data/groups.ts';
+import { groupGradient } from '../data/palette.ts';
 
 /**
  * The Goals hub's three views of the same goals, in the order a goal moves: Backlog (ideas, selected
- * for next, and ideas waiting on something), Now (what's running, by group or by path) and Timeline
- * (their dates). Completed and Paths aren't tabs: they're a link and a lens from Now.
+ * for next, and ideas waiting on something), Now (what's running, by group or by path) and Roadmap
+ * (their dates, and ideas planned into a season). Completed and Paths aren't tabs: they're a link and a lens from Now.
  */
 export function GoalsSwitch({ current }: { current: 'goals' | 'timeline' | 'backlog' | null }) {
   const { data } = useStore();
@@ -29,10 +31,10 @@ export function GoalsSwitch({ current }: { current: 'goals' | 'timeline' | 'back
     </a>
   );
   return (
-    <nav className="seg goals-switch" aria-label="Backlog, now or timeline">
+    <nav className="seg goals-switch" aria-label="Backlog, now or roadmap">
       {tab('backlog', '/goals/backlog', 'Backlog', later)}
       {tab('goals', '/goals', 'Now', goals)}
-      {tab('timeline', '/goals/timeline', 'Timeline', null)}
+      {tab('timeline', '/goals/roadmap', 'Roadmap', null)}
     </nav>
   );
 }
@@ -136,6 +138,20 @@ export function Backlog() {
   }
   const dragging = dnd.drag ? data.ideas.find((i) => i.id === dnd.drag!.id) : null;
 
+  /** A bucket's ideas with each group's ideas together, where its first one sits; numbers stay the bucket order. */
+  function grouped(list: GoalIdea[]): ({ kind: 'idea'; idea: GoalIdea; i: number } | { kind: 'group'; group: GoalGroup; ideas: { idea: GoalIdea; i: number }[] })[] {
+    const out: ({ kind: 'idea'; idea: GoalIdea; i: number } | { kind: 'group'; group: GoalGroup; ideas: { idea: GoalIdea; i: number }[] })[] = [];
+    const seen = new Set<string>();
+    list.forEach((idea, i) => {
+      const group = idea.group_id ? data.groups.find((g) => g.id === idea.group_id) : undefined;
+      if (!group) return out.push({ kind: 'idea', idea, i });
+      if (seen.has(group.id)) return;
+      seen.add(group.id);
+      out.push({ kind: 'group', group, ideas: list.map((x, j) => ({ idea: x, i: j })).filter((x) => x.idea.group_id === group.id) });
+    });
+    return out;
+  }
+
   return (
     <div className="stack rise">
       <div className="topbar">
@@ -181,9 +197,17 @@ export function Backlog() {
             {dragging && bucketOf(dragging) !== 'selected' ? (ideaReady(dragging) ? 'Drop here to select it.' : 'Needs its why and done-means first.') : 'Nothing selected yet. Drag a refined idea here, or use Select on it.'}
           </span>
         )}
-        {selected.map((idea, i) => (
-          <IdeaRow key={idea.id} idea={idea} index={i} bucket="selected" dnd={dnd} onEdit={() => setEditing(idea)} onDiscard={() => discard(idea)} onUnselect={() => unselect(idea)} />
-        ))}
+        {grouped(selected).map((item) =>
+          item.kind === 'group' ? (
+            <IdeaGroupBlock key={`g-${item.group.id}`} group={item.group} count={item.ideas.length}>
+              {item.ideas.map(({ idea, i }) => (
+                <IdeaRow key={idea.id} idea={idea} index={i} bucket="selected" dnd={dnd} onEdit={() => setEditing(idea)} onDiscard={() => discard(idea)} onUnselect={() => unselect(idea)} />
+              ))}
+            </IdeaGroupBlock>
+          ) : (
+            <IdeaRow key={item.idea.id} idea={item.idea} index={item.i} bucket="selected" dnd={dnd} onEdit={() => setEditing(item.idea)} onDiscard={() => discard(item.idea)} onUnselect={() => unselect(item.idea)} />
+          ),
+        )}
         {running >= 4 && selected.length > 0 && <span className="xsmall muted" style={{ padding: '4px 2px' }}>You have {running} goals running. Finishing one before starting another usually goes better.</span>}
       </section>
 
@@ -198,9 +222,17 @@ export function Backlog() {
             {pathFilter !== 'all' ? 'Nothing here for this path.' : 'Write down goals you might want, one line each. Order them, then fill in why and what done looks like before selecting one.'}
           </span>
         )}
-        {ideas.map((idea, i) => (
-          <IdeaRow key={idea.id} idea={idea} index={i} bucket="backlog" dnd={dnd} onEdit={() => setEditing(idea)} onDiscard={() => discard(idea)} onSelect={() => select(idea)} />
-        ))}
+        {grouped(ideas).map((item) =>
+          item.kind === 'group' ? (
+            <IdeaGroupBlock key={`g-${item.group.id}`} group={item.group} count={item.ideas.length}>
+              {item.ideas.map(({ idea, i }) => (
+                <IdeaRow key={idea.id} idea={idea} index={i} bucket="backlog" dnd={dnd} onEdit={() => setEditing(idea)} onDiscard={() => discard(idea)} onSelect={() => select(idea)} />
+              ))}
+            </IdeaGroupBlock>
+          ) : (
+            <IdeaRow key={item.idea.id} idea={item.idea} index={item.i} bucket="backlog" dnd={dnd} onEdit={() => setEditing(item.idea)} onDiscard={() => discard(item.idea)} onSelect={() => select(item.idea)} />
+          ),
+        )}
       </section>
 
       {discarded.length > 0 && (
@@ -248,6 +280,39 @@ export function Backlog() {
   );
 }
 
+/**
+ * A group's ideas in the backlog, under the group's tinted header: its name, what it waits on, the
+ * season they're planned for, and a link to the group. Each idea becomes a goal in the group.
+ */
+function IdeaGroupBlock({ group, count, children }: { group: GoalGroup; count: number; children: ReactNode }) {
+  const { data, today } = useStore();
+  const ideas = groupIdeas(data, group.id);
+  const wait = waitOf(data, group, today);
+  const plans = [...new Set(ideas.map((i) => i.plan_id).filter((x): x is string => !!x))].map((id) => data.plans.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p);
+  const pathIds = [...new Set(ideas.map((i) => i.path_id).filter((x): x is string => !!x))];
+  const path = pathIds.length === 1 ? data.paths.find((p) => p.id === pathIds[0] && !p.archived_at) : undefined;
+  const goals = data.goals.filter((g) => g.group_id === group.id && !g.archived_at).length;
+  return (
+    <section className="idea-group" style={{ ['--group-gradient' as string]: groupGradient(group.id, data.goals.filter((g) => g.group_id === group.id).map((g) => g.color).concat(path ? [path.color] : ['#9aa0ae'])) }} aria-label={`Group: ${group.name}`}>
+      <a className="idea-group-head" href={href(`/goals/group/${group.id}`)}>
+        <span className="grow" style={{ minWidth: 0 }}>
+          <b>{group.name}</b>
+          <span className="xsmall muted" style={{ display: 'block' }}>
+            {count} idea{count === 1 ? '' : 's'} here{goals ? ` · ${goals} goal${goals === 1 ? '' : 's'} running` : ''}
+            {path ? ` · ${pathLetter(data, path)}` : ''}
+            {plans.length ? ` · planned for ${plans.map((p) => p.name).join(', ')}` : ''}
+          </span>
+          {wait && <WaitBadge info={wait} />}
+        </span>
+        <span className="season-open">
+          Open <Icon name="chevron" size={14} stroke={2.4} />
+        </span>
+      </a>
+      {children}
+    </section>
+  );
+}
+
 /** One idea: a handle to drag, its place, title and why; then what to do with it for the bucket it's in. */
 function IdeaRow({
   idea,
@@ -270,10 +335,11 @@ function IdeaRow({
 }) {
   const { data, today } = useStore();
   const path = idea.path_id ? data.paths.find((p) => p.id === idea.path_id && !p.archived_at) : undefined;
-  const wait = waitOf(data, idea, today);
+  const wait = ideaWait(data, idea, today);
   const waiting = !!wait && !wait.met;
   const [startAnyway, setStartAnyway] = useState(false);
   const age = ageInDays(idea);
+  const plannedFor = idea.plan_id ? data.plans.find((p) => p.id === idea.plan_id) : undefined;
   const ready = ideaReady(idea);
   const lifted = dnd.drag?.id === idea.id;
   const drop = dnd.drag?.drop;
@@ -308,7 +374,13 @@ function IdeaRow({
           {bucket === 'backlog' && idea.note.trim() && !idea.done_means?.trim() ? ' · what does done look like?' : ''}
           {age >= 60 ? ` · written down ${age} days ago` : ''}
         </span>
-        {wait && <WaitBadge info={wait} />}
+        {plannedFor && (
+          <span className="xsmall" style={{ color: 'var(--ink-2)' }}>
+            Planned: {plannedFor.name}
+            {idea.planned_start ? ` · ${shortDate(idea.planned_start)} – ${shortDate(idea.planned_end ?? plannedFor.end_date)}` : ''}
+          </span>
+        )}
+        {wait && !idea.group_id && <WaitBadge info={wait} />}
       </button>
       <span className="idea-actions">
         {bucket === 'selected' ? (
@@ -354,7 +426,15 @@ function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
   const [done, setDone] = useState(idea.done_means ?? '');
   const { today } = useStore();
   const [waitsOn, setWaitsOn] = useState(waitValue(idea));
-  const wait = waitOf(data, idea, today);
+  // Its group (an existing one, or a new one named here) and the season it's planned for.
+  const [groupId, setGroupId] = useState<string>(idea.group_id ?? '');
+  const [newGroup, setNewGroup] = useState('');
+  const seasons = data.plans.filter((p) => !p.archived_at && p.end_date >= today).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+  const [planId, setPlanId] = useState<string>(idea.plan_id ?? '');
+  const planned = seasons.find((p) => p.id === planId);
+  const [pStart, setPStart] = useState<string>(idea.planned_start ?? '');
+  const [pEnd, setPEnd] = useState<string>(idea.planned_end ?? '');
+  const wait = ideaWait(data, idea, today);
   const waiting = !!wait && !wait.met && waitsOn === waitValue(idea);
   const [startAnyway, setStartAnyway] = useState(false);
   return (
@@ -400,7 +480,54 @@ function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
           )}
         </div>
       )}
-      <WaitPicker value={waitsOn} onChange={setWaitsOn} />
+      <label className="field">
+        Group
+        <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+          <option value="">No group</option>
+          {data.groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+          <option value="__new">New group…</option>
+        </select>
+      </label>
+      {groupId === '__new' && <input className="input" aria-label="New group name" value={newGroup} onChange={(e) => setNewGroup(e.target.value)} placeholder="Glamping Site" />}
+      <label className="field">
+        Planned for
+        <select
+          value={planId}
+          onChange={(e) => {
+            setPlanId(e.target.value);
+            setPStart('');
+            setPEnd('');
+          }}
+        >
+          <option value="">Not planned yet</option>
+          {seasons.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}{p.name.includes(shortDate(p.start_date)) ? '' : ` · ${shortDate(p.start_date)} – ${shortDate(p.end_date)}`}
+            </option>
+          ))}
+        </select>
+        <span className="xsmall muted" style={{ fontWeight: 400 }}>
+          A planned idea shows on that season's Roadmap as a dashed bar. It's still an idea until you make it a goal.
+        </span>
+      </label>
+      {planned && (
+        <div className="grid-2">
+          <label className="field">
+            From
+            <input type="date" value={pStart} min={planned.start_date} max={planned.end_date} onChange={(e) => setPStart(e.target.value)} />
+          </label>
+          <label className="field">
+            To
+            <input type="date" value={pEnd} min={pStart || planned.start_date} max={planned.end_date} onChange={(e) => setPEnd(e.target.value)} />
+          </label>
+        </div>
+      )}
+      {groupId ? null : <WaitPicker value={waitsOn} onChange={setWaitsOn} />}
+      {groupId && groupId !== '__new' && <span className="xsmall muted">It waits on whatever its group waits on (set that in the group's Edit).</span>}
       {wait && waitsOn === waitValue(idea) && <WaitBadge info={wait} />}
       {startAnyway && wait && <StartAnywaySheet idea={idea} info={wait} onClose={() => setStartAnyway(false)} />}
       {trying && paths.find((p) => p.id === pathId) && <ExperimentSheet path={paths.find((p) => p.id === pathId)!} title={title} onClose={() => setTrying(false)} />}
@@ -413,7 +540,16 @@ function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
           className="btn primary"
           disabled={!title.trim()}
           onClick={() => {
-            const ops = [...opsEditIdea(idea, { title, note, done_means: done }), ...opsSetIdeaPath(idea, pathId || null), ...opsSetWaiting('ideas', idea, waitsOn)];
+            const ops = [...opsEditIdea(idea, { title, note, done_means: done }), ...opsSetIdeaPath(idea, pathId || null), ...opsSetWaiting('ideas', idea, groupId ? '' : waitsOn)];
+            let gid: string | null = groupId || null;
+            if (groupId === '__new') {
+              gid = newGroup.trim() ? crypto.randomUUID() : null;
+              if (gid) ops.push({ kind: 'insert', collection: 'groups', rows: [{ id: gid, name: newGroup.trim(), created_at: new Date().toISOString() }] });
+            }
+            const planPatch = { group_id: gid, plan_id: planned ? planned.id : null, planned_start: planned && pStart ? pStart : null, planned_end: planned && pEnd ? pEnd : null };
+            if ((idea.group_id ?? null) !== planPatch.group_id || (idea.plan_id ?? null) !== planPatch.plan_id || (idea.planned_start ?? null) !== planPatch.planned_start || (idea.planned_end ?? null) !== planPatch.planned_end) {
+              ops.push({ kind: 'update', collection: 'ideas', id: idea.id, patch: planPatch });
+            }
             if (ops.length) {
               commit(ops);
               toast('Idea saved', () => commit(opsRestoreIdea(idea)));

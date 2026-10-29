@@ -1,4 +1,4 @@
-import type { Goal, GoalGroup, ISODate } from '@six/core';
+import type { Goal, GoalGroup, GoalIdea, ISODate } from '@six/core';
 import type { AppData, Op } from './model.ts';
 
 /**
@@ -13,6 +13,11 @@ type Row = { id: string } & Record<string, unknown>;
 /** The live goals in a group (not archived), in the order they're listed. */
 export function groupMembers(data: AppData, groupId: string): Goal[] {
   return data.goals.filter((g) => g.group_id === groupId && !g.archived_at);
+}
+
+/** The backlog ideas in a group (not started, not discarded), in backlog order. */
+export function groupIdeas(data: AppData, groupId: string): GoalIdea[] {
+  return data.ideas.filter((i) => i.group_id === groupId && i.status === 'backlog').sort((a, b) => a.rank - b.rank);
 }
 
 export function groupOf(data: AppData, goal: Goal | undefined): GoalGroup | undefined {
@@ -64,6 +69,7 @@ export function opsRenameGroup(group: GoalGroup, name: string): Op[] {
 export function opsUngroup(data: AppData, group: GoalGroup): Op[] {
   return [
     ...data.goals.filter((g) => g.group_id === group.id).map((g): Op => ({ kind: 'update', collection: 'goals', id: g.id, patch: { group_id: null } })),
+    ...groupIdeas(data, group.id).map((i): Op => ({ kind: 'update', collection: 'ideas', id: i.id, patch: { group_id: null } })),
     { kind: 'delete', collection: 'groups', id: group.id },
   ];
 }
@@ -77,8 +83,8 @@ function opsCleanUpLeft(data: AppData, moving: Set<string>): Op[] {
   const left = new Set(data.goals.filter((g) => moving.has(g.id) && g.group_id).map((g) => g.group_id!));
   for (const groupId of left) {
     const rest = data.goals.filter((g) => g.group_id === groupId && !moving.has(g.id) && !g.archived_at);
-    // A group can hold a single goal; only an empty one goes away.
-    if (rest.length >= 1) continue;
+    // A group can hold a single goal, or only ideas still in the backlog; only an empty one goes away.
+    if (rest.length >= 1 || groupIdeas(data, groupId).length > 0) continue;
     for (const g of rest) ops.push({ kind: 'update', collection: 'goals', id: g.id, patch: { group_id: null } });
     ops.push({ kind: 'delete', collection: 'groups', id: groupId });
   }

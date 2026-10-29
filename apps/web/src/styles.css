@@ -1635,3 +1635,16 @@ html, body { overflow-x: clip; }
 .path-head .dot { width: 10px; height: 10px; flex: none; }
 .path-head-sub { display: block; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .path-empty { margin: 0; padding: 10px 16px 14px; }
+
+/* Backlog: a group's ideas together, under the same tinted header as a group of goals. */
+.idea-group { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin: 4px 0; background: var(--card); }
+.idea-group-head { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 12px; color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
+.idea-group-head::before { content: ''; position: absolute; inset: 0; background: var(--group-gradient); opacity: 0.11; pointer-events: none; }
+.idea-group-head > * { position: relative; z-index: 1; }
+.idea-group::before { content: ''; display: block; height: 3px; background: var(--group-gradient); }
+.idea-group-head b { font-size: 15px; }
+.idea-group > .idea-row { padding-left: 6px; padding-right: 6px; }
+.rm-plan { position: absolute; top: 12px; bottom: 12px; border: 1.5px dashed var(--c); border-radius: 8px; background: color-mix(in srgb, var(--c) 10%, transparent); }
+.rm-plan-span { position: absolute; top: 17px; height: 6px; border: 1.5px dashed var(--muted); border-radius: 4px; }
+.rm-row.planned .rm-title { color: var(--ink-2); }
+.lg-plan { display: inline-block; width: 18px; height: 9px; border: 1.5px dashed var(--muted); border-radius: 3px; background: var(--fill); vertical-align: middle; }

@@ -1,6 +1,6 @@
-import { addDays, weekStart, type Action, type ActionSchedule, type Goal, type ISODate } from '@six/core';
+import { addDays, rankAtEnd, weekStart, type Action, type ActionSchedule, type Goal, type ISODate } from '@six/core';
 import { applyOp, type AppData, type Op } from './model.ts';
-import { opsEnsureWeek, opsLogSession, opsToggleMilestone } from './ops.ts';
+import { opsCreatePlan, opsEnsureWeek, opsLogSession, opsToggleMilestone } from './ops.ts';
 import { invertOps, opsStopFrom } from './planPack.ts';
 import { MONTHLY_CHECK } from './plans/splitsBackbend.ts';
 
@@ -223,38 +223,118 @@ export const flexMeasuresUpdate: AppUpdate = {
   },
 };
 
-// ---------- The glamping site waits on the job ----------
+// ---------- Glamping Site: a group of four ideas, planned for next season ----------
 
-function glampParts(data: AppData) {
-  const idea = data.ideas.find((i) => i.status === 'backlog' && /glamp/i.test(i.title)) ?? null;
+const GLAMP_GROUP = 'Glamping Site';
+const MONTHS3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const seasonName = (start: ISODate, end: ISODate) => `${MONTHS3[Number(start.slice(5, 7)) - 1]} ${Number(start.slice(8))} – ${MONTHS3[Number(end.slice(5, 7)) - 1]} ${Number(end.slice(8))}`;
+
+/** The four goals-to-be, in order, with rough windows (days from the season's start; null = its end). */
+export const GLAMP_IDEAS: { title: string; note: string; done: string; from: number; to: number | null }[] = [
+  {
+    title: 'Buy land',
+    note: 'The ground the campground stands on, and the reward for finishing the AI goals.',
+    done: 'Closed on a few semi-rural acres in Tennessee, North Carolina (greater Asheville) or greater Greenville SC, 30–45 min from a job-producing city: road access, power nearby, septic sized for the full build-out, zoning that allows short-term rentals, financing in place.',
+    from: 0,
+    to: 64,
+  },
+  {
+    title: 'Build an A-frame',
+    note: 'My home on site and the unit that appraises, so documented rental income can refinance the rest.',
+    done: 'An A-frame built to code on a permanent foundation, with a full kitchen and bath; certificate of occupancy issued.',
+    from: 65,
+    to: null,
+  },
+  {
+    title: 'Build 3 domes',
+    note: 'The lighter units: more rentable nights without another full build.',
+    done: 'Three domes on platforms, furnished with a kitchen and bath, listed and taking bookings.',
+    from: 96,
+    to: null,
+  },
+  {
+    title: 'Build 3 tarp glamping sites',
+    note: 'The cheapest, fastest nights to add: early income toward the mortgage.',
+    done: 'Three tarp glamping sites on platforms with beds and a bathhouse nearby, listed and taking bookings.',
+    from: 127,
+    to: null,
+  },
+];
+
+function glampSetup(data: AppData, today: ISODate) {
+  const plans = data.plans.filter((p) => !p.archived_at).sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+  const current = plans.find((p) => p.start_date <= today && p.end_date >= today) ?? null;
+  const next = current ? plans.find((p) => p.start_date > current.start_date) ?? null : null;
+  const path = data.paths.find((p) => !p.archived_at && /glamp/i.test(p.name)) ?? null;
   const job = data.goals.find((g) => live(g) && /product owner role|land an? ai/i.test(g.title)) ?? null;
-  return { idea, job };
+  const group = data.groups.find((g) => g.name.trim().toLowerCase() === GLAMP_GROUP.toLowerCase()) ?? null;
+  const inGroup = group ? data.ideas.filter((i) => i.group_id === group.id && i.status !== 'discarded') : [];
+  const existing = data.ideas.find((i) => i.status === 'backlog' && /glamp/i.test(i.title) && !GLAMP_IDEAS.some((g) => g.title === i.title)) ?? null;
+  const missing = GLAMP_IDEAS.filter((g) => !inGroup.some((i) => i.title === g.title));
+  return { current, next, path, job, group, existing, missing };
 }
 
-export const glampWaitsUpdate: AppUpdate = {
-  id: 'glamp-waits-on-job-2026-10',
-  title: 'Glamping waits on the job',
-  nudge: 'Your glamping idea can wait on landing the AI job: held in the backlog, and Today tells you when it’s ready.',
-  preview(data) {
-    const { idea, job } = glampParts(data);
-    if (!idea || !job) return { done: true, blocked: 'There is no glamping idea or job goal to link.', lines: [], options: [] };
-    if (idea.waits_on_goal_id || idea.waits_on_milestone_id) return { done: true, lines: [], options: [] };
-    return {
-      done: false,
-      lines: [
-        `“${idea.title}” waits on “${job.title}”: it stays in the backlog as Waiting, and can't be made a goal without “Start anyway” and a reason.`,
-        'The Timeline shows it as a dashed lane after the job goal; the weekly review shows how long it has waited.',
-        `When “${job.title}” is done, Today asks if you're ready to prepare it. Change what it waits on (a milestone like “Offer signed”, say) in the idea.`,
-      ],
-      options: [],
-    };
+export const glampGroupUpdate: AppUpdate = {
+  id: 'glamping-site-group-2026-10',
+  title: 'Glamping Site',
+  nudge: 'Glamping Site as its own group: buy land, an A-frame, 3 domes and 3 tarp sites, selected for next and planned on next season’s Roadmap.',
+  preview(data, today) {
+    const p = glampSetup(data, today);
+    if (!p.current) return { done: true, blocked: 'Start a season first.', lines: [], options: [] };
+    if (!p.missing.length) return { done: true, lines: [], options: [] };
+    const nextDates = p.next ?? null;
+    const lines = [
+      `A “${GLAMP_GROUP}” group${p.group ? ' (yours)' : ''} with ${GLAMP_IDEAS.map((g) => `“${g.title}”`).join(', ')}, each with why it matters and what done means, in Selected for next.`,
+      p.existing ? `Your “${p.existing.title}” idea becomes “Buy land”, keeping its history.` : '',
+      `Planned for ${nextDates ? nextDates.name : 'next season (made now: the six months after this one)'} on the Roadmap, as dashed bars: land first, then the A-frame, domes and tarp sites.`,
+      p.job ? `The group waits on “${p.job.title}”: when it's done, Today says the ideas are ready.` : '',
+      p.path ? `All four on ${p.path.name}.` : '',
+      'Making one a goal puts it in the group. To start one sooner, pick this season when you make it.',
+    ].filter(Boolean);
+    return { done: false, lines, options: [] };
   },
-  ops(data) {
-    const { idea, job } = glampParts(data);
-    if (!idea || !job || idea.waits_on_goal_id || idea.waits_on_milestone_id) return [];
-    return [{ kind: 'update', collection: 'ideas', id: idea.id, patch: { waits_on_goal_id: job.id, waits_on_milestone_id: null, waiting_since: new Date().toISOString() } }];
+  ops(data, today) {
+    const p = glampSetup(data, today);
+    if (!p.current || !p.missing.length) return [];
+    const ops: Op[] = [];
+    let next = data;
+    const add = (more: Op[]) => {
+      ops.push(...more);
+      next = more.reduce(applyOp, next);
+    };
+    const nowIso = new Date().toISOString();
+    // Next season: the six months after this one, if there isn't one yet.
+    let season = p.next;
+    if (!season) {
+      const start = addDays(p.current.end_date, 1);
+      const end = addDays(start, 182);
+      const made = opsCreatePlan({ name: seasonName(start, end), start, end });
+      add(made.ops);
+      season = made.plan;
+    }
+    // The group, waiting on the job (or keeping what it already waits on).
+    let groupId = p.group?.id;
+    if (!groupId) {
+      groupId = newId();
+      add([{ kind: 'insert', collection: 'groups', rows: [{ id: groupId, name: GLAMP_GROUP, created_at: nowIso, ...(p.job ? { waits_on_goal_id: p.job.id, waits_on_milestone_id: null, waiting_since: p.existing?.waiting_since ?? nowIso } : {}) } as Row] }]);
+    } else if (p.job && !p.group!.waits_on_goal_id && !p.group!.waits_on_milestone_id) {
+      add([{ kind: 'update', collection: 'groups', id: groupId, patch: { waits_on_goal_id: p.job.id, waiting_since: p.existing?.waiting_since ?? nowIso } }]);
+    }
+    for (const g of GLAMP_IDEAS) {
+      if (!p.missing.some((m) => m.title === g.title)) continue;
+      const from = addDays(season.start_date, g.from);
+      const to = g.to == null ? season.end_date : addDays(season.start_date, g.to);
+      const fields = { title: g.title, note: g.note, done_means: g.done, group_id: groupId, plan_id: season.id, planned_start: from, planned_end: to > season.end_date ? season.end_date : to, path_id: p.path?.id ?? null, shortlisted_at: nowIso, status: 'backlog', rank: rankAtEnd(next.ideas, 'selected') };
+      if (g.title === 'Buy land' && p.existing) {
+        // The idea it grew from: renamed, its own wait moved to the group.
+        add([{ kind: 'update', collection: 'ideas', id: p.existing.id, patch: { ...fields, waits_on_goal_id: null, waits_on_milestone_id: null, waiting_since: null } }]);
+      } else {
+        add([{ kind: 'insert', collection: 'ideas', rows: [{ id: newId(), goal_id: null, created_at: nowIso, started_at: null, ...fields } as Row] }]);
+      }
+    }
+    return ops;
   },
 };
 
 /** Every update the app ships, newest first. */
-export const APP_UPDATES: AppUpdate[] = [glampWaitsUpdate, flexMeasuresUpdate, docStudyUpdate];
+export const APP_UPDATES: AppUpdate[] = [glampGroupUpdate, flexMeasuresUpdate, docStudyUpdate];

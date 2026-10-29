@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { addDays, daysBetween, shortDate, type GoalType } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { runningSchedule } from '../data/connect.ts';
@@ -27,7 +27,8 @@ export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: 
   const toast = useToast();
   const idea = ideaId ? data.ideas.find((i) => i.id === ideaId) : undefined;
   const seasons = view.batches;
-  const [planId, setPlanId] = useState<string>(seasons.find((p) => p.start_date <= today)?.id ?? seasons[0]?.id ?? '');
+  // An idea planned into a season starts there (pick this season to pull it forward).
+  const [planId, setPlanId] = useState<string>((idea?.plan_id && seasons.some((p) => p.id === idea.plan_id) ? idea.plan_id : null) ?? seasons.find((p) => p.start_date <= today)?.id ?? seasons[0]?.id ?? '');
   const [seasonName, setSeasonName] = useState('My six months');
   const plan = seasons.find((p) => p.id === planId) ?? null;
   // With no season running, one starts today when the goal is made.
@@ -40,8 +41,15 @@ export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: 
   const [type, setType] = useState<GoalType>('practice');
   const [why, setWhy] = useState(idea?.note ?? '');
   const [doneMeans, setDoneMeans] = useState(idea?.done_means ?? '');
-  const [start, setStart] = useState('');
-  const [finish, setFinish] = useState('');
+  const [start, setStart] = useState(idea?.plan_id === planId && idea?.planned_start ? idea.planned_start : '');
+  const [finish, setFinish] = useState(idea?.plan_id === planId && idea?.planned_end ? idea.planned_end : '');
+  // Dates planned for another season don't fit this one: drop them when the season changes.
+  useEffect(() => {
+    if (!plan) return;
+    if (start && (start < plan.start_date || start > plan.end_date)) setStart('');
+    if (finish && (finish < plan.start_date || finish > plan.end_date)) setFinish('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planId]);
   const [unit, setUnit] = useState('');
   const [measureName, setMeasureName] = useState('');
   const [baseline, setBaseline] = useState<number | null>(null);
@@ -87,6 +95,7 @@ export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: 
     task: taskTitle.trim() ? { title: taskTitle, days: taskDays, minutes: taskMinutes } : null,
     shareActionIds: share,
     groupWithGoalId: groupWith,
+    groupId: idea?.group_id ?? null,
     pathId,
     ideaId: idea?.id ?? null,
   };
@@ -229,7 +238,7 @@ export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: 
             <select value={planId} onChange={(e) => setPlanId(e.target.value)}>
               {seasons.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} · {shortDate(p.start_date)} – {shortDate(p.end_date)}
+                  {p.name}{p.name.includes(shortDate(p.start_date)) ? '' : ` · ${shortDate(p.start_date)} – ${shortDate(p.end_date)}`}
                 </option>
               ))}
             </select>
@@ -237,6 +246,11 @@ export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: 
         ) : (
           <span className="small muted">
             {season.name} · {shortDate(season.start_date)} – {shortDate(season.end_date)}
+          </span>
+        )}
+        {idea?.plan_id && seasons.some((p) => p.id === idea.plan_id) && (
+          <span className="xsmall muted">
+            {idea.plan_id === planId ? `Planned for ${seasons.find((p) => p.id === idea.plan_id)!.name}${idea.planned_start ? `, ${shortDate(idea.planned_start)} – ${shortDate(idea.planned_end ?? idea.planned_start)}` : ''}. Pick this season above to start it sooner.` : `It was planned for ${seasons.find((p) => p.id === idea.plan_id)!.name}; you're pulling it into ${season.name}.`}
           </span>
         )}
         <div className="grid-2">
@@ -317,7 +331,9 @@ export function GoalNew({ ideaId = null, pathId: pathParam = null }: { ideaId?: 
           </>
         )}
         {type === 'number' && <span className="xsmall muted">A "Log a number" task for {measureName.trim() || 'this measurement'} can be added on the goal page; your readings drive the pace either way.</span>}
-        {others.length > 0 && (
+        {idea?.group_id && data.groups.some((g) => g.id === idea.group_id) ? (
+          <span className="small muted">Joins the {data.groups.find((g) => g.id === idea.group_id)!.name} group, like the rest of its ideas.</span>
+        ) : others.length > 0 && (
           <div className="stack-sm">
             <span className="xsmall muted">Group it with a goal it works with (optional):</span>
             <div className="chips" role="radiogroup" aria-label="Group with">

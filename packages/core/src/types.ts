@@ -385,6 +385,12 @@ export interface GoalIdea {
   waits_on_milestone_id?: string | null;
   /** When it started waiting. */
   waiting_since?: string | null;
+  /** The group it belongs to while it's an idea; its goal joins the group when it's made. Missing on older databases. */
+  group_id?: string | null;
+  /** The season it's planned for, with rough dates: a dashed bar on that season's Roadmap. */
+  plan_id?: string | null;
+  planned_start?: ISODate | null;
+  planned_end?: ISODate | null;
 }
 
 // ---------- Odyssey paths ----------

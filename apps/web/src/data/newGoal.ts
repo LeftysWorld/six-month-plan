@@ -46,6 +46,8 @@ export interface NewGoalInput {
   shareActionIds: string[];
   /** A goal to group it with (it joins that goal's group, or they start one). */
   groupWithGoalId: string | null;
+  /** A group to put it in directly (the group its idea was in). Missing means none. */
+  groupId?: string | null;
   /** The Odyssey path this goal is a bet on, if any. */
   pathId: string | null;
   /** The backlog idea it came from, if any. */
@@ -133,6 +135,12 @@ export function opsMakeGoal(data: AppData, plan: Plan, input: NewGoalInput, toda
   if (partner) {
     const mine = next.goals.find((g) => g.id === goalId)!;
     const groupOps = partner.group_id ? opsAddToGroup(next, goalId, partner.group_id) : opsCreateGroup(next, suggestGroupNames([partner, mine])[0]!, [partner.id, goalId]).ops;
+    all.push(...groupOps);
+    next = withOps(next, groupOps);
+  }
+  // Or straight into a group (the one its idea was planned in).
+  if (!partner && input.groupId && next.groups.some((g) => g.id === input.groupId)) {
+    const groupOps = opsAddToGroup(next, goalId, input.groupId);
     all.push(...groupOps);
     next = withOps(next, groupOps);
   }

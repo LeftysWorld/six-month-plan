@@ -49,6 +49,7 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261118000000_stretch_sets.sql', table: 'stretch_holds', columns: ['set_no', 'seconds', 'reps'] },
   { file: '20261119000000_waiting_on.sql', table: 'goal_ideas', columns: ['waits_on_goal_id', 'waits_on_milestone_id', 'waiting_since'] },
   { file: '20261119000000_waiting_on.sql', table: 'goal_groups', columns: ['waits_on_goal_id', 'waits_on_milestone_id', 'waiting_since'] },
+  { file: '20261120000000_idea_groups_and_plans.sql', table: 'goal_ideas', columns: ['group_id', 'plan_id', 'planned_start', 'planned_end'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */

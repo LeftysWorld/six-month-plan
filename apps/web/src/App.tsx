@@ -155,7 +155,7 @@ function Shell(props: ShellProps) {
     setAppBadge(openToday);
   }, [openToday]);
 
-  // Keyboard shortcuts on a computer: N add, T today, G goals (now), M timeline, B later (backlog), P paths, C calendar, H habits, R review.
+  // Keyboard shortcuts on a computer: N add, T today, G goals (now), M roadmap, B later (backlog), P paths, C calendar, H habits, R review.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -169,7 +169,7 @@ function Shell(props: ShellProps) {
       } else if (k === 't') navigate('/today');
       else if (k === 'g') navigate('/goals');
       else if (k === 'b') navigate('/goals/backlog');
-      else if (k === 'm') navigate('/goals/timeline');
+      else if (k === 'm') navigate('/goals/roadmap');
       else if (k === 'c') navigate('/calendar');
       else if (k === 'h') navigate('/habits');
       else if (k === 'p') navigate('/paths');
@@ -192,7 +192,7 @@ function Shell(props: ShellProps) {
       if (s0 === 'goals' && s1 === 'new') screen = <GoalNew ideaId={route.query.get('idea')} pathId={route.query.get('path')} />;
       else if (s0 === 'goals' && s1 === 'backlog') screen = <Backlog />;
       else if (s0 === 'goals' && s1 === 'completed') screen = <Completed />;
-      else if (s0 === 'goals' && s1 === 'timeline') screen = <Roadmap />;
+      else if (s0 === 'goals' && (s1 === 'roadmap' || s1 === 'timeline')) screen = <Roadmap />;
       else if (s0 === 'goals' && s1 === 'group' && s2) screen = <GroupPage id={s2} />;
       else if (s0 === 'goals' && s1 && s2 === 'photos') screen = <PhotoTimeline goalId={s1} />;
       else if (s0 === 'goals' && s1) screen = <Flow goalId={s1} />;

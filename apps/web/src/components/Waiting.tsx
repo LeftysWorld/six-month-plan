@@ -104,7 +104,7 @@ export function WaitingReady() {
       {ready.map((w) => (
         <div key={w.id} className="banner info row-between" style={{ gap: 10, flexWrap: 'wrap' }}>
           <span className="small">
-            <b>{w.info.label}</b> is done. <b>{w.title}</b> was waiting on it{w.info.weeks ? ` (${w.info.weeks} week${w.info.weeks === 1 ? '' : 's'})` : ''}. {w.kind === 'idea' ? 'Ready to prepare it?' : 'Its goals can start.'}
+            <b>{w.info.label}</b> is done. <b>{w.title}</b> was waiting on it{w.info.weeks ? ` (${w.info.weeks} week${w.info.weeks === 1 ? '' : 's'})` : ''}. {w.kind === 'idea' ? 'Ready to prepare it?' : data.ideas.some((i) => i.group_id === w.group.id && i.status === 'backlog') ? 'Its ideas are ready to become goals.' : 'Its goals can start.'}
           </span>
           <span className="row-start" style={{ gap: 8 }}>
             <button
@@ -131,10 +131,12 @@ export function WaitingReady() {
                 } else {
                   commit(opsSetWaiting('groups', w.group, ''));
                   toast(`${w.group.name} isn't waiting anymore`);
+                  // A group of ideas: they're in the backlog, ready to be made goals.
+                  if (data.ideas.some((i) => i.group_id === w.group.id && i.status === 'backlog')) navigate('/goals/backlog');
                 }
               }}
             >
-              {w.kind === 'idea' ? 'Prepare it' : 'Done waiting'}
+              {w.kind === 'idea' ? 'Prepare it' : data.ideas.some((i) => i.group_id === w.group.id && i.status === 'backlog') ? 'Open the backlog' : 'Done waiting'}
             </button>
           </span>
         </div>
