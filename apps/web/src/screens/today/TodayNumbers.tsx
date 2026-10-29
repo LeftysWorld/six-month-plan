@@ -7,7 +7,7 @@ import { useView } from '../../data/useView.ts';
 import { opsLogSession, opsRestoreSession } from '../../data/ops.ts';
 import { lastReading, measureLabel, measureOnToday, opsRecordReading, readingOn } from '../../data/connect.ts';
 import { nextValuedPrize } from '../../data/prizes.ts';
-import { shortDate, type Goal } from '@six/core';
+import { addDays, shortDate, weekdayName, type Goal } from '@six/core';
 import { Icon, useToast } from '../../components/ui.tsx';
 import { FileThumb, useAddFiles } from '../../components/Attachments.tsx';
 import { usePhotoInput } from '../../components/usePhotoInput.tsx';
@@ -15,10 +15,16 @@ import { usePhotoInput } from '../../components/usePhotoInput.tsx';
 /**
  * Today's numbers: the measurements you've set to show on Today (a goal's main number by default),
  * logged right here so you never have to open each goal. Stopped measurements never show. One
- * that already has a "Log a number" task today is left to that task.
+ * that already has a "Log a number" task that day is left to that task.
+ *
+ * Every day shows them, but only today can log: a past day shows what you logged (or that you
+ * didn't), a coming day shows what's due, with nothing to tap.
  */
-export function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
+export function TodayNumbers({ photoSessions, day: shownDay }: { photoSessions: Session[]; day?: string }) {
   const { data, today, commit } = useStore();
+  const day = shownDay ?? today;
+  const isToday = day === today;
+  const future = day > today;
   const view = useView();
   const toast = useToast();
   const { addFiles, uploading } = useAddFiles();
@@ -36,7 +42,7 @@ export function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
   const liveGoals = data.goals.filter((g) => !g.archived_at && !g.completed_at);
   const taskTypes = new Set(
     data.sessions
-      .filter((s) => s.date === today && s.status !== 'skipped')
+      .filter((s) => s.date === day && s.status !== 'skipped')
       .map((s) => data.actions.find((a) => a.id === s.action_id))
       .filter((a) => a?.kind === 'measure' && a.measurement_type_id)
       .map((a) => a!.measurement_type_id!),
@@ -48,7 +54,8 @@ export function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
     .sort((a, b) => Number(b.goal.measurement_type_id === b.type.id) - Number(a.goal.measurement_type_id === a.type.id));
   if (rows.length === 0 && photoSessions.length === 0) return null;
 
-  const title = rows.length && photoSessions.length ? 'Today’s numbers and photos' : photoSessions.length ? 'Today’s photos' : 'Today’s numbers';
+  const what = rows.length && photoSessions.length ? 'numbers and photos' : photoSessions.length ? 'photos' : 'numbers';
+  const title = isToday ? `Today’s ${what}` : `${weekdayName(day)}’s ${what}`;
 
   function save(typeId: string, name: string, unit: string) {
     const raw = (values[typeId] ?? '').trim();
@@ -70,13 +77,16 @@ export function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
   }
 
   return (
-    <section className="card tight stack-sm today-numbers" aria-label={title}>
-      <span className="label">{title}</span>
+    <section className={`card tight stack-sm today-numbers${isToday ? '' : ' read-only'}`} aria-label={title}>
+      <span className="row-between">
+        <span className="label">{title}</span>
+        {!isToday && <span className="xsmall muted">{future ? `Log ${future && day === addDays(today, 1) ? 'tomorrow' : `on ${weekdayName(day)}`}` : 'View only'}</span>}
+      </span>
       {photo.input}
       {rows.map(({ type, goal }) => {
-        const logged = readingOn(data, type.id, today);
+        const logged = readingOn(data, type.id, day);
         const last = lastReading(data, type.id);
-        const editing = logged == null || changing[type.id];
+        const editing = isToday && (logged == null || changing[type.id]);
         return (
           <form
             key={type.id}
@@ -111,15 +121,19 @@ export function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
                   Save
                 </button>
               </>
-            ) : (
+            ) : logged != null ? (
               <>
                 <span className="num">
-                  <Icon name="check" size={13} stroke={3} /> {fmt(logged!)} {type.unit}
+                  <Icon name="check" size={13} stroke={3} /> {fmt(logged)} {type.unit}
                 </span>
-                <button type="button" className="link-btn xsmall" onClick={() => setChanging({ ...changing, [type.id]: true })}>
-                  Change
-                </button>
+                {isToday && (
+                  <button type="button" className="link-btn xsmall" onClick={() => setChanging({ ...changing, [type.id]: true })}>
+                    Change
+                  </button>
+                )}
               </>
+            ) : (
+              <span className="small muted">{future ? 'due' : 'not logged'}</span>
             )}
           </form>
         );
@@ -147,14 +161,18 @@ export function TodayNumbers({ photoSessions }: { photoSessions: Session[] }) {
               </span>
             ))}
             {done && files.length > 0 && <Icon name="check" size={13} stroke={3} />}
-            <button
-              type="button"
-              className={`btn small${done ? '' : ' primary'}`}
-              disabled={uploading > 0}
-              onClick={() => photo.pick(s)}
-            >
-              <Icon name="camera" size={16} /> {uploading > 0 ? '…' : done ? 'Add' : 'Take'}
-            </button>
+            {isToday ? (
+              <button
+                type="button"
+                className={`btn small${done ? '' : ' primary'}`}
+                disabled={uploading > 0}
+                onClick={() => photo.pick(s)}
+              >
+                <Icon name="camera" size={16} /> {uploading > 0 ? '…' : done ? 'Add' : 'Take'}
+              </button>
+            ) : (
+              files.length === 0 && <span className="small muted">{future ? 'due' : s.status === 'skipped' ? 'skipped' : 'no photo'}</span>
+            )}
           </div>
         );
       })}

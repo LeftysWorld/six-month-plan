@@ -100,9 +100,9 @@ export function Today({ date }: { date?: ISODate } = {}) {
     return () => window.removeEventListener('keydown', onKey);
   }, [day]);
 
-  // On today, photo tasks (a progress photo) sit with your numbers instead of as task cards.
+  // Photo tasks (a progress photo) sit with your numbers instead of as task cards, every day.
   const allSessions = view.sessionsOn(day);
-  const isCheckInPhoto = (s: Session) => day === today && view.action(s.action_id)?.kind === 'photo';
+  const isCheckInPhoto = (s: Session) => view.action(s.action_id)?.kind === 'photo';
   // Habits have their own section below, so they don't count toward the task total.
   const sessions = allSessions.filter((s) => !isCheckInPhoto(s) && !isHabit(data, s.action_id));
   const photoSessions = allSessions.filter(isCheckInPhoto);
@@ -374,7 +374,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
         {isFuture && <span className="xsmall muted">Coming up. You can check these off on the day.</span>}
 
         {/* Today's numbers and photos come first: a weigh-in or a progress photo is the quickest check-in of the day. */}
-        {isToday && <TodayNumbers photoSessions={photoSessions} />}
+        <TodayNumbers photoSessions={photoSessions} day={day} />
 
         {/* The list. */}
         {sessions.length === 0 && planned.length === 0 && (
