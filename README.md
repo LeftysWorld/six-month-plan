@@ -122,8 +122,8 @@ Open http://localhost:5173. With no Supabase settings, the app runs in demo mode
 
 On Vercel (Hobby plan, personal use):
 
-- Import the repository and keep the root directory as the repo root (the app is an npm workspace).
-- `vercel.json` at the repo root sets the build: framework *Other*, install `npm install`, build `npm run build`, output `apps/web/dist`, and the cache headers for the service worker. Leave the dashboard's build settings on their defaults.
+- Import the repository with **Root Directory `apps/web`** (Vercel picks it). Keep "Include files outside the root directory" on: the app imports `packages/core`.
+- `apps/web/vercel.json` sets the build, relative to `apps/web`: framework Vite, install `npm install` (npm installs the whole workspace from the repo root), build `npm run build`, output `dist`, plus the cache headers for the service worker. Leave the dashboard's build settings off override, or make them match; the output directory is `dist`, not `apps/web/dist`.
 - Environment variables (Production and Preview): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_VAPID_PUBLIC_KEY` if you use push reminders. They're baked in at build time, so redeploy after changing one.
 - In Supabase → Authentication → URL Configuration, set the Site URL to the Vercel URL and add `https://<project>.vercel.app/**` (and `https://<project>-*.vercel.app/**` for preview deploys) to Redirect URLs.
 - Optional: `supabase secrets set APP_URL=https://<project>.vercel.app` for the calendar feed's links.
