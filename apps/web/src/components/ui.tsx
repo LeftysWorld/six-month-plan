@@ -161,6 +161,44 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 
 // ---------- Sheet (accessible modal) ----------
 
+let pageLocks = 0;
+let lockedScrollY = 0;
+
+/**
+ * Hold the page still while a sheet is open, so only the sheet scrolls. iPhone Safari (and the
+ * home-screen app) ignores overflow: hidden on the body for touch scrolling, so the body is pinned
+ * in place with position: fixed at the current scroll offset and put back where it was on close.
+ * Counted, so a sheet opened over another sheet keeps the page locked until the last one closes.
+ */
+function lockPageScroll(): () => void {
+  if (pageLocks === 0) {
+    lockedScrollY = window.scrollY;
+    const body = document.body.style;
+    body.position = 'fixed';
+    body.top = `-${lockedScrollY}px`;
+    body.left = '0';
+    body.right = '0';
+    body.width = '100%';
+    body.overflow = 'hidden';
+  }
+  pageLocks += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    pageLocks -= 1;
+    if (pageLocks > 0) return;
+    const body = document.body.style;
+    body.position = '';
+    body.top = '';
+    body.left = '';
+    body.right = '';
+    body.width = '';
+    body.overflow = '';
+    window.scrollTo(0, lockedScrollY);
+  };
+}
+
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   // The latest onClose, so the effect below runs once per sheet and never re-focuses mid-typing.
@@ -169,7 +207,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const el = ref.current;
-    el?.focus();
+    el?.focus({ preventScroll: true });
     const focusable = () =>
       [...(el?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? [])].filter(
         (x) => x.offsetParent !== null,
@@ -197,11 +235,12 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
       }
     };
     document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
+    // Only the sheet scrolls while it's open; the page behind it stays where it was.
+    const unlock = lockPageScroll();
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-      previous?.focus?.();
+      unlock();
+      previous?.focus?.({ preventScroll: true });
     };
   }, []);
   // Render at the top of the page: a card with backdrop-filter traps fixed children inside its own layer.

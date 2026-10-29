@@ -590,6 +590,8 @@ input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-o
 .sheet-backdrop {
   position: fixed;
   inset: 0;
+  /* A swipe on the dimmed area never scrolls the page behind it. */
+  overscroll-behavior: contain;
   background: rgba(4, 5, 5, 0.45);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
@@ -605,6 +607,9 @@ input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-o
   max-width: 560px;
   max-height: 92dvh;
   overflow-y: auto;
+  /* Reaching the top or bottom of the sheet doesn't hand the swipe on to the page. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   border-radius: 32px 32px 0 0;
   border: 1px solid var(--line);
   border-bottom: 0;
