@@ -15,6 +15,7 @@ import { useGoalDrag } from '../components/goalDrag.ts';
 import { nextSeasonDates, seasonsOf } from '../data/season.ts';
 import { GoalRow, GroupRowsCard, LooseCard, SeasonHorizon, SeasonOutcomes, SeasonStats, dropHint, placeGoals, type Placed } from './Season.tsx';
 import { pathLetter, pathsOf } from '../data/paths.ts';
+import { groupGradient } from '../data/palette.ts';
 import { byOrder, placeAmong } from '../data/order.ts';
 import { SeasonCardButton } from '../components/SeasonCard.tsx';
 import { SeasonStart } from '../components/SeasonStart.tsx';
@@ -177,31 +178,39 @@ export function Plans() {
       {[...paths.map((p) => ({ path: p, members: orderPlaced(inSeason.filter((m) => m.card.goal.path_id === p.id)) })), { path: null, members: orderPlaced(inSeason.filter((m) => !m.card.goal.path_id || !paths.some((p) => p.id === m.card.goal.path_id))) }]
         .filter((x) => x.members.length > 0 || x.path)
         .map(({ path, members }) => (
-          <section key={path?.id ?? 'none'} className="season-card" aria-label={path ? path.name : 'No path'}>
-            <div className="season-card-head">
+          <section
+            key={path?.id ?? 'none'}
+            className="season-card group-card"
+            aria-label={path ? `${pathLetter(data, path)}: ${path.name}` : 'No path'}
+            style={{ ['--group-gradient' as string]: groupGradient(path?.id ?? 'no-path', members.length ? members.map((m) => m.card.goal.color) : [path?.color ?? '#9aa0ae']) }}
+          >
+            <div className="season-card-head group-head">
               {path ? (
-                <a href={href(`/paths/${path.id}`)} className="path-head">
-                  <span className="dot" style={{ background: path.color }} />
-                  <span className="grow" style={{ minWidth: 0 }}>
-                    <b>
-                      {pathLetter(data, path)} · {path.name}
-                    </b>
-                    {path.headline && <span className="xsmall muted path-head-sub">{path.headline}</span>}
+                <a href={href(`/paths/${path.id}`)} className="season-card-title">
+                  <b>
+                    {pathLetter(data, path)} · {path.name}
+                  </b>
+                  <span className="xsmall muted">
+                    {members.length} goal{members.length === 1 ? '' : 's'}
+                    {path.headline ? ` · ${path.headline}` : ''}
                   </span>
                   <span className="season-open">
                     Open <Icon name="chevron" size={14} stroke={2.4} />
                   </span>
                 </a>
               ) : (
-                <span className="path-head">
+                <span className="season-card-title">
                   <b>No path</b>
+                  <span className="xsmall muted">
+                    {members.length} goal{members.length === 1 ? '' : 's'}
+                  </span>
                 </span>
               )}
             </div>
             {members.map((m) => (
-              <GoalRow key={m.card.goal.id} placed={m} />
+              <GoalRow key={m.card.goal.id} placed={m} hidePath />
             ))}
-            {members.length === 0 && <p className="small muted path-empty">No goals on this path this season.{path ? ' Its ideas wait in Later.' : ''}</p>}
+            {members.length === 0 && <p className="small muted path-empty">No goals on this path this season.{path ? ' Its ideas wait in the backlog.' : ''}</p>}
           </section>
         ))}
     </div>

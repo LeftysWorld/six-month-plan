@@ -13,9 +13,9 @@ import { StartAnywaySheet, WaitBadge, WaitPicker } from '../components/Waiting.t
 import { opsSetWaiting, waitOf, waitValue } from '../data/waiting.ts';
 
 /**
- * The Goals hub's three views of the same goals: Now (what's running, by group or by path),
- * Timeline (their dates) and Later (the backlog, including ideas waiting on something). Completed
- * and Paths aren't tabs: they're a link and a lens from Now.
+ * The Goals hub's three views of the same goals, in the order a goal moves: Backlog (ideas, selected
+ * for next, and ideas waiting on something), Now (what's running, by group or by path) and Timeline
+ * (their dates). Completed and Paths aren't tabs: they're a link and a lens from Now.
  */
 export function GoalsSwitch({ current }: { current: 'goals' | 'timeline' | 'backlog' | null }) {
   const { data } = useStore();
@@ -29,10 +29,10 @@ export function GoalsSwitch({ current }: { current: 'goals' | 'timeline' | 'back
     </a>
   );
   return (
-    <nav className="seg goals-switch" aria-label="Now, timeline or later">
+    <nav className="seg goals-switch" aria-label="Backlog, now or timeline">
+      {tab('backlog', '/goals/backlog', 'Backlog', later)}
       {tab('goals', '/goals', 'Now', goals)}
       {tab('timeline', '/goals/timeline', 'Timeline', null)}
-      {tab('backlog', '/goals/backlog', 'Later', later)}
     </nav>
   );
 }

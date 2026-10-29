@@ -4,7 +4,7 @@ import type { AppData, Op } from './model.ts';
 /**
  * "Waiting on": an idea (or a whole group) that can't really start until something else is done.
  * The glamping site waits on landing the AI job. It's a condition, not a date: nothing is scheduled
- * from it. The idea is held in Later ("Waiting · 6 weeks"), can't be made a goal without "Start
+ * from it. The idea is held in the backlog ("Waiting · 6 weeks"), can't be made a goal without "Start
  * anyway" and a reason, shows on the Timeline as a dashed lane after what it waits on, and when that
  * goal (or the milestone picked, like "Offer signed") is done, Today asks whether to prepare it.
  *
@@ -52,7 +52,7 @@ export function waitOf(data: AppData, item: Waits, today: ISODate): WaitInfo | n
 
 export type Waiter = { kind: 'idea'; idea: GoalIdea; title: string; id: string; info: WaitInfo } | { kind: 'group'; group: GoalGroup; title: string; id: string; info: WaitInfo };
 
-/** Everything waiting on something: ideas still in Later, and groups. */
+/** Everything waiting on something: ideas still in the backlog, and groups. */
 export function waiters(data: AppData, today: ISODate): Waiter[] {
   const out: Waiter[] = [];
   for (const idea of data.ideas) {

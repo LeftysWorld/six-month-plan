@@ -234,7 +234,7 @@ function glampParts(data: AppData) {
 export const glampWaitsUpdate: AppUpdate = {
   id: 'glamp-waits-on-job-2026-10',
   title: 'Glamping waits on the job',
-  nudge: 'Your glamping idea can wait on landing the AI job: held in Later, and Today tells you when it’s ready.',
+  nudge: 'Your glamping idea can wait on landing the AI job: held in the backlog, and Today tells you when it’s ready.',
   preview(data) {
     const { idea, job } = glampParts(data);
     if (!idea || !job) return { done: true, blocked: 'There is no glamping idea or job goal to link.', lines: [], options: [] };
@@ -242,7 +242,7 @@ export const glampWaitsUpdate: AppUpdate = {
     return {
       done: false,
       lines: [
-        `“${idea.title}” waits on “${job.title}”: it stays in Later as Waiting, and can't be made a goal without “Start anyway” and a reason.`,
+        `“${idea.title}” waits on “${job.title}”: it stays in the backlog as Waiting, and can't be made a goal without “Start anyway” and a reason.`,
         'The Timeline shows it as a dashed lane after the job goal; the weekly review shows how long it has waited.',
         `When “${job.title}” is done, Today asks if you're ready to prepare it. Change what it waits on (a milestone like “Offer signed”, say) in the idea.`,
       ],

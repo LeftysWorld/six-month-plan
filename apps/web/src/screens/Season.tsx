@@ -124,7 +124,7 @@ export const GRIP = (
 const STATUS_INK: Record<string, string> = { ahead: 'var(--blue-ink)', behind: 'var(--amber-ink)', on_track: 'var(--ink-2)', none: 'var(--muted)' };
 
 /** One goal as a row: name and status, a track against even pace, and where it is → what done is. */
-export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi; onMove?: (g: Goal) => void }) {
+export function GoalRow({ placed, dnd, onMove, hidePath = false }: { placed: Placed; dnd?: DragApi; onMove?: (g: Goal) => void; hidePath?: boolean }) {
   const view = useView();
   const { goal } = placed.card;
   const path = goal.path_id ? view.data.paths.find((p) => p.id === goal.path_id && !p.archived_at) : undefined;
@@ -168,7 +168,7 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
         <span className="season-row-head">
           <span className="dot" style={{ width: 8, height: 8, flex: 'none', background: goal.color }} />
           <span className="season-row-title">{goal.title}</span>
-          {path && (
+          {path && !hidePath && (
             <span className="path-chip" title={path.name}>
               <i style={{ background: path.color }} />
               {pathLetter(view.data, path).replace('Plan ', '')}

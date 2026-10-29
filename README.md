@@ -283,18 +283,19 @@ Everything a goal tracks (numbers like a distance or a waist, and photos) sits a
 
 Small changes to your plan ship with the app as one-tap updates (`apps/web/src/data/updates.ts`): Today shows a line while one is waiting, **Review** lists what it changes and any choices, **Apply** makes the change, and Undo puts it back. Settings → Plans lists them all. The first: **Doc Film Academy: an hour a day** — the documentary goal's study task becomes 1 hour every day from Mon Nov 2, the course purchase is ticked, and the shoot/edit practice pauses until you add your own (optionally the drafted milestones go too).
 
-## Goals: Now, Timeline, Later
+## Goals: Backlog, Now, Timeline
 
-The bottom bar is Today, Goals, Calendar, Habits, Review. **Goals** has three views of the same goals:
-**Now** (what's running, grouped by your groups or by path), **Timeline** (the roadmap: dates, drag
-to change them; `/roadmap` still works) and **Later** (the backlog). **Done** and **Paths** are links
+The bottom bar is Today, Goals, Calendar, Habits, Review. **Goals** has three views of the same goals,
+in the order a goal moves: **Backlog** (ideas and Selected for next), **Now** (what's running, grouped
+by your groups or by path, each path in a card like a group's) and **Timeline** (the roadmap: dates,
+drag to change them; `/roadmap` still works). **Done** and **Paths** are links
 under Now. Paths are a lens, not a tab: each goal and idea carries a small path chip, Now can group by
 path, the goal page links to its path, and the season start and reviews still walk through them.
 
 ## Waiting on
 
 An idea, or a whole group, can **wait on** a goal or one of its milestones: not a date, a condition.
-The glamping idea waits on "Land an AI product owner role". While it waits it stays in Later with a
+The glamping idea waits on "Land an AI product owner role". While it waits it stays in the backlog with a
 "⏳ Waiting · 6 weeks" badge, can't be made a goal without **Start anyway** and a reason (kept on its
 note), shows on the Timeline as a dashed lane from when the job is due, and the weekly review lists
 it under **Still waiting**. When the goal (or milestone, like "Offer signed") is done, Today asks:

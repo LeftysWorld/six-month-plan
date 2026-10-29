@@ -31,7 +31,7 @@ export function WaitPicker({ value, onChange, exceptGroupId, label = 'Waits on' 
         ))}
       </select>
       <span className="xsmall muted" style={{ fontWeight: 400 }}>
-        Not a date: it stays in Later until that's done, then Today asks if you're ready. Pick the one thing it really needs (the job), not the whole group.
+        Not a date: it stays in the backlog until that's done, then Today asks if you're ready. Pick the one thing it really needs (the job), not the whole group.
       </span>
     </label>
   );
