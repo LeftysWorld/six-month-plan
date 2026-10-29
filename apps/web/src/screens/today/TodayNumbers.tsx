@@ -38,6 +38,21 @@ export function TodayNumbers({ photoSessions, day: shownDay }: { photoSessions: 
   });
   const [values, setValues] = useState<Record<string, string>>({});
   const [changing, setChanging] = useState<Record<string, boolean>>({});
+  const [open, setOpenState] = useState(() => {
+    try {
+      return localStorage.getItem('six.todayNumbers.open') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setOpen = (on: boolean) => {
+    setOpenState(on);
+    try {
+      localStorage.setItem('six.todayNumbers.open', on ? '1' : '0');
+    } catch {
+      // storage blocked: open for now
+    }
+  };
 
   const liveGoals = data.goals.filter((g) => !g.archived_at && !g.completed_at);
   const taskTypes = new Set(
@@ -51,7 +66,13 @@ export function TodayNumbers({ photoSessions, day: shownDay }: { photoSessions: 
     .filter((t) => measureOnToday(data, t.id) && !taskTypes.has(t.id))
     .map((t) => ({ type: t, goal: liveGoals.find((g) => g.id === t.goal_id || g.measurement_type_id === t.id) }))
     .filter((r): r is { type: typeof r.type; goal: NonNullable<typeof r.goal> } => !!r.goal)
-    .sort((a, b) => Number(b.goal.measurement_type_id === b.type.id) - Number(a.goal.measurement_type_id === a.type.id));
+    .map((r) => ({ ...r, main: r.goal.measurement_type_id === r.type.id }))
+    .sort((a, b) => Number(b.main) - Number(a.main));
+  // A goal's main number (your weight) and the photos stay in view; the rest (the stretching
+  // distances) fold under "3 more", in the order of their goals.
+  const others = rows.filter((r) => !r.main);
+  // Named for what's in it: "Stretching" when it's the splits and folds, else "3 more".
+  const moreLabel = others.length && others.every((r) => /split|shins|fold|backbend|stretch/i.test(r.goal.title)) ? 'Stretching' : `${others.length} more`;
   if (rows.length === 0 && photoSessions.length === 0) return null;
 
   const what = rows.length && photoSessions.length ? 'numbers and photos' : photoSessions.length ? 'photos' : 'numbers';
@@ -76,6 +97,61 @@ export function TodayNumbers({ photoSessions, day: shownDay }: { photoSessions: 
     return ` · next prize at ${fmt(m.value)} ${goal.unit ?? ''} by ${shortDate(m.due_date)}${gap != null && gap > 0 ? ` · ${fmt(gap)} to go` : ''}`;
   }
 
+  function numberRow({ type, goal }: (typeof rows)[number]) {
+    const logged = readingOn(data, type.id, day);
+    const last = lastReading(data, type.id);
+    const editing = isToday && (logged == null || changing[type.id]);
+    return (
+      <form
+        key={type.id}
+        className="today-number"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save(type.id, type.name, type.unit);
+        }}
+      >
+        <span className="dot" style={{ background: goal.color }} />
+        <span className="grow" style={{ minWidth: 0 }}>
+          <span className="today-number-name">{measureLabel(type)}</span>
+          <span className="xsmall muted today-number-goal">
+            {goal.title}
+            {nextPrizeText(goal, logged ?? last?.value ?? null)}
+          </span>
+        </span>
+        {editing ? (
+          <>
+            <input
+              className="input"
+              type="number"
+              inputMode="decimal"
+              step="any"
+              aria-label={`${type.name} today${type.unit ? ` (${type.unit})` : ''}`}
+              placeholder={last ? fmt(last.value) : ''}
+              value={values[type.id] ?? ''}
+              onChange={(e) => setValues({ ...values, [type.id]: e.target.value })}
+            />
+            <span className="small muted">{type.unit}</span>
+            <button className="btn small primary" type="submit" disabled={(values[type.id] ?? '').trim() === ''}>
+              Save
+            </button>
+          </>
+        ) : logged != null ? (
+          <>
+            <span className="num">
+              <Icon name="check" size={13} stroke={3} /> {fmt(logged)} {type.unit}
+            </span>
+            {isToday && (
+              <button type="button" className="link-btn xsmall" onClick={() => setChanging({ ...changing, [type.id]: true })}>
+                Change
+              </button>
+            )}
+          </>
+        ) : (
+          <span className="small muted">{future ? 'due' : 'not logged'}</span>
+        )}
+      </form>
+    );
+  }
   return (
     <section className={`card tight stack-sm today-numbers${isToday ? '' : ' read-only'}`} aria-label={title}>
       <span className="row-between">
@@ -83,61 +159,7 @@ export function TodayNumbers({ photoSessions, day: shownDay }: { photoSessions: 
         {!isToday && <span className="xsmall muted">{future ? `Log ${future && day === addDays(today, 1) ? 'tomorrow' : `on ${weekdayName(day)}`}` : 'View only'}</span>}
       </span>
       {photo.input}
-      {rows.map(({ type, goal }) => {
-        const logged = readingOn(data, type.id, day);
-        const last = lastReading(data, type.id);
-        const editing = isToday && (logged == null || changing[type.id]);
-        return (
-          <form
-            key={type.id}
-            className="today-number"
-            onSubmit={(e) => {
-              e.preventDefault();
-              save(type.id, type.name, type.unit);
-            }}
-          >
-            <span className="dot" style={{ background: goal.color }} />
-            <span className="grow" style={{ minWidth: 0 }}>
-              <span className="today-number-name">{measureLabel(type)}</span>
-              <span className="xsmall muted today-number-goal">
-                {goal.title}
-                {nextPrizeText(goal, logged ?? last?.value ?? null)}
-              </span>
-            </span>
-            {editing ? (
-              <>
-                <input
-                  className="input"
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  aria-label={`${type.name} today${type.unit ? ` (${type.unit})` : ''}`}
-                  placeholder={last ? fmt(last.value) : ''}
-                  value={values[type.id] ?? ''}
-                  onChange={(e) => setValues({ ...values, [type.id]: e.target.value })}
-                />
-                <span className="small muted">{type.unit}</span>
-                <button className="btn small primary" type="submit" disabled={(values[type.id] ?? '').trim() === ''}>
-                  Save
-                </button>
-              </>
-            ) : logged != null ? (
-              <>
-                <span className="num">
-                  <Icon name="check" size={13} stroke={3} /> {fmt(logged)} {type.unit}
-                </span>
-                {isToday && (
-                  <button type="button" className="link-btn xsmall" onClick={() => setChanging({ ...changing, [type.id]: true })}>
-                    Change
-                  </button>
-                )}
-              </>
-            ) : (
-              <span className="small muted">{future ? 'due' : 'not logged'}</span>
-            )}
-          </form>
-        );
-      })}
+      {rows.filter((r) => r.main).map(numberRow)}
       {photoSessions.map((s) => {
         const goal = view.goalsForAction(s.action_id).find((g) => !g.archived_at);
         const files = data.attachments.filter((a) => a.session_id === s.id);
@@ -176,6 +198,20 @@ export function TodayNumbers({ photoSessions, day: shownDay }: { photoSessions: 
           </div>
         );
       })}
+      {others.length > 0 && (
+        <>
+          <button type="button" className="today-numbers-more" aria-expanded={open} onClick={() => setOpen(!open)}>
+            <span className="grow">
+              {moreLabel}
+              <span className="xsmall muted"> · {others.filter((r) => readingOn(data, r.type.id, day) != null).length} of {others.length} logged</span>
+            </span>
+            <span style={{ transform: open ? 'rotate(-90deg)' : 'rotate(90deg)', display: 'inline-flex', color: 'var(--muted)' }} aria-hidden="true">
+              <Icon name="chevron" size={14} stroke={2.2} />
+            </span>
+          </button>
+          {open && others.map(numberRow)}
+        </>
+      )}
     </section>
   );
 }
