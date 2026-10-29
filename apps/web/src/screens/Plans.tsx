@@ -13,7 +13,8 @@ import { href } from '../router.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { useGoalDrag } from '../components/goalDrag.ts';
 import { nextSeasonDates, seasonsOf } from '../data/season.ts';
-import { GroupRowsCard, LooseCard, SeasonHorizon, SeasonOutcomes, SeasonStats, dropHint, placeGoals, type Placed } from './Season.tsx';
+import { GoalRow, GroupRowsCard, LooseCard, SeasonHorizon, SeasonOutcomes, SeasonStats, dropHint, placeGoals, type Placed } from './Season.tsx';
+import { pathLetter, pathsOf } from '../data/paths.ts';
 import { byOrder, placeAmong } from '../data/order.ts';
 import { SeasonCardButton } from '../components/SeasonCard.tsx';
 import { SeasonStart } from '../components/SeasonStart.tsx';
@@ -78,6 +79,22 @@ export function Plans() {
   const [menuFor, setMenuFor] = useState<Plan | null>(null);
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<'current' | 'next'>('current');
+  // Group by your groups (the default) or by path: the life each goal is a bet on.
+  const [by, setByState] = useState<'group' | 'path'>(() => {
+    try {
+      return localStorage.getItem('six.goals.by') === 'path' ? 'path' : 'group';
+    } catch {
+      return 'group';
+    }
+  });
+  const setBy = (v: 'group' | 'path') => {
+    setByState(v);
+    try {
+      localStorage.setItem('six.goals.by', v);
+    } catch {
+      // storage blocked: just for now
+    }
+  };
   const [naming, setNaming] = useState<Goal[] | null>(null);
   const [moving, setMoving] = useState<Goal | null>(null);
   const [movingGoals, setMovingGoals] = useState<{ goals: Goal[]; title?: string; dest: Plan | null } | null>(null);
@@ -152,7 +169,45 @@ export function Plans() {
     }
   });
 
-  const list = (
+  const paths = pathsOf(data);
+  const done = data.goals.filter((g) => g.completed_at && !g.archived_at).length;
+  const archived = data.goals.filter((g) => g.archived_at).length;
+  const pathList = (
+    <div className="season-list">
+      {[...paths.map((p) => ({ path: p, members: orderPlaced(inSeason.filter((m) => m.card.goal.path_id === p.id)) })), { path: null, members: orderPlaced(inSeason.filter((m) => !m.card.goal.path_id || !paths.some((p) => p.id === m.card.goal.path_id))) }]
+        .filter((x) => x.members.length > 0 || x.path)
+        .map(({ path, members }) => (
+          <section key={path?.id ?? 'none'} className="season-card" aria-label={path ? path.name : 'No path'}>
+            <div className="season-card-head">
+              {path ? (
+                <a href={href(`/paths/${path.id}`)} className="path-head">
+                  <span className="dot" style={{ background: path.color }} />
+                  <span className="grow" style={{ minWidth: 0 }}>
+                    <b>
+                      {pathLetter(data, path)} · {path.name}
+                    </b>
+                    {path.headline && <span className="xsmall muted path-head-sub">{path.headline}</span>}
+                  </span>
+                  <span className="season-open">
+                    Open <Icon name="chevron" size={14} stroke={2.4} />
+                  </span>
+                </a>
+              ) : (
+                <span className="path-head">
+                  <b>No path</b>
+                </span>
+              )}
+            </div>
+            {members.map((m) => (
+              <GoalRow key={m.card.goal.id} placed={m} />
+            ))}
+            {members.length === 0 && <p className="small muted path-empty">No goals on this path this season.{path ? ' Its ideas wait in Later.' : ''}</p>}
+          </section>
+        ))}
+    </div>
+  );
+
+  const list = by === 'path' && paths.length ? pathList : (
     <div className="season-list">
       {groups.map(({ group, members }) => (
         <GroupRowsCard key={group.id} group={group} members={members} dnd={dnd} onMove={setMoving} onMoveGroup={() => setMovingGoals({ goals: members.map((m) => m.card.goal), title: group.name, dest: null })} />
@@ -232,6 +287,19 @@ export function Plans() {
       <div className="season-layout">
         <div className="season-main">
           <div className="only-narrow">{side}</div>
+          {paths.length > 0 && placed.length > 0 && (
+            <div className="row-between" style={{ gap: 8 }}>
+              <span className="xsmall muted">Group by</span>
+              <div className="seg" role="radiogroup" aria-label="Group goals by">
+                <button role="radio" aria-checked={by === 'group'} onClick={() => setBy('group')}>
+                  Groups
+                </button>
+                <button role="radio" aria-checked={by === 'path'} onClick={() => setBy('path')}>
+                  Paths
+                </button>
+              </div>
+            </div>
+          )}
           {list}
           <div className="row-start" style={{ gap: 8, alignItems: 'stretch' }}>
             <div className="grow">
@@ -239,6 +307,14 @@ export function Plans() {
             </div>
             <a className="btn" href={href('/goals/new')} style={{ flex: 'none' }}>
               Make a goal
+            </a>
+          </div>
+          <div className="goals-more">
+            <a href={href('/goals/completed')}>
+              Done{archived ? ' & archived' : ''} <span className="count">{done + archived}</span>
+            </a>
+            <a href={href('/paths')}>
+              Paths <span className="count">{paths.length}</span>
             </a>
           </div>
         </div>

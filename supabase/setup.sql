@@ -1418,3 +1418,14 @@ alter table public.stretch_holds add column if not exists seconds int;
 alter table public.stretch_holds add column if not exists reps int;
 
 notify pgrst, 'reload schema';
+
+-- ---------- 20261119000000_waiting_on.sql ----------
+alter table public.goal_ideas add column if not exists waits_on_goal_id uuid references public.goals(id) on delete set null;
+alter table public.goal_ideas add column if not exists waits_on_milestone_id uuid references public.milestones(id) on delete set null;
+alter table public.goal_ideas add column if not exists waiting_since timestamptz;
+
+alter table public.goal_groups add column if not exists waits_on_goal_id uuid references public.goals(id) on delete set null;
+alter table public.goal_groups add column if not exists waits_on_milestone_id uuid references public.milestones(id) on delete set null;
+alter table public.goal_groups add column if not exists waiting_since timestamptz;
+
+notify pgrst, 'reload schema';

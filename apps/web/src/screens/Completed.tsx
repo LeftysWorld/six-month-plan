@@ -5,9 +5,8 @@ import { useView } from '../data/useView.ts';
 import { opsArchiveGoal, opsDeleteGoal, opsReopenGoal } from '../data/ops.ts';
 import { actionLookup } from '../data/insights.ts';
 import { href } from '../router.ts';
-import { useToast } from '../components/ui.tsx';
+import { BackLink, useToast } from '../components/ui.tsx';
 import { useState } from 'react';
-import { GoalsSwitch } from './Backlog.tsx';
 
 /** Goals you finished, newest first, with what it took. */
 export function Completed() {
@@ -27,8 +26,8 @@ export function Completed() {
           {initial}
         </a>
       </div>
+      <BackLink label="Goals" fallback="/goals" />
       <h1 style={{ marginTop: -4 }}>Completed</h1>
-      <GoalsSwitch current="completed" />
       {goals.length === 0 ? (
         <div className="card small" style={{ color: 'var(--ink-2)' }}>
           Goals you finish land here, with what it took. Mark a goal complete from its page, or rate it Achieved in the plan retrospective.

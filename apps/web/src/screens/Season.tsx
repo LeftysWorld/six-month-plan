@@ -12,6 +12,9 @@ import { firstCheckpoint, goalTrack, groupSentence, groupTrack, nextCheckpoint, 
 import { sharedTasksOf } from '../components/Connections.tsx';
 import type { DragApi, GoalDrag } from '../components/goalDrag.ts';
 import { href } from '../router.ts';
+import { pathLetter } from '../data/paths.ts';
+import { waitOf } from '../data/waiting.ts';
+import { WaitBadge } from '../components/Waiting.tsx';
 import { Icon } from '../components/ui.tsx';
 import { groupGradient } from '../data/palette.ts';
 
@@ -165,7 +168,12 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
         <span className="season-row-head">
           <span className="dot" style={{ width: 8, height: 8, flex: 'none', background: goal.color }} />
           <span className="season-row-title">{goal.title}</span>
-          {path && <span className="dot" title={`${path.name}`} style={{ width: 7, height: 7, flex: 'none', background: path.color }} />}
+          {path && (
+            <span className="path-chip" title={path.name}>
+              <i style={{ background: path.color }} />
+              {pathLetter(view.data, path).replace('Plan ', '')}
+            </span>
+          )}
           <span className="season-row-status" style={{ color: ink }}>
             {t.status}
           </span>
@@ -224,6 +232,7 @@ export function GoalRow({ placed, dnd, onMove }: { placed: Placed; dnd?: DragApi
 /** A group's goals in one card: the name and counts in the header (opens the group), goals as rows. */
 export function GroupRowsCard({ group, members, dnd, onMove, onMoveGroup }: { group: GoalGroup; members: Placed[]; dnd?: DragApi; onMove?: (g: Goal) => void; onMoveGroup?: () => void }) {
   const view = useView();
+  const groupWait = waitOf(view.data, group, view.today);
   const shared = sharedTasksOf(view, members.map((m) => m.card.goal));
   const over = dnd?.drag?.target === `group:${group.id}`;
   const lifted = dnd?.drag?.group?.id === group.id;
@@ -259,6 +268,7 @@ export function GroupRowsCard({ group, members, dnd, onMove, onMoveGroup }: { gr
             {members.length} goal{members.length === 1 ? '' : 's'}
             {shared.length ? ` · ${shared.length} shared task${shared.length === 1 ? '' : 's'}` : ''}
           </span>
+          {groupWait && <WaitBadge info={groupWait} />}
           <span className="season-open">
             Open <Icon name="chevron" size={14} stroke={2.4} />
           </span>
@@ -606,7 +616,7 @@ export function SeasonHorizon({
               </a>
             ))}
             {panel.due.length > 6 && (
-              <a href={href('/roadmap')} className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600, padding: '6px 4px' }}>
+              <a href={href('/goals/timeline')} className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600, padding: '6px 4px' }}>
                 +{panel.due.length - 6} more on the roadmap
               </a>
             )}

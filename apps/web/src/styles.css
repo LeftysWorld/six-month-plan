@@ -1616,3 +1616,22 @@ html, body { overflow-x: clip; }
 .track-goal { display: flex; flex-direction: column; gap: 8px; }
 .track-goal-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--ink); text-decoration: none; }
 .track-goal-name .dot { width: 9px; height: 9px; flex: none; }
+
+/* Goals hub: Completed and Paths as quiet links under Now. */
+.goals-more { display: flex; gap: 18px; padding: 4px 4px 0; flex-wrap: wrap; }
+.goals-more a { font-size: 14px; font-weight: 600; color: var(--ink-2); text-decoration: none; display: inline-flex; gap: 6px; align-items: center; min-height: 44px; }
+.goals-more .count { color: var(--muted); font-weight: 500; }
+.path-chip { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: var(--ink-2); padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.path-chip i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+/* Waiting on: a badge on ideas and groups, and its lane on the Timeline. */
+.wait-badge { display: inline-block; font-size: 12px; font-weight: 500; color: var(--amber-ink, #b26b00); }
+.wait-badge.ready { color: var(--accent-ink); }
+.rm-row.waiting .rm-title { color: var(--ink-2); }
+.rm-wait { position: absolute; top: 9px; bottom: 9px; border: 1.5px dashed var(--muted); border-radius: 8px; display: flex; align-items: center; padding: 0 8px; font-size: 11.5px; color: var(--ink-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
+.rm-wait-from { position: absolute; top: 4px; bottom: 4px; width: 0; border-left: 2px solid var(--muted); }
+.lg-wait { display: inline-block; width: 18px; height: 9px; border: 1.5px dashed var(--muted); border-radius: 3px; vertical-align: middle; }
+.path-head { display: flex; align-items: center; gap: 10px; width: 100%; color: inherit; text-decoration: none; min-height: 44px; }
+.path-head .dot { width: 10px; height: 10px; flex: none; }
+.path-head-sub { display: block; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.path-empty { margin: 0; padding: 10px 16px 14px; }

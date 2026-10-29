@@ -223,5 +223,38 @@ export const flexMeasuresUpdate: AppUpdate = {
   },
 };
 
+// ---------- The glamping site waits on the job ----------
+
+function glampParts(data: AppData) {
+  const idea = data.ideas.find((i) => i.status === 'backlog' && /glamp/i.test(i.title)) ?? null;
+  const job = data.goals.find((g) => live(g) && /product owner role|land an? ai/i.test(g.title)) ?? null;
+  return { idea, job };
+}
+
+export const glampWaitsUpdate: AppUpdate = {
+  id: 'glamp-waits-on-job-2026-10',
+  title: 'Glamping waits on the job',
+  nudge: 'Your glamping idea can wait on landing the AI job: held in Later, and Today tells you when it’s ready.',
+  preview(data) {
+    const { idea, job } = glampParts(data);
+    if (!idea || !job) return { done: true, blocked: 'There is no glamping idea or job goal to link.', lines: [], options: [] };
+    if (idea.waits_on_goal_id || idea.waits_on_milestone_id) return { done: true, lines: [], options: [] };
+    return {
+      done: false,
+      lines: [
+        `“${idea.title}” waits on “${job.title}”: it stays in Later as Waiting, and can't be made a goal without “Start anyway” and a reason.`,
+        'The Timeline shows it as a dashed lane after the job goal; the weekly review shows how long it has waited.',
+        `When “${job.title}” is done, Today asks if you're ready to prepare it. Change what it waits on (a milestone like “Offer signed”, say) in the idea.`,
+      ],
+      options: [],
+    };
+  },
+  ops(data) {
+    const { idea, job } = glampParts(data);
+    if (!idea || !job || idea.waits_on_goal_id || idea.waits_on_milestone_id) return [];
+    return [{ kind: 'update', collection: 'ideas', id: idea.id, patch: { waits_on_goal_id: job.id, waits_on_milestone_id: null, waiting_since: new Date().toISOString() } }];
+  },
+};
+
 /** Every update the app ships, newest first. */
-export const APP_UPDATES: AppUpdate[] = [flexMeasuresUpdate, docStudyUpdate];
+export const APP_UPDATES: AppUpdate[] = [glampWaitsUpdate, flexMeasuresUpdate, docStudyUpdate];

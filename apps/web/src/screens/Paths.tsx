@@ -27,7 +27,7 @@ import {
 import { goalTrack } from '../data/season.ts';
 import { href, navigate } from '../router.ts';
 import { BackLink, Icon, Sheet, useToast } from '../components/ui.tsx';
-import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
+import { IdeaAdd } from './Backlog.tsx';
 import { PathExperiments, PathReportCard, TimeByPath } from '../components/PathExperiments.tsx';
 
 /**
@@ -58,8 +58,8 @@ export function Paths() {
           {initial}
         </a>
       </div>
+      <BackLink label="Goals" fallback="/goals" />
       <h1 style={{ marginTop: -4 }}>Paths</h1>
-      <GoalsSwitch current="paths" />
 
       {paths.length === 0 ? (
         <div className="card dark stack-sm">

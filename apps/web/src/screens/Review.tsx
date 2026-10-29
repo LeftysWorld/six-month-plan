@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { WaitingReviewCard } from '../components/Waiting.tsx';
 import {
   addDays,
   chainAt,
@@ -474,6 +475,8 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
           {tally.upcoming} task{tally.upcoming === 1 ? '' : 's'} still to come (through {weekdayName(period.end)} {shortDate(period.end)}) {tally.upcoming === 1 ? "isn't" : "aren't"} counted as missed.
         </span>
       )}
+
+      {isWeekly && <WaitingReviewCard />}
 
       {/* Each goal: how it went. */}
       <div className="card stack-sm">

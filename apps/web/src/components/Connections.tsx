@@ -1,3 +1,5 @@
+import { WaitPicker } from './Waiting.tsx';
+import { opsSetWaiting, waitValue } from '../data/waiting.ts';
 import { useState } from 'react';
 import { describeSchedule, shortDate, type Action, type Goal, type GoalGroup } from '@six/core';
 import { useStore } from '../data/store.tsx';
@@ -178,6 +180,15 @@ export function GroupSheet({ group, onClose, startSharing = false }: { group: Go
           Rename
         </button>
       </form>
+      <WaitPicker
+        label="This group waits on"
+        exceptGroupId={live.id}
+        value={waitValue(live)}
+        onChange={(v) => {
+          commit(opsSetWaiting('groups', live, v));
+          toast(v ? `${live.name} waits on that now` : `${live.name} isn't waiting on anything`);
+        }}
+      />
       <div className="stack-sm">
         <span className="label">Goals</span>
         {members.map((g) => {

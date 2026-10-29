@@ -6,6 +6,8 @@ import { useView } from '../data/useView.ts';
 import { goalTrack, groupTrack, seasonsOf } from '../data/season.ts';
 import { clampDates, dateLimits, opsRestoreDates, opsSetGoalDates } from '../data/dates.ts';
 import { href, navigate } from '../router.ts';
+import { GoalsSwitch } from './Backlog.tsx';
+import { waiters } from '../data/waiting.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { LoadStrip } from '../components/LoadStrip.tsx';
 import { MilestoneSheet } from '../components/MilestoneSheet.tsx';
@@ -147,6 +149,7 @@ export function Roadmap() {
   const months = monthStarts(lo, hi);
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   const goalCount = rows.reduce((n, r) => n + (r.kind === 'group' ? r.goals.length : 1), 0);
+  const waiting = waiters(data, today).filter((w) => !w.info.met);
 
   function startDrag(e: ReactPointerEvent, r: GoalRow, m: Drag['mode']) {
     if (e.button !== 0) return;
@@ -416,7 +419,8 @@ export function Roadmap() {
           {initial}
         </a>
       </div>
-      <h1 style={{ marginTop: -4 }}>Roadmap</h1>
+      <h1 style={{ marginTop: -4 }}>Goals</h1>
+      <GoalsSwitch current="timeline" />
 
       <div className="row-between" style={{ gap: 10, flexWrap: 'wrap' }}>
         {seasons.next ? (
@@ -439,7 +443,7 @@ export function Roadmap() {
         )}
         <div className="seg" role="tablist" aria-label="View">
           <button role="tab" aria-selected={mode === 'timeline'} onClick={() => setMode('timeline')}>
-            <Icon name="roadmap" size={15} /> Timeline
+            <Icon name="roadmap" size={15} /> Chart
           </button>
           <button role="tab" aria-selected={mode === 'list'} onClick={() => setMode('list')}>
             <Icon name="list" size={15} /> List
@@ -503,8 +507,44 @@ export function Roadmap() {
                 </div>
               ),
             )}
+            {which === 'current' &&
+              waiting.map((w) => {
+                // Not a date: the lane starts where what it waits on is due (or today), dashed.
+                const from = w.info.due && w.info.due > today ? w.info.due : today;
+                const left = Math.min(92, pct(from));
+                return (
+                  <div key={`wait-${w.id}`} className="rm-row goal waiting">
+                    <div className="rm-label">
+                      <span className="rm-name-row">
+                        <a href={href(w.kind === 'group' ? `/goals/group/${w.id}` : '/goals/backlog')} className="rm-name">
+                          <span className="dot" style={{ background: 'transparent', border: '1.5px dashed var(--muted)' }} />
+                          <span className="rm-title">{w.title}</span>
+                        </a>
+                      </span>
+                      <span className="rm-meta">
+                        {w.kind === 'group' ? 'Group' : 'Idea'} · waiting{w.info.weeks ? ` ${w.info.weeks} wk` : ''}
+                      </span>
+                    </div>
+                    <div className="rm-track">
+                      {months.map((m) => (
+                        <span key={m} className="rm-grid" style={{ left: `${pct(m)}%` }} />
+                      ))}
+                      {today >= lo && today <= hi && <span className="rm-today" style={{ left: `${pct(today)}%` }} />}
+                      <span className="rm-wait-from" style={{ left: `${left}%` }} />
+                      <span className="rm-wait" style={{ left: `calc(${left}% + 4px)`, right: 0 }} title={`Starts when ${w.info.label} is done${w.info.due ? ` (due ${shortDate(w.info.due)})` : ''}`}>
+                        Starts when {w.info.label} is done
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
           <div className="rm-legend" aria-label="Key">
+            {which === 'current' && waiting.length > 0 && (
+              <span>
+                <span className="lg-wait" /> Waiting on something, not a date
+              </span>
+            )}
             <span>
               <span className="lg-bar" /> Done so far
             </span>

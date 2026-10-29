@@ -98,6 +98,11 @@ export interface GoalGroup {
   week_goal_for?: ISODate | null;
   /** Hand-set position among groups on the Goals page. Missing on older databases. */
   sort_order?: number | null;
+  /** What it waits on before it can really start: a goal, or one of its milestones ("Offer signed"). Missing on older databases. */
+  waits_on_goal_id?: string | null;
+  waits_on_milestone_id?: string | null;
+  /** When it started waiting. */
+  waiting_since?: string | null;
 }
 
 export interface PlanGoal {
@@ -375,6 +380,11 @@ export interface GoalIdea {
   shortlisted_at?: string | null;
   /** The Odyssey path this idea belongs to. Missing on older databases. */
   path_id?: string | null;
+  /** What it waits on before it can really start: a goal, or one of its milestones ("Offer signed"). Missing on older databases. */
+  waits_on_goal_id?: string | null;
+  waits_on_milestone_id?: string | null;
+  /** When it started waiting. */
+  waiting_since?: string | null;
 }
 
 // ---------- Odyssey paths ----------

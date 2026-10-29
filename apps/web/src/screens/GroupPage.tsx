@@ -14,6 +14,8 @@ import { GoalRow, GroupRollup, WeekStrip, placeGoals } from './Season.tsx';
 import { GroupPrizeCard } from '../components/Prize.tsx';
 import { GroupWeekCard } from '../components/GroupWeek.tsx';
 import { GroupTracking } from '../components/Tracking.tsx';
+import { WaitBadge } from '../components/Waiting.tsx';
+import { waitOf } from '../data/waiting.ts';
 
 /**
  * A group's own page, like an open folder: its goals this season and next as rows, everything they
@@ -54,6 +56,10 @@ export function GroupPage({ id }: { id: string }) {
         <span className="small muted">
           {now.length} goal{now.length === 1 ? '' : 's'} this season{later.length ? ` · ${later.length} next season` : ''}
         </span>
+        {(() => {
+          const w = waitOf(data, group, today);
+          return w ? <WaitBadge info={w} /> : null;
+        })()}
       </div>
       <section className="card" style={{ padding: 0 }}>
         <GroupRollup group={group} big />

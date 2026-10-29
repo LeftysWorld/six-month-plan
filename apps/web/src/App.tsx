@@ -155,7 +155,7 @@ function Shell(props: ShellProps) {
     setAppBadge(openToday);
   }, [openToday]);
 
-  // Keyboard shortcuts on a computer: N add, T today, G goals, B backlog, P paths, R review.
+  // Keyboard shortcuts on a computer: N add, T today, G goals (now), M timeline, B later (backlog), P paths, C calendar, H habits, R review.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -169,7 +169,7 @@ function Shell(props: ShellProps) {
       } else if (k === 't') navigate('/today');
       else if (k === 'g') navigate('/goals');
       else if (k === 'b') navigate('/goals/backlog');
-      else if (k === 'm') navigate('/roadmap');
+      else if (k === 'm') navigate('/goals/timeline');
       else if (k === 'c') navigate('/calendar');
       else if (k === 'h') navigate('/habits');
       else if (k === 'p') navigate('/paths');
@@ -192,6 +192,7 @@ function Shell(props: ShellProps) {
       if (s0 === 'goals' && s1 === 'new') screen = <GoalNew ideaId={route.query.get('idea')} pathId={route.query.get('path')} />;
       else if (s0 === 'goals' && s1 === 'backlog') screen = <Backlog />;
       else if (s0 === 'goals' && s1 === 'completed') screen = <Completed />;
+      else if (s0 === 'goals' && s1 === 'timeline') screen = <Roadmap />;
       else if (s0 === 'goals' && s1 === 'group' && s2) screen = <GroupPage id={s2} />;
       else if (s0 === 'goals' && s1 && s2 === 'photos') screen = <PhotoTimeline goalId={s1} />;
       else if (s0 === 'goals' && s1) screen = <Flow goalId={s1} />;
@@ -225,7 +226,7 @@ function Shell(props: ShellProps) {
       screen = <Today />;
   }
 
-  const tab = s0 === 'roadmap' ? 'roadmap' : s0 === 'calendar' ? 'calendar' : s0 === 'habits' ? 'habits' : s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'paths' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
+  const tab = s0 === 'calendar' ? 'calendar' : s0 === 'habits' ? 'habits' : s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'paths' || s0 === 'roadmap' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
 
   return (
     <div className="shell">
@@ -234,7 +235,6 @@ function Shell(props: ShellProps) {
           <span className="brand">Six Months</span>
           <NavLink to="/today" icon="today" label="Today" current={tab === 'today'} />
           <NavLink to="/goals" icon="plans" label="Goals" current={tab === 'goals'} />
-          <NavLink to="/roadmap" icon="roadmap" label="Roadmap" current={tab === 'roadmap'} />
           <NavLink to="/calendar" icon="calendar" label="Calendar" current={tab === 'calendar'} />
           <NavLink to="/habits" icon="habit" label="Habits" current={tab === 'habits'} />
           <NavLink to="/review" icon="review" label="Review" current={tab === 'review'} />

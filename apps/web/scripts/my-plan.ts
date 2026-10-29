@@ -405,6 +405,12 @@ for (const [title, note, done, pathId] of ideas) {
   run(added.ops);
   run([{ kind: 'update', collection: 'ideas', id: added.idea.id, patch: { done_means: done, ...(pathId ? { path_id: pathId } : {}) } }]);
 }
+// The glamping site waits on the job: held in Later until it lands, then Today asks.
+{
+  const glamp = data.ideas.find((i) => /glamp/i.test(i.title));
+  const job = data.goals.find((g) => /product owner role/i.test(g.title));
+  if (glamp && job) run([{ kind: 'update', collection: 'ideas', id: glamp.id, patch: { waits_on_goal_id: job.id, waiting_since: `${TODAY}T12:00:00.000Z` } }]);
+}
 
 // ---------- Splits & Backbend Plan (from Fri Oct 30) ----------
 // The same switch-over the app's Settings → Plans makes: four flexibility goals in the Body group,

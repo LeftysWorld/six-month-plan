@@ -78,6 +78,7 @@ export function Flow({ goalId }: { goalId: string }) {
   const weeks = stepsForGoal(data, goal.id).filter((s) => s.level === 'week' && s.plan_id === plan.id);
   const t = goalTrack(view, goal, plan);
   const group = goal.group_id ? data.groups.find((g) => g.id === goal.group_id) : undefined;
+  const path = goal.path_id ? data.paths.find((p) => p.id === goal.path_id && !p.archived_at) : undefined;
   const windowName = plan.name;
   const ink = !t.started ? 'var(--muted)' : t.label === 'behind' ? 'var(--amber-ink)' : t.label === 'ahead' ? 'var(--blue-ink)' : 'var(--ink-2)';
 
@@ -98,6 +99,15 @@ export function Flow({ goalId }: { goalId: string }) {
             <>
               <span aria-hidden="true">·</span>
               <a href={href(`/goals/group/${group.id}`)}>{group.name}</a>
+            </>
+          )}
+          {path && (
+            <>
+              <span aria-hidden="true">·</span>
+              <a href={href(`/paths/${path.id}`)} className="row-start" style={{ gap: 5, display: 'inline-flex' }}>
+                <span className="dot" style={{ width: 7, height: 7, background: path.color }} />
+                {pathLetter(data, path)}: {path.name}
+              </a>
             </>
           )}
           <span aria-hidden="true">·</span>

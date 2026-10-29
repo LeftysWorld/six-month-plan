@@ -9,27 +9,30 @@ import { href } from '../router.ts';
 import { opsSetIdeaPath, pathLetter, pathsOf } from '../data/paths.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
 import { ExperimentSheet } from '../components/PathExperiments.tsx';
+import { StartAnywaySheet, WaitBadge, WaitPicker } from '../components/Waiting.tsx';
+import { opsSetWaiting, waitOf, waitValue } from '../data/waiting.ts';
 
-/** Backlog → Goals → Completed: the flow of a goal, left to right (shown on all three pages). */
-export function GoalsSwitch({ current }: { current: 'paths' | 'backlog' | 'goals' | 'completed' }) {
+/**
+ * The Goals hub's three views of the same goals: Now (what's running, by group or by path),
+ * Timeline (their dates) and Later (the backlog, including ideas waiting on something). Completed
+ * and Paths aren't tabs: they're a link and a lens from Now.
+ */
+export function GoalsSwitch({ current }: { current: 'goals' | 'timeline' | 'backlog' | null }) {
   const { data } = useStore();
   const view = useView();
   const goals = view.activeGoals.length;
-  const waiting = data.ideas.filter((i) => i.status === 'backlog').length;
-  const done = data.goals.filter((g) => g.completed_at && !g.archived_at).length;
-  const archived = data.goals.filter((g) => g.archived_at).length;
-  const paths = data.paths.filter((p) => !p.archived_at).length;
-  const tab = (key: typeof current, to: string, label: string, count: number) => (
+  const later = data.ideas.filter((i) => i.status === 'backlog').length;
+  const tab = (key: NonNullable<typeof current>, to: string, label: string, count: number | null) => (
     <a href={href(to)} aria-current={current === key ? 'page' : undefined}>
-      {label} <span className="count">{count}</span>
+      {label}
+      {count != null && <span className="count"> {count}</span>}
     </a>
   );
   return (
-    <nav className="seg goals-switch" aria-label="Paths, backlog, goals or completed">
-      {tab('paths', '/paths', 'Paths', paths)}
-      {tab('backlog', '/goals/backlog', 'Backlog', waiting)}
-      {tab('goals', '/goals', 'Goals', goals)}
-      {tab('completed', '/goals/completed', archived ? 'Done & archived' : 'Completed', done + archived)}
+    <nav className="seg goals-switch" aria-label="Now, timeline or later">
+      {tab('goals', '/goals', 'Now', goals)}
+      {tab('timeline', '/goals/timeline', 'Timeline', null)}
+      {tab('backlog', '/goals/backlog', 'Later', later)}
     </nav>
   );
 }
@@ -143,7 +146,7 @@ export function Backlog() {
           {initial}
         </a>
       </div>
-      <h1 style={{ marginTop: -4 }}>Backlog</h1>
+      <h1 style={{ marginTop: -4 }}>Goals</h1>
       <GoalsSwitch current="backlog" />
 
       <IdeaAdd pathId={pathFilter !== 'all' && pathFilter !== 'none' ? pathFilter : null} />
@@ -265,8 +268,11 @@ function IdeaRow({
   onSelect?: () => void;
   onUnselect?: () => void;
 }) {
-  const { data } = useStore();
+  const { data, today } = useStore();
   const path = idea.path_id ? data.paths.find((p) => p.id === idea.path_id && !p.archived_at) : undefined;
+  const wait = waitOf(data, idea, today);
+  const waiting = !!wait && !wait.met;
+  const [startAnyway, setStartAnyway] = useState(false);
   const age = ageInDays(idea);
   const ready = ideaReady(idea);
   const lifted = dnd.drag?.id === idea.id;
@@ -290,20 +296,32 @@ function IdeaRow({
         <span className="idea-title">
           <span className="mono" style={{ marginRight: 8 }}>{index + 1}</span>
           {idea.title}
-          {path && <span className="dot" title={`${pathLetter(data, path)} · ${path.name}`} style={{ width: 7, height: 7, background: path.color, marginLeft: 8, verticalAlign: 'middle' }} />}
+          {path && (
+            <span className="path-chip" title={path.name} style={{ marginLeft: 8, verticalAlign: 'middle' }}>
+              <i style={{ background: path.color }} />
+              {pathLetter(data, path).replace('Plan ', '')}
+            </span>
+          )}
         </span>
         <span className="xsmall muted">
           {bucket === 'selected' ? (idea.done_means?.trim() ? `Done: ${idea.done_means.trim()}` : idea.note.trim()) : idea.note.trim() ? idea.note.trim() : 'Tap to say why it matters'}
           {bucket === 'backlog' && idea.note.trim() && !idea.done_means?.trim() ? ' · what does done look like?' : ''}
           {age >= 60 ? ` · written down ${age} days ago` : ''}
         </span>
+        {wait && <WaitBadge info={wait} />}
       </button>
       <span className="idea-actions">
         {bucket === 'selected' ? (
           <>
-            <a className="btn small primary" href={href(`/goals/new?idea=${idea.id}`)}>
-              Make it a goal
-            </a>
+            {waiting ? (
+              <button type="button" className="btn small" onClick={() => setStartAnyway(true)} title={`Waiting on ${wait!.label}`}>
+                Start anyway
+              </button>
+            ) : (
+              <a className="btn small primary" href={href(`/goals/new?idea=${idea.id}`)}>
+                Make it a goal
+              </a>
+            )}
             <button type="button" className="link-btn small" onClick={onUnselect}>
               Back to backlog
             </button>
@@ -319,6 +337,7 @@ function IdeaRow({
           </>
         )}
       </span>
+      {startAnyway && wait && <StartAnywaySheet idea={idea} info={wait} onClose={() => setStartAnyway(false)} />}
     </div>
   );
 }
@@ -333,6 +352,11 @@ function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
   const [title, setTitle] = useState(idea.title);
   const [note, setNote] = useState(idea.note);
   const [done, setDone] = useState(idea.done_means ?? '');
+  const { today } = useStore();
+  const [waitsOn, setWaitsOn] = useState(waitValue(idea));
+  const wait = waitOf(data, idea, today);
+  const waiting = !!wait && !wait.met && waitsOn === waitValue(idea);
+  const [startAnyway, setStartAnyway] = useState(false);
   return (
     <Sheet title="Goal idea" onClose={onClose}>
       <label className="field">
@@ -365,11 +389,20 @@ function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
           <button type="button" className="btn small" onClick={() => setTrying(true)}>
             Try it small: an experiment
           </button>
-          <a className="btn small" href={href(`/goals/new?idea=${idea.id}&path=${pathId}`)}>
-            Make it a goal
-          </a>
+          {waiting ? (
+            <button type="button" className="btn small" onClick={() => setStartAnyway(true)}>
+              Start anyway
+            </button>
+          ) : (
+            <a className="btn small" href={href(`/goals/new?idea=${idea.id}&path=${pathId}`)}>
+              Make it a goal
+            </a>
+          )}
         </div>
       )}
+      <WaitPicker value={waitsOn} onChange={setWaitsOn} />
+      {wait && waitsOn === waitValue(idea) && <WaitBadge info={wait} />}
+      {startAnyway && wait && <StartAnywaySheet idea={idea} info={wait} onClose={() => setStartAnyway(false)} />}
       {trying && paths.find((p) => p.id === pathId) && <ExperimentSheet path={paths.find((p) => p.id === pathId)!} title={title} onClose={() => setTrying(false)} />}
       <div className="btn-row">
         <button type="button" className="btn" onClick={onClose}>
@@ -380,7 +413,7 @@ function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
           className="btn primary"
           disabled={!title.trim()}
           onClick={() => {
-            const ops = [...opsEditIdea(idea, { title, note, done_means: done }), ...opsSetIdeaPath(idea, pathId || null)];
+            const ops = [...opsEditIdea(idea, { title, note, done_means: done }), ...opsSetIdeaPath(idea, pathId || null), ...opsSetWaiting('ideas', idea, waitsOn)];
             if (ops.length) {
               commit(ops);
               toast('Idea saved', () => commit(opsRestoreIdea(idea)));

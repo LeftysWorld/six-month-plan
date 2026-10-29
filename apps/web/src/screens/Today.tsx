@@ -28,6 +28,7 @@ import { AddTaskOnDay } from './today/AddTaskOnDay.tsx';
 import { WeekAhead } from './today/WeekAhead.tsx';
 import { PlanPackNudge } from './PlanPackSheet.tsx';
 import { AppUpdatesNudge } from './UpdateSheet.tsx';
+import { WaitingReady } from '../components/Waiting.tsx';
 
 
 const FULL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -356,6 +357,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
         {isToday && <PrizeCelebration />}
         {isToday && <PlanPackNudge />}
         {isToday && <AppUpdatesNudge />}
+        {isToday && <WaitingReady />}
 
         {summary}
         {segs.length > 0 && (
