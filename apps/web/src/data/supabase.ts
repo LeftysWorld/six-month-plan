@@ -43,6 +43,7 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261113000000_goal_order.sql', table: 'goals', columns: ['sort_order'] },
   { file: '20261113000000_goal_order.sql', table: 'goal_groups', columns: ['sort_order'] },
   { file: '20261114000000_backlog_selected.sql', table: 'goal_ideas', columns: ['shortlisted_at'] },
+  { file: '20261115000000_session_scheduled_on.sql', table: 'sessions', columns: ['scheduled_on'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */

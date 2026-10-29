@@ -96,16 +96,22 @@ export function sessionFromSlot(action: Action, slot: PlannedSlot, id: string): 
     source: 'manual',
     moved_from: null,
     logged_at: null,
+    // Where the schedule put it. Stays put when you move the session to another day.
+    scheduled_on: slot.date,
   };
 }
 
 /**
  * Sessions that are missing for a week, given the scheduled sessions that already
- * exist. Existing slots are never touched, so running this twice is harmless.
+ * exist. Existing sessions are never touched, so running this twice is harmless.
  *
- * A slot number is only a key. When a slot's number is already taken by a session on a
- * different day (the previous version of a schedule made it), the new session takes the
- * next free number instead of being dropped.
+ * - A dated slot ("Wednesday") is covered when a session of the task was scheduled for that day,
+ *   wherever it sits now: a workout you moved from Wednesday to Thursday still covers Wednesday.
+ *   Rows from before sessions remembered their scheduled day fall back to the day they're on.
+ * - An undated slot ("3 times a week") is covered when its number is taken.
+ *
+ * A slot number is only a key. When the number is already taken (an earlier version of the
+ * schedule used it), the new session takes the next free number instead of being dropped.
  */
 export function missingSessionsForWeek(
   actions: Action[],
@@ -115,22 +121,20 @@ export function missingSessionsForWeek(
   makeId: () => string,
 ): Session[] {
   const mine = existing.filter((s) => s.origin === 'scheduled' && s.action_id && s.week_start === monday);
-  const bySlot = new Map(mine.map((s) => [`${s.action_id}:${s.slot}`, s]));
   const out: Session[] = [];
   for (const action of actions) {
     if (action.archived_at) continue;
     const schedule = scheduleForWeek(schedules, action.id, monday);
     if (!schedule) continue;
-    const used = new Set(mine.filter((s) => s.action_id === action.id).map((s) => s.slot));
-    const datesHad = new Set(mine.filter((s) => s.action_id === action.id && s.date).map((s) => s.date));
+    const ofAction = mine.filter((s) => s.action_id === action.id);
+    const used = new Set(ofAction.map((s) => s.slot));
+    const plannedFor = new Set(ofAction.map((s) => s.scheduled_on ?? s.date).filter((d): d is ISODate => !!d));
     for (const slot of slotsForWeek(schedule, monday)) {
-      const taken = bySlot.get(`${action.id}:${slot.slot}`);
-      if (taken && (!slot.date || taken.date === slot.date)) continue;
-      // A dated slot already covered by a session on that day (under another number) is not missing.
-      if (slot.date && datesHad.has(slot.date)) continue;
+      if (slot.date ? plannedFor.has(slot.date) : used.has(slot.slot)) continue;
       let number = slot.slot;
       while (used.has(number)) number += 1;
       used.add(number);
+      if (slot.date) plannedFor.add(slot.date);
       out.push(sessionFromSlot(action, { ...slot, slot: number }, makeId()));
     }
   }

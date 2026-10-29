@@ -1,6 +1,8 @@
 import {
   currentTargets,
   missingSessionsForWeek,
+  scheduleForWeek,
+  slotsForWeek,
   weekStart,
   type Action,
   type ActionKind,
@@ -17,7 +19,7 @@ import {
   type SessionStatus,
   type WorkoutSet,
 } from '@six/core';
-import type { AppData, CollectionKey, Op, ReviewPayload } from './model.ts';
+import { applyOp, type AppData, type CollectionKey, type Op, type ReviewPayload } from './model.ts';
 import { opsRemoveFromGroup } from './groups.ts';
 
 /** Builders that turn a user intention into the database changes it needs. */
@@ -30,9 +32,49 @@ const rows = <T extends { id: string }>(items: T[]): Row[] => items as unknown a
 
 // ---------- Sessions ----------
 
+/**
+ * Make sure a week's scheduled sessions exist. Runs when the day changes, when a task or schedule
+ * is added, and when you look at a coming week. Sessions made before they remembered their
+ * scheduled day are repaired first, so a moved one isn't made again on its old day.
+ */
 export function opsEnsureWeek(data: AppData, monday: ISODate): Op[] {
-  const missing = missingSessionsForWeek(data.actions, data.schedules, data.sessions, monday, newId);
-  return missing.length ? [{ kind: 'insertIgnore', collection: 'sessions', rows: rows(missing) }] : [];
+  const repair = opsRepairMovedSessions(data, monday);
+  const fixed = repair.reduce(applyOp, data);
+  const missing = missingSessionsForWeek(fixed.actions, fixed.schedules, fixed.sessions, monday, newId);
+  return [...repair, ...(missing.length ? [{ kind: 'insertIgnore', collection: 'sessions', rows: rows(missing) } as Op] : [])];
+}
+
+/**
+ * Repair a week made before sessions remembered the day they were scheduled for (scheduled_on).
+ * Back then, moving a session (Wednesday's workout to Thursday) made the weekly top-up think
+ * Wednesday was missing, so it made a second copy there.
+ *
+ * For each task on fixed days, a session holding one of the slot numbers its schedule hands out,
+ * but sitting on another day, was moved: it gets the day it was scheduled for. A copy the top-up
+ * made on that day afterwards (planned, never logged, under a number the schedule doesn't hand
+ * out) is deleted. Copies you already logged are kept. Running it again changes nothing.
+ */
+export function opsRepairMovedSessions(data: AppData, monday: ISODate): Op[] {
+  const ops: Op[] = [];
+  const inWeek = data.sessions.filter((s) => s.origin === 'scheduled' && s.action_id && s.week_start === monday);
+  if (inWeek.length === 0) return ops;
+  for (const action of data.actions) {
+    const schedule = scheduleForWeek(data.schedules, action.id, monday);
+    if (!schedule || schedule.rule !== 'days') continue;
+    const mine = inWeek.filter((s) => s.action_id === action.id);
+    if (mine.length === 0) continue;
+    const slots = slotsForWeek(schedule, monday);
+    const handedOut = new Set(slots.map((x) => x.slot));
+    for (const slot of slots) {
+      if (!slot.date) continue;
+      const original = mine.find((s) => s.slot === slot.slot);
+      if (!original || original.scheduled_on || !original.date || original.date === slot.date) continue;
+      ops.push({ kind: 'update', collection: 'sessions', id: original.id, patch: { scheduled_on: slot.date } });
+      const copy = mine.find((s) => s.id !== original.id && s.date === slot.date && s.status === 'planned' && !handedOut.has(s.slot));
+      if (copy) ops.push({ kind: 'delete', collection: 'sessions', id: copy.id });
+    }
+  }
+  return ops;
 }
 
 export interface SessionLog {

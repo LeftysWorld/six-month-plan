@@ -212,6 +212,12 @@ export interface Session {
   source: string;
   moved_from: string | null;
   logged_at: string | null;
+  /**
+   * The day the schedule put this session on. Moving it to another day never changes this, so the
+   * weekly top-up knows the slot is covered and doesn't make it again. Null for one-offs, extras and
+   * "times a week" sessions; missing on older rows and older databases.
+   */
+  scheduled_on?: ISODate | null;
 }
 
 /** A photo or any other file attached to a logged task. The bytes live in file storage; this row says where. */
