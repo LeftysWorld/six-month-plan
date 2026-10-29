@@ -105,6 +105,25 @@ function movedDays(days: number[]): number[] | null {
   return to.join() === [...days].sort((x, y) => x - y).join() ? null : to;
 }
 
+/**
+ * The same JSON, whatever order its keys come back in. The database stores stretch_plan as jsonb,
+ * which re-sorts keys (and drops none), so a plain JSON.stringify comparison never matched after a
+ * save and the update kept offering itself.
+ */
+export function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined && v !== null);
+    return `{${entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/** A stretching task already has this version's holds and notes. Line endings don't count. */
+function samePlan(a: Action, d: (typeof STRETCH_DAYS)[number]): boolean {
+  return canonical(a.stretch_plan) === canonical(d.plan) && (a.details ?? '').replace(/\r\n/g, '\n').trim() === STRETCH_DETAILS.trim();
+}
+
 export function previewSplitsPack(data: AppData, today: ISODate): PackPreview {
   const view = new View(data, today, 0);
   const start = PLAN_START > today ? PLAN_START : today;
@@ -150,7 +169,7 @@ export function previewSplitsPack(data: AppData, today: ISODate): PackPreview {
     if (outside.length) updates.push(`The four goals move into ${bodyGroup!.name}`);
     const stale = applied.filter((a) => {
       const d = STRETCH_DAYS.find((x) => x.title === a.title)!;
-      return JSON.stringify(a.stretch_plan) !== JSON.stringify(d.plan) || a.details !== STRETCH_DETAILS;
+      return !samePlan(a, d);
     });
     if (stale.length) updates.push('The stretching sessions get sets and timers (Left and Right, 3 × 45 s, rest between)');
     if (stopping.length) updates.push(`${stopping.map((s) => s.action.title).join(' and ')} stop${stopping.length === 1 ? 's' : ''} after ${dayLabel(addDays(start, -1))}`);
@@ -365,7 +384,7 @@ export function opsApplySplitsPack(data: AppData, today: ISODate, choices: PackC
     // An earlier version: the stretching tasks start earlier and get the current holds.
     for (const a of stretchActions(next)) {
       const d = STRETCH_DAYS.find((x) => x.title === a.title)!;
-      if (JSON.stringify(a.stretch_plan) !== JSON.stringify(d.plan) || a.details !== STRETCH_DETAILS) add([{ kind: 'update', collection: 'actions', id: a.id, patch: { stretch_plan: d.plan, details: STRETCH_DETAILS, planned_minutes: d.minutes } }]);
+      if (!samePlan(a, d)) add([{ kind: 'update', collection: 'actions', id: a.id, patch: { stretch_plan: d.plan, details: STRETCH_DETAILS, planned_minutes: d.minutes } }]);
       for (const s of next.schedules.filter((x) => x.action_id === a.id && x.effective_from > start)) add([{ kind: 'update', collection: 'schedules', id: s.id, patch: { effective_from: start } }]);
     }
     const check = next.actions.find((a) => !a.archived_at && a.title === MONTHLY_CHECK.title);

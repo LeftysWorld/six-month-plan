@@ -312,3 +312,15 @@ test('logging a reading twice in a day keeps the last one', async () => {
   d = run(d, opsLogReading(d, 'side', 13.5, TODAY));
   assert.deepEqual(d.measurements.map((m) => m.value), [13.5]);
 });
+
+test('after a save, the database hands the plan back with its keys re-sorted: still up to date', () => {
+  const d = buggyWeek();
+  const after = run(d, opsApplySplitsPack(d, TODAY, all(d)).ops);
+  // jsonb keeps no key order (shorter keys first, then by bytes) and the API returns it that way.
+  const shuffle = (v: unknown): unknown =>
+    Array.isArray(v) ? v.map(shuffle) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.length - b.length || (a < b ? -1 : 1)).map(([k, x]) => [k, shuffle(x)])) : v;
+  const reloaded = { ...after, actions: after.actions.map((a) => (a.stretch_plan ? { ...a, stretch_plan: shuffle(a.stretch_plan) as typeof a.stretch_plan } : a)) };
+  assert.notEqual(JSON.stringify(reloaded.actions.find((a) => a.stretch_plan)!.stretch_plan), JSON.stringify(after.actions.find((a) => a.stretch_plan)!.stretch_plan));
+  const p = previewSplitsPack(reloaded, TODAY);
+  assert.equal(p.state, 'current', p.updates.join(' | '));
+});
