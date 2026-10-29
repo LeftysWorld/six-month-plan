@@ -15,7 +15,7 @@ import { useGoalDrag } from '../components/goalDrag.ts';
 import { nextSeasonDates, seasonsOf } from '../data/season.ts';
 import { GoalRow, GroupRowsCard, LooseCard, SeasonHorizon, SeasonOutcomes, SeasonStats, dropHint, placeGoals, type Placed } from './Season.tsx';
 import { pathLetter, pathsOf } from '../data/paths.ts';
-import { groupGradient } from '../data/palette.ts';
+import { gradientSlots, groupGradient } from '../data/palette.ts';
 import { byOrder, placeAmong } from '../data/order.ts';
 import { SeasonCardButton } from '../components/SeasonCard.tsx';
 import { SeasonStart } from '../components/SeasonStart.tsx';
@@ -182,7 +182,7 @@ export function Plans() {
             key={path?.id ?? 'none'}
             className="season-card group-card"
             aria-label={path ? `${pathLetter(data, path)}: ${path.name}` : 'No path'}
-            style={{ ['--group-gradient' as string]: groupGradient(path?.id ?? 'no-path', members.length ? members.map((m) => m.card.goal.color) : [path?.color ?? '#9aa0ae']) }}
+            style={{ ['--group-gradient' as string]: groupGradient(path?.id ?? 'no-path', members.map((m) => m.card.goal.color), 100, gradientSlots(data).get(path?.id ?? 'no-path')) }}
           >
             <div className="season-card-head group-head">
               {path ? (

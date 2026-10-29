@@ -16,7 +16,7 @@ import { pathLetter } from '../data/paths.ts';
 import { waitOf } from '../data/waiting.ts';
 import { WaitBadge } from '../components/Waiting.tsx';
 import { Icon } from '../components/ui.tsx';
-import { groupGradient } from '../data/palette.ts';
+import { gradientSlots, groupGradient } from '../data/palette.ts';
 
 /**
  * The Goals page's building blocks: the horizon of two seasons, the season's numbers, "By … you'll
@@ -238,7 +238,7 @@ export function GroupRowsCard({ group, members, dnd, onMove, onMoveGroup }: { gr
   const lifted = dnd?.drag?.group?.id === group.id;
   const insert = dnd?.drag?.target === `gorder:${group.id}:before` ? ' insert-before' : dnd?.drag?.target === `gorder:${group.id}:after` ? ' insert-after' : '';
   // The group's own colour: a wash of its goals' colours, so the tray reads as the container and the white rows as the goals.
-  const gradient = groupGradient(group.id, members.map((m) => m.card.goal.color));
+  const gradient = groupGradient(group.id, members.map((m) => m.card.goal.color), 100, gradientSlots(view.data).get(group.id));
   return (
     <section
       className={`season-card group-card${over ? ' drop-on' : ''}${lifted ? ' lifted' : ''}${insert}`}
@@ -320,7 +320,8 @@ export function GroupRollup({ group, big = false }: { group: GoalGroup; big?: bo
 export function LooseCard({ title, members, dnd, onMove, onNewGroup }: { title: string; members: Placed[]; dnd?: DragApi; onMove?: (g: Goal) => void; onNewGroup?: (g: Goal) => void }) {
   const over = dnd?.drag?.target === 'loose';
   const [picking, setPicking] = useState(false);
-  const gradient = groupGradient('loose', members.map((m) => m.card.goal.color), 100);
+  const { data } = useStore();
+  const gradient = groupGradient('loose', members.map((m) => m.card.goal.color), 100, gradientSlots(data).get('loose'));
   return (
     <section className={`season-card group-card${over ? ' drop-on' : ''}`} data-drop="loose" aria-label={title} style={{ ['--group-gradient' as string]: gradient }}>
       <div className="season-card-head group-head">

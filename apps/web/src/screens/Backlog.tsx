@@ -12,7 +12,7 @@ import { ExperimentSheet } from '../components/PathExperiments.tsx';
 import { StartAnywaySheet, WaitBadge, WaitPicker } from '../components/Waiting.tsx';
 import { ideaWait, opsSetWaiting, waitOf, waitValue } from '../data/waiting.ts';
 import { groupIdeas } from '../data/groups.ts';
-import { groupGradient } from '../data/palette.ts';
+import { gradientSlots, groupGradient } from '../data/palette.ts';
 
 /**
  * The Goals hub's three views of the same goals, in the order a goal moves: Backlog (ideas, selected
@@ -293,7 +293,7 @@ function IdeaGroupBlock({ group, count, children }: { group: GoalGroup; count: n
   const path = pathIds.length === 1 ? data.paths.find((p) => p.id === pathIds[0] && !p.archived_at) : undefined;
   const goals = data.goals.filter((g) => g.group_id === group.id && !g.archived_at).length;
   return (
-    <section className="idea-group" style={{ ['--group-gradient' as string]: groupGradient(group.id, data.goals.filter((g) => g.group_id === group.id).map((g) => g.color).concat(path ? [path.color] : ['#9aa0ae'])) }} aria-label={`Group: ${group.name}`}>
+    <section className="idea-group" style={{ ['--group-gradient' as string]: groupGradient(group.id, data.goals.filter((g) => g.group_id === group.id && !g.archived_at).map((g) => g.color), 100, gradientSlots(data).get(group.id)) }} aria-label={`Group: ${group.name}`}>
       <a className="idea-group-head" href={href(`/goals/group/${group.id}`)}>
         <span className="grow" style={{ minWidth: 0 }}>
           <b>{group.name}</b>
