@@ -244,7 +244,7 @@ function Shell(props: ShellProps) {
           <span className="dock-add-label">Add or log</span>
         </button>
       </div>
-      <main className="main">
+      <main className={`main${tab === 'today' ? ' main-roomy' : ''}`}>
         <div className="stack">
           {props.demo && (
             <div className="banner info">

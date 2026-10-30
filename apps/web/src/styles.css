@@ -1823,3 +1823,8 @@ a.sb-name:hover { color: var(--accent-ink); }
 .stage-card.insert-after::after { bottom: -6px; }
 /* The drag hint floats, so starting a drag never shifts the page under the pointer. */
 .drag-tip { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 90; max-width: min(560px, calc(100vw - 32px)); padding: 9px 16px; border-radius: 999px; background: var(--toast-bg, #15161a); color: #fff; font-size: 13px; font-weight: 500; box-shadow: var(--shadow-3); pointer-events: none; text-align: center; }
+
+/* Today keeps the roomier page it had before the wider layout (other tabs use the narrower margins). */
+.main.main-roomy { padding-left: 20px; padding-right: 20px; padding-top: 18px; }
+@media (min-width: 900px) { .main.main-roomy { padding: 44px 48px 80px; } }
+@media (min-width: 1100px) { .main.main-roomy { max-width: 1120px; } }
