@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { bestMatch, cleanLink, linkKind, matchExercises, youtubeId, youtubeStart, type ExerciseDemo, type LibraryExercise } from '@six/core';
+import { cleanLink, libraryMatch, linkKind, matchExercises, youtubeId, youtubeStart, type ExerciseDemo, type LibraryExercise } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { libraryImage, loadLibrary, opsSetDemo, savedDemo, type DemoKind } from '../data/demos.ts';
 import { shrinkImage } from './Attachments.tsx';
@@ -13,7 +13,7 @@ import { Icon, Sheet, useToast } from './ui.tsx';
  */
 
 /** The button on an exercise or a hold. Saves to every task with the same exercise unless `onSave` is given (the plan editors). */
-export function DemoButton({ name, kind, demo, onSave, compact = false }: { name: string; kind: DemoKind; demo?: ExerciseDemo | null; onSave?: (d: ExerciseDemo | null) => void; compact?: boolean }) {
+export function DemoButton({ name, kind, demo, onSave, steps, compact = false }: { name: string; kind: DemoKind; demo?: ExerciseDemo | null; onSave?: (d: ExerciseDemo | null) => void; steps?: string[]; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   if (!name.trim()) return null;
   return (
@@ -22,7 +22,7 @@ export function DemoButton({ name, kind, demo, onSave, compact = false }: { name
         <Icon name="play" size={compact ? 15 : 14} stroke={2.2} />
         {!compact && <span>See how</span>}
       </button>
-      {open && <DemoSheet name={name} kind={kind} demo={demo ?? null} onSave={onSave} onClose={() => setOpen(false)} />}
+      {open && <DemoSheet name={name} kind={kind} demo={demo ?? null} onSave={onSave} steps={steps} onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -45,7 +45,7 @@ function useLibrary(): { library: LibraryExercise[] | null; error: string | null
 
 type Mode = 'view' | 'pick' | 'link';
 
-export function DemoSheet({ name, kind, demo: given, onSave, onClose }: { name: string; kind: DemoKind; demo: ExerciseDemo | null; onSave?: (d: ExerciseDemo | null) => void; onClose: () => void }) {
+export function DemoSheet({ name, kind, demo: given, onSave, steps, onClose }: { name: string; kind: DemoKind; demo: ExerciseDemo | null; onSave?: (d: ExerciseDemo | null) => void; steps?: string[]; onClose: () => void }) {
   const { data, commit, db } = useStore();
   const toast = useToast();
   const { library, error } = useLibrary();
@@ -54,9 +54,12 @@ export function DemoSheet({ name, kind, demo: given, onSave, onClose }: { name: 
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const auto = useMemo(() => (library && !demo ? bestMatch(name, library, kind) : null), [library, demo, name, kind]);
+  // Only a plainly-same library exercise shows by itself; close ones are offered to choose from.
+  const match = useMemo(() => (library && !demo ? libraryMatch(name, library, kind) : null), [library, demo, name, kind]);
+  const [noneOfThese, setNoneOfThese] = useState(false);
   const chosen = demo?.kind === 'library' && library ? library.find((x) => x.id === demo.id) ?? null : null;
-  const shown: LibraryExercise | null = chosen ?? auto?.exercise ?? null;
+  const shown: LibraryExercise | null = chosen ?? match?.sure ?? null;
+  const options = !shown && !noneOfThese ? match?.options ?? [] : [];
 
   function save(next: ExerciseDemo | null, message: string) {
     setDemo(next);
@@ -93,30 +96,39 @@ export function DemoSheet({ name, kind, demo: given, onSave, onClose }: { name: 
               <>
                 {!library && !error && <div className="demo-frame demo-loading">Loading…</div>}
                 {error && <span className="small" style={{ color: 'var(--amber-ink)' }}>{error}. Check your connection and try again.</span>}
-                {library && shown && (
-                  <>
-                    {!chosen && auto && !auto.confident && (
-                      <div className="banner info demo-confirm">
-                        <span>
-                          Closest in the library: <b>{shown.name}</b>. Is this it?
-                        </span>
-                        <span className="row-start" style={{ gap: 6 }}>
-                          <button type="button" className="btn small primary" onClick={() => save({ kind: 'library', id: shown.id }, `Using ${shown.name}`)}>
-                            Yes
-                          </button>
-                          <button type="button" className="btn small" onClick={() => setMode('pick')}>
-                            Pick another
-                          </button>
-                        </span>
-                      </div>
-                    )}
-                    <LibraryMedia exercise={shown} />
-                  </>
+                {library && shown && <LibraryMedia exercise={shown} />}
+                {library && !shown && options.length > 0 && (
+                  <div className="stack-sm">
+                    <b>Which one is yours?</b>
+                    <span className="small muted">These are close to “{name}” but not plainly the same (the equipment or the position may differ). Pick yours once and it shows every time.</span>
+                    <div className="demo-options">
+                      {options.map((x) => (
+                        <button key={x.id} type="button" className="demo-option" onClick={() => save({ kind: 'library', id: x.id }, `Using ${x.name}`)}>
+                          {x.images[0] && <img src={libraryImage(x.images[0])} alt="" loading="lazy" />}
+                          <b className="small">{x.name}</b>
+                          <span className="xsmall muted">{equipmentWord(x.equipment)}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <button type="button" className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={() => setNoneOfThese(true)}>
+                      None of these
+                    </button>
+                  </div>
                 )}
-                {library && !shown && (
+                {library && !shown && options.length === 0 && (
                   <div className="demo-empty">
                     <b>No picture for this one yet.</b>
-                    <span className="small muted">The library doesn't have “{name}”. Add a video link (it plays here) or your own photo or video, once, and it shows every time.</span>
+                    <span className="small muted">Nothing in the exercise library is this {kind === 'stretch' ? 'stretch' : 'exercise'}. Add a video link (it plays here) or your own photo or video, once, and it shows every time.</span>
+                  </div>
+                )}
+                {library && !shown && steps && steps.length > 0 && (
+                  <div className="stack-sm">
+                    <span className="label">How to do it (from your plan)</span>
+                    <div className="small stack-sm demo-plan-steps">
+                      {steps.map((t, i) => (
+                        <p key={i}>{t}</p>
+                      ))}
+                    </div>
                   </div>
                 )}
               </>
@@ -246,10 +258,30 @@ function FileMedia({ path, mime, title }: { path: string; mime: string; title: s
   return mime.startsWith('video/') ? <video className="demo-media" src={url} controls playsInline loop muted autoPlay /> : <img className="demo-media" src={url} alt={title} />;
 }
 
+const KITS: { id: string; label: string; match: string[] }[] = [
+  { id: 'any', label: 'Any', match: [] },
+  { id: 'dumbbell', label: 'Dumbbell', match: ['dumbbell'] },
+  { id: 'cable', label: 'Cable', match: ['cable'] },
+  { id: 'barbell', label: 'Barbell', match: ['barbell', 'e-z curl bar'] },
+  { id: 'machine', label: 'Machine', match: ['machine'] },
+  { id: 'body', label: 'Bodyweight', match: ['body only', ''] },
+  { id: 'other', label: 'Bands, balls, other', match: ['bands', 'exercise ball', 'medicine ball', 'kettlebells', 'foam roll', 'other'] },
+];
+
+function equipmentWord(e: string | null): string {
+  if (!e || e === 'other') return 'Other equipment';
+  if (e === 'body only') return 'Bodyweight';
+  return e[0]!.toUpperCase() + e.slice(1);
+}
+
 function LibraryPicker({ name, kind, library, onPick, onBack }: { name: string; kind: DemoKind; library: LibraryExercise[]; onPick: (x: LibraryExercise) => void; onBack: () => void }) {
   const [q, setQ] = useState(name);
   const [all, setAll] = useState(false);
-  const results = useMemo(() => matchExercises(q, library, 12, all ? undefined : kind), [q, library, all, kind]);
+  const [kit, setKit] = useState<string>('any');
+  const results = useMemo(
+    () => matchExercises(q, kit === 'any' ? library : library.filter((x) => KITS.find((k) => k.id === kit)!.match.includes(x.equipment ?? '')), 12, all ? undefined : kind),
+    [q, library, all, kind, kit],
+  );
   return (
     <div className="stack-sm">
       <button type="button" className="back" onClick={onBack}>
@@ -260,6 +292,13 @@ function LibraryPicker({ name, kind, library, onPick, onBack }: { name: string; 
         Search the library ({library.length} exercises)
         <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. hamstring stretch" />
       </label>
+      <div className="chips" role="radiogroup" aria-label="Equipment">
+        {KITS.map((k) => (
+          <button key={k.id} type="button" className="chip demo-kit" role="radio" aria-checked={kit === k.id} onClick={() => setKit(k.id)}>
+            {k.label}
+          </button>
+        ))}
+      </div>
       <label className="row-start xsmall muted" style={{ gap: 8 }}>
         <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
         Include {kind === 'stretch' ? 'strength exercises' : 'stretches'} too
@@ -271,7 +310,7 @@ function LibraryPicker({ name, kind, library, onPick, onBack }: { name: string; 
             {exercise.images[0] && <img src={libraryImage(exercise.images[0])} alt="" loading="lazy" />}
             <span className="stack-sm" style={{ gap: 2, minWidth: 0 }}>
               <b className="small">{exercise.name}</b>
-              <span className="xsmall muted">{[exercise.equipment, exercise.muscles.join(', ')].filter(Boolean).join(' · ')}</span>
+              <span className="xsmall muted">{[equipmentWord(exercise.equipment), exercise.muscles.join(', ')].filter(Boolean).join(' · ')}</span>
             </span>
           </button>
         ))}

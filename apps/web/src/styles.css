@@ -2142,3 +2142,12 @@ img.demo-media { background: var(--fill); }
 .demo-result { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
 .demo-result:hover { border-color: var(--border-strong); }
 .demo-result img { flex: none; width: 64px; height: 48px; object-fit: contain; border-radius: 8px; background: #fff; }
+
+.demo-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.demo-option { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); text-align: left; font: inherit; color: var(--ink); cursor: pointer; min-height: 44px; }
+.demo-option:hover { border-color: var(--accent-ink); }
+.demo-option img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; border-radius: 10px; background: #fff; }
+.demo-plan-steps { gap: 6px; color: var(--ink-2); line-height: 1.5; }
+.demo-plan-steps p { margin: 0; }
+@media (min-width: 700px) { .demo-options { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.demo-kit { min-height: 36px; padding: 0 12px; font-size: 13px; }

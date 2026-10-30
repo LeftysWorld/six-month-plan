@@ -1,42 +1,61 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bestMatch, cleanLink, exerciseWords, linkKind, matchExercises, youtubeId, youtubeStart, type LibraryExercise } from '../src/demo.ts';
+import { cleanLink, exerciseWords, libraryMatch, linkKind, matchExercises, youtubeId, youtubeStart, type LibraryExercise } from '../src/demo.ts';
 
-const ex = (name: string, category = 'strength'): LibraryExercise => ({ id: name.replace(/\W+/g, '_'), name, category, equipment: null, muscles: [], instructions: [], images: [] });
+const ex = (name: string, category = 'strength', equipment: string | null = null): LibraryExercise => ({ id: name.replace(/\W+/g, '_'), name, category, equipment, muscles: [], instructions: [], images: [] });
 const LIB = [
-  ex('Dumbbell Bench Press'),
-  ex('Decline Dumbbell Bench Press'),
-  ex('Romanian Deadlift'),
-  ex('Barbell Squat'),
-  ex('Pullups'),
-  ex('Split Jerk', 'olympic weightlifting'),
-  ex('Hamstring Stretch', 'stretching'),
-  ex('Side Leg Raises', 'stretching'),
-  ex('Front Leg Raises', 'stretching'),
-  ex("Child's Pose", 'stretching'),
+  ex('Dumbbell Bench Press', 'strength', 'dumbbell'),
+  ex('Decline Dumbbell Bench Press', 'strength', 'dumbbell'),
+  ex('Romanian Deadlift', 'strength', 'barbell'),
+  ex('Barbell Squat', 'strength', 'barbell'),
+  ex('Pullups', 'strength', 'body only'),
+  ex('Cable Rear Delt Fly', 'strength', 'cable'),
+  ex('Triceps Overhead Extension with Rope', 'strength', 'cable'),
+  ex('Cable Seated Lateral Raise', 'strength', 'cable'),
+  ex('Lateral Bound', 'plyometrics', 'body only'),
+  ex('Split Jerk', 'olympic weightlifting', 'barbell'),
+  ex('Frog Hops', 'stretching', null),
+  ex('Split Squats', 'stretching', null),
+  ex('Pelvic Tilt Into Bridge', 'stretching', null),
+  ex('Hamstring Stretch', 'stretching', null),
+  ex('Front Leg Raises', 'stretching', 'body only'),
+  ex("Child's Pose", 'stretching', null),
 ];
 
 test('names are compared as words, with gym shorthand spelled out', () => {
-  assert.deepEqual(exerciseWords('Flat DB Bench Press (slow)'), ['flat', 'dumbbell', 'bench', 'press']);
+  assert.deepEqual(exerciseWords('Flat DB Bench Press (slow)'), ['dumbbell', 'bench', 'press']);
   assert.deepEqual(exerciseWords('RDL'), ['romanian', 'deadlift']);
   assert.deepEqual(exerciseWords('Pull-ups'), ['pullup']);
-  assert.deepEqual(exerciseWords('Side-Lying Leg Raise, 2 × 8 each leg'), ['side', 'lying', 'leg', 'raise', '2', '8']);
+  assert.deepEqual(exerciseWords('Frog Stretch'), ['frog'], '"stretch" names nothing');
 });
 
-test('lifts find their library exercise', () => {
-  assert.equal(matchExercises('Flat DB Bench Press', LIB, 1, 'strength')[0]!.exercise.name, 'Dumbbell Bench Press');
-  assert.equal(bestMatch('RDL', LIB, 'strength')!.exercise.name, 'Romanian Deadlift');
-  assert.equal(bestMatch('Pull-ups', LIB, 'strength')!.confident, true);
-  const squat = bestMatch('Barbell Back Squat', LIB, 'strength')!;
-  assert.equal(squat.exercise.name, 'Barbell Squat');
-  assert.equal(squat.confident, false, 'a word missing: shown with "Is this it?"');
+test('a lift shows by itself only when it is plainly the same exercise', () => {
+  assert.equal(libraryMatch('Flat DB Bench Press', LIB, 'strength').sure?.name, 'Dumbbell Bench Press');
+  assert.equal(libraryMatch('RDL', LIB, 'strength').sure?.name, 'Romanian Deadlift');
+  assert.equal(libraryMatch('Pull-ups', LIB, 'strength').sure?.name, 'Pullups');
+  assert.equal(libraryMatch('Barbell Back Squat', LIB, 'strength').sure?.name, 'Barbell Squat');
 });
 
-test('a stretch is matched among stretches only, and a wrong guess is not shown as sure', () => {
-  assert.equal(bestMatch('Side Split', LIB, 'stretch')?.exercise.name !== 'Split Jerk', true);
-  const front = bestMatch('Front Split, Left Leg Forward', LIB, 'stretch');
-  assert.ok(!front || !front.confident, 'Front Leg Raises is not a front split');
-  assert.equal(bestMatch('Sphinx to Cobra', LIB, 'stretch'), null);
+test('a cable or machine version is never assumed, and a different position is not the same exercise', () => {
+  const fly = libraryMatch('Seated Rear-Delt Fly', LIB, 'strength');
+  assert.equal(fly.sure, null);
+  assert.deepEqual(fly.options.map((x) => x.name), ['Cable Rear Delt Fly']);
+  assert.equal(libraryMatch('Seated Overhead Triceps Extension', LIB, 'strength').sure, null);
+  // The name says cable, but the library's is seated on a bench: offered, not shown as sure.
+  const lateral = libraryMatch('Cable Lateral Raise', LIB, 'strength');
+  assert.equal(lateral.sure, null);
+  assert.deepEqual(lateral.options.map((x) => x.name), ['Cable Seated Lateral Raise'], 'no "Lateral Bound"');
+  // A dumbbell name never gets a cable picture.
+  assert.ok(!matchExercises('DB Rear Delt Fly', LIB, 6, 'strength').some((m) => m.exercise.equipment === 'cable'));
+});
+
+test('a stretch gets a picture only when the library really has it; otherwise nothing', () => {
+  for (const hold of ['Frog Stretch', 'Side Split', 'Front Split, Left Leg Forward', 'Bridge Holds', 'Sphinx to Cobra', 'Puppy Pose (Melting Heart)', 'Lying Butterfly']) {
+    const m = libraryMatch(hold, LIB, 'stretch');
+    assert.equal(m.sure, null, hold);
+    assert.deepEqual(m.options, [], hold);
+  }
+  assert.equal(libraryMatch('Hamstring Stretch', LIB, 'stretch').sure?.name, 'Hamstring Stretch');
 });
 
 test('video links: YouTube in any form, plain videos and pictures, anything else as a link', () => {
