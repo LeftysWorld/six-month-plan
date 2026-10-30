@@ -1,6 +1,7 @@
 import { hasPrize, seasonArc, type Goal, type Plan } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
+import { type View } from '../data/derive.ts';
 import { pathsOf } from '../data/paths.ts';
 import { href } from '../router.ts';
 import { Icon } from './ui.tsx';
@@ -10,9 +11,9 @@ import { Icon } from './ui.tsx';
  * Shown on the Goals page until they're done or the season is under way; each row links to where
  * it happens. A to-do app has an empty list on day one; a season has a start.
  */
-export function SeasonStart({ plan, goals }: { plan: Plan; goals: Goal[] }) {
-  const { data, today } = useStore();
-  const view = useView();
+/** The season-start checklist: null once the start is over and every step is done (or before/after its window). */
+export function seasonStartSteps(view: View, plan: Plan, goals: Goal[], today: string): { steps: { done: boolean; text: string; to: string; sub?: string }[]; left: number; arc: ReturnType<typeof seasonArc> } | null {
+  const data = view.data;
   const arc = seasonArc(plan, today);
   if (arc.phase !== 'before' && arc.phase !== 'start') return null;
   const live = goals.filter((g) => !g.archived_at && !g.completed_at);
@@ -30,6 +31,15 @@ export function SeasonStart({ plan, goals }: { plan: Plan; goals: Goal[] }) {
   ];
   const left = steps.filter((s) => !s.done).length;
   if (left === 0 && arc.phase === 'start' && arc.week > 1) return null;
+  return { steps, left, arc };
+}
+
+export function SeasonStart({ plan, goals }: { plan: Plan; goals: Goal[] }) {
+  const { today } = useStore();
+  const view = useView();
+  const r = seasonStartSteps(view, plan, goals, today);
+  if (!r) return null;
+  const { steps, left, arc } = r;
   return (
     <section className="card stack-sm" aria-label="Season start">
       <div className="row-between">

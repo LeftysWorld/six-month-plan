@@ -1715,3 +1715,21 @@ a.sb-name:hover { color: var(--accent-ink); }
 .stage-swipe::-webkit-scrollbar { display: none; }
 .stage-col { flex: 0 0 82%; max-width: 280px; scroll-snap-align: start; background: var(--fill); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .stage-col-h { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--ink); padding: 2px; }
+
+/* Option 4: the season panel lives in a strip and a drawer, so the board gets the full width. */
+.season-full { display: flex; flex-direction: column; gap: 14px; }
+.season-full > .season-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.sb-cell.faded { opacity: 0.4; }
+.sb-cell.faded:hover { opacity: 0.85; }
+.sb-cell { transition: opacity 0.2s, background 0.2s; }
+.sb-h.on { background: var(--accent-soft); }
+.season-strip { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow-1); }
+.season-strip-bar { width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px; padding: 12px 18px; min-height: 52px; border: 0; background: none; font: inherit; font-size: 13.5px; color: var(--ink-2); text-align: left; cursor: pointer; border-radius: 18px; }
+.season-strip-bar b { color: var(--ink); font-weight: 650; }
+.season-strip-bar:hover { background: var(--fill); }
+.season-strip-show { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--accent-ink); font-weight: 600; }
+.season-strip-show svg { transform: rotate(90deg); }
+.season-drawer-wrap { position: fixed; inset: 0; z-index: 60; }
+.season-drawer-scrim { position: absolute; inset: 0; border: 0; background: rgba(15, 16, 22, 0.32); cursor: pointer; animation: fade-in 0.2s var(--ease); }
+.season-drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 420px; max-width: 94vw; overflow-y: auto; background: var(--ground); box-shadow: -16px 0 48px rgba(15, 16, 22, 0.22); padding: 22px 20px 32px; display: flex; flex-direction: column; gap: 14px; animation: drawer-in 0.26s var(--ease); }
+@keyframes drawer-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }

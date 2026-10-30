@@ -39,7 +39,7 @@ export function useStageFilter(): [StageFilter, (f: StageFilter) => void] {
 }
 
 /** Whether the window is wide enough for the board's columns. */
-function useWide(min = 760): boolean {
+export function useWide(min = 760): boolean {
   const query = `(min-width: ${min}px)`;
   const [wide, setWide] = useState(() => (typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : true));
   useEffect(() => {
@@ -226,8 +226,9 @@ export function StageBoard({ placed, by, filter, onChange, dnd }: { placed: Plac
   const wide = useWide();
   const { rows } = useBoard(placed, by);
   const showPath = by === 'group';
-  const open = (s: Stage) => filter === 'all' || filter === s;
-  const cols = `minmax(150px, 200px) ${STAGES.map((s) => (open(s.id) ? 'minmax(0, 1fr)' : '92px')).join(' ')}`;
+  // All three columns stay open: a picked stage is a little wider and the other two fade.
+  const faded = (s: Stage) => filter !== 'all' && filter !== s;
+  const cols = `minmax(150px, 210px) ${STAGES.map((s) => (filter === s.id ? 'minmax(0, 1.35fr)' : 'minmax(0, 1fr)')).join(' ')}`;
   if (rows.length === 0) return null;
 
   if (wide) {
@@ -267,19 +268,8 @@ export function StageBoard({ placed, by, filter, onChange, dnd }: { placed: Plac
                 {STAGES.map((s) => {
                   const mine = r.items.filter((x) => x.stage === s.id);
                   return (
-                    <div key={s.id} className={`sb-cell sb-${s.id}${open(s.id) ? '' : ' shut'}`}>
-                      {open(s.id) ? (
-                        mine.length ? (
-                          mine.map((x) => <MiniCard key={x.placed.card.goal.id} item={x} dnd={dnd} showPath={showPath} />)
-                        ) : (
-                          <span className="sb-dash">—</span>
-                        )
-                      ) : (
-                        <button type="button" className="sb-shut" onClick={() => onChange(s.id)} aria-label={`Show ${s.label}: ${mine.length}`}>
-                          <b>{mine.length}</b>
-                          <span>{s.label.toLowerCase()}</span>
-                        </button>
-                      )}
+                    <div key={s.id} className={`sb-cell sb-${s.id}${faded(s.id) ? ' faded' : ''}`}>
+                      {mine.length ? mine.map((x) => <MiniCard key={x.placed.card.goal.id} item={x} dnd={dnd} showPath={showPath} />) : <span className="sb-dash">—</span>}
                     </div>
                   );
                 })}

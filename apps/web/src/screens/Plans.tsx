@@ -20,7 +20,8 @@ import { byOrder, placeAmong } from '../data/order.ts';
 import { SeasonCardButton } from '../components/SeasonCard.tsx';
 import { SeasonStart } from '../components/SeasonStart.tsx';
 import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
-import { NextWeekLine, StageBoard, StageChips, useBoard, useStageFilter } from './StageBoard.tsx';
+import { NextWeekLine, StageBoard, StageChips, useBoard, useStageFilter, useWide } from './StageBoard.tsx';
+import { SeasonDrawer, SeasonStrip } from '../components/SeasonDrawer.tsx';
 
 /** Start a season: the six-month review calendar goals share (defaults to six months from today). */
 export function PlanForm({ onDone }: { onDone?: () => void }) {
@@ -98,6 +99,8 @@ export function Plans() {
     }
   };
   const [stage, setStage] = useStageFilter();
+  const [drawer, setDrawer] = useState(false);
+  const wide = useWide();
   const [naming, setNaming] = useState<Goal[] | null>(null);
   const [moving, setMoving] = useState<Goal | null>(null);
   const [movingGoals, setMovingGoals] = useState<{ goals: Goal[]; title?: string; dest: Plan | null } | null>(null);
@@ -260,6 +263,8 @@ export function Plans() {
   );
   // This season: a board of stages (Later → Up next → In progress). Next season keeps its list.
   const boardOn = selected === 'current' && !!seasons.current && inSeason.length > 0;
+  // Wide screens with the board: the season panel moves into a strip and a drawer, so all three columns fit.
+  const stripMode = boardOn && wide;
   const boardBy: 'path' | 'group' = by === 'path' && paths.length ? 'path' : 'group';
   const board = useBoard(boardOn ? inSeason : [], boardBy);
   const sideTop = season ? (
@@ -327,9 +332,10 @@ export function Plans() {
         )
       )}
 
-      <div className="season-layout">
+      <div className={stripMode ? 'season-full' : 'season-layout'}>
         <div className="season-main">
-          {sideTop && <div className="only-narrow season-side">{sideTop}</div>}
+          {stripMode && season && <SeasonStrip season={season} members={inSeason} open={drawer} onShow={() => setDrawer(true)} />}
+          {sideTop && !stripMode && <div className="only-narrow season-side">{sideTop}</div>}
           {boardOn && <StageChips filter={stage} onChange={setStage} counts={board.counts} total={board.total} />}
           {boardOn && <NextWeekLine items={board.nextWeek} week={board.week} onShow={() => setStage('soon')} />}
           {paths.length > 0 && (placed.length > 0 || plannedIdeas.length > 0) && (
@@ -351,7 +357,7 @@ export function Plans() {
               Also in other seasons: {others.map((o) => `${o.card.goal.title} (${o.plan.name})`).join(', ')}.
             </span>
           )}
-          {outcomes && <div className="only-narrow season-side">{outcomes}</div>}
+          {outcomes && !stripMode && <div className="only-narrow season-side">{outcomes}</div>}
           <div className="row-start" style={{ gap: 8, alignItems: 'stretch' }}>
             <div className="grow">
               <IdeaAdd placeholder="Add a goal idea (it starts in your backlog)" after={(t) => toast(`${t} added to your backlog`)} />
@@ -369,10 +375,15 @@ export function Plans() {
             </a>
           </div>
         </div>
+        {!stripMode && (
         <aside className="season-aside only-wide" aria-label="This season at a glance">
           {side}
         </aside>
+        )}
       </div>
+      <SeasonDrawer open={drawer && stripMode} onClose={() => setDrawer(false)}>
+        {side}
+      </SeasonDrawer>
 
       {dnd.drag && (
         <div className="drag-ghost" style={{ left: dnd.drag.x, top: dnd.drag.y }} aria-hidden="true">
