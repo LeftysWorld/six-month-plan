@@ -1828,3 +1828,29 @@ a.sb-name:hover { color: var(--accent-ink); }
 .main.main-roomy { padding-left: 20px; padding-right: 20px; padding-top: 18px; }
 @media (min-width: 900px) { .main.main-roomy { padding: 44px 48px 80px; } }
 @media (min-width: 1100px) { .main.main-roomy { max-width: 1120px; } }
+
+/* ---------- Side menu: a slim rail that expands ---------- */
+.nav-toggle { display: none; }
+@media (min-width: 900px) {
+  .dock { transition: width 0.22s var(--ease); }
+  .nav-toggle { display: flex; align-items: center; gap: 8px; margin-top: auto; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .nav-toggle:hover { color: var(--ink); border-color: var(--border-strong); }
+  .dock.rail { width: 80px; padding: 24px 14px; align-items: center; }
+  .dock.rail .nav { align-items: center; }
+  .dock.rail .nav .brand { font-size: 0; gap: 0; padding: 0 0 22px; justify-content: center; }
+  .dock.rail .nav a, .dock.rail .nav a[aria-current='page'] { width: 52px; padding: 0; justify-content: center; }
+  .dock.rail .nav a .nav-label, .dock.rail .nav a[aria-current='page'] .nav-label { display: none; }
+  .dock.rail .dock-add { width: 52px; height: 52px; border-radius: 50%; padding: 0; }
+  .dock.rail .dock-add-label { display: none; }
+  .dock.rail .nav-toggle { width: 52px; padding: 0; justify-content: center; }
+  .dock.rail .nav-toggle-label { display: none; }
+  /* iPad-sized: the full menu floats over the page; a spacer keeps the rail's slot so nothing moves. */
+  .dock.floating { position: fixed; left: 0; top: 0; bottom: 0; height: 100dvh; z-index: 80; background: var(--ground); box-shadow: 12px 0 40px rgba(15, 16, 22, 0.18); }
+  .dock-spacer { flex: none; width: 80px; }
+  .dock-scrim { position: fixed; inset: 0; z-index: 79; border: 0; background: rgba(15, 16, 22, 0.28); cursor: pointer; animation: fade-in 0.2s var(--ease); }
+}
+/* With the slim rail there's room at iPad width: use it (Today keeps its own size). */
+@media (min-width: 900px) and (max-width: 1099px) {
+  .main { max-width: none; }
+  .main.main-roomy { max-width: 720px; }
+}

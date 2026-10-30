@@ -9,6 +9,7 @@ import { useView } from './data/useView.ts';
 import { opsProfile } from './data/ops.ts';
 import { href, navigate, useRoute } from './router.ts';
 import { Icon, ToastProvider } from './components/ui.tsx';
+import { useNavRail } from './components/navRail.ts';
 import { Login } from './screens/Login.tsx';
 import { Today } from './screens/Today.tsx';
 import { QuickAdd } from './screens/today/QuickAdd.tsx';
@@ -142,6 +143,7 @@ function Shell(props: ShellProps) {
   const shownDay = useShownDay();
   const [s0 = '', s1, s2] = route.segments;
   const [adding, setAdding] = useState(false);
+  const nav = useNavRail();
 
   const away = view.daysAway();
   const showWelcome =
@@ -230,7 +232,9 @@ function Shell(props: ShellProps) {
 
   return (
     <div className="shell">
-      <div className="dock">
+      {nav.floating && <div className="dock-spacer" aria-hidden="true" />}
+      {nav.floating && <button type="button" className="dock-scrim" aria-label="Close the menu" onClick={nav.close} />}
+      <div className={`dock${nav.open ? '' : ' rail'}${nav.floating ? ' floating' : ''}`} onClick={(e) => nav.floating && (e.target as HTMLElement).closest('a') && nav.close()}>
         <nav className="nav" aria-label="Main">
           <span className="brand">Six Months</span>
           <NavLink to="/today" icon="today" label="Today" current={tab === 'today'} />
@@ -242,6 +246,12 @@ function Shell(props: ShellProps) {
         <button type="button" className="dock-add" aria-label="Add a task, log something or save a goal idea" onClick={() => setAdding(true)}>
           <Icon name="plus" size={24} stroke={2.4} />
           <span className="dock-add-label">Add or log</span>
+        </button>
+        <button type="button" className="nav-toggle" onClick={nav.toggle} aria-expanded={nav.open} aria-label={nav.open ? 'Collapse the menu' : 'Expand the menu'} title={nav.open ? 'Collapse the menu' : 'Expand the menu'}>
+          <span style={{ display: 'inline-flex', transform: nav.open ? 'rotate(180deg)' : 'none' }}>
+            <Icon name="chevron" size={16} stroke={2.4} />
+          </span>
+          <span className="nav-toggle-label">Collapse</span>
         </button>
       </div>
       <main className={`main${tab === 'today' ? ' main-roomy' : ''}`}>
@@ -286,7 +296,7 @@ function Shell(props: ShellProps) {
 
 function NavLink({ to, icon, label, current }: { to: string; icon: string; label: string; current: boolean }) {
   return (
-    <a href={href(to)} aria-current={current ? 'page' : undefined} aria-label={label}>
+    <a href={href(to)} aria-current={current ? 'page' : undefined} aria-label={label} title={label}>
       <Icon name={icon} size={current ? 20 : 22} stroke={current ? 2 : 1.9} />
       <span className="nav-label">{label}</span>
     </a>
