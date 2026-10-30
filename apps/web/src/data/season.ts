@@ -1,4 +1,4 @@
-import { addDays, daysBetween, isoWeekday, paceLabel, progressFor, quarterRange, shortDate, type Goal, type ISODate, type PaceLabel, type Plan } from '@six/core';
+import { addDays, daysBetween, isoWeekday, paceLabel, progressFor, quarterRange, shortDate, weekStart, type Goal, type ISODate, type PaceLabel, type Plan } from '@six/core';
 import { fmt, type View } from './derive.ts';
 import { headlineTally, tallyUnit } from './tally.ts';
 
@@ -40,11 +40,12 @@ export function firstCheckpoint(plan: Plan): ISODate {
   return quarterRange(plan, plan.start_date).end;
 }
 
-/** The weekly review opens on Saturday: "Today", "Tomorrow", "Saturday", or "Done" once this week's is saved. */
+/** The weekly review opens on Saturday: "Today", "Sat", or "Done" once this week's is saved. */
 export function nextReviewWord(today: ISODate, done = false): string {
   const d = isoWeekday(today);
   if (done && d >= 6) return 'Done';
-  return d === 6 ? 'Today' : d === 5 ? 'Tomorrow' : d === 7 ? 'Today' : 'Sat';
+  // Short on purpose: it sits in a narrow tile. Friday says Sat, not Tomorrow.
+  return d === 6 || d === 7 ? 'Today' : 'Sat';
 }
 
 export interface Track {
@@ -225,4 +226,27 @@ export function nextDue(view: View, goalId: string): { title: string; date: ISOD
     .filter((x) => x.goal_id === goalId && !x.completed_at)
     .sort((a, b) => (a.due_date < b.due_date ? -1 : 1))[0];
   return m ? { title: m.title, date: m.due_date, late: m.due_date < view.today } : null;
+}
+
+/** Where a goal stands in the season, left to right: not soon, starting within two weeks, under way. */
+export type Stage = 'later' | 'soon' | 'now';
+export const STAGES: { id: Stage; label: string; color: string }[] = [
+  { id: 'later', label: 'Later', color: '#9AA0AE' },
+  { id: 'soon', label: 'Up next', color: '#E9A23B' },
+  { id: 'now', label: 'In progress', color: '#2BB673' },
+];
+
+/** The Monday and Sunday of the week after the one a day is in. */
+export function nextWeekOf(today: ISODate): { start: ISODate; end: ISODate } {
+  const start = addDays(weekStart(today), 7);
+  return { start, end: addDays(start, 6) };
+}
+
+/**
+ * A goal's stage from its own start date: under way once it has started; up next when it starts
+ * this week or next; later after that.
+ */
+export function stageOf(start: ISODate, today: ISODate): Stage {
+  if (start <= today) return 'now';
+  return start <= nextWeekOf(today).end ? 'soon' : 'later';
 }

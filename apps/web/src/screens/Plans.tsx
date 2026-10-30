@@ -20,6 +20,7 @@ import { byOrder, placeAmong } from '../data/order.ts';
 import { SeasonCardButton } from '../components/SeasonCard.tsx';
 import { SeasonStart } from '../components/SeasonStart.tsx';
 import { GoalsSwitch, IdeaAdd } from './Backlog.tsx';
+import { NextWeekLine, StageBoard, StageChips, useBoard, useStageFilter } from './StageBoard.tsx';
 
 /** Start a season: the six-month review calendar goals share (defaults to six months from today). */
 export function PlanForm({ onDone }: { onDone?: () => void }) {
@@ -96,6 +97,7 @@ export function Plans() {
       // storage blocked: just for now
     }
   };
+  const [stage, setStage] = useStageFilter();
   const [naming, setNaming] = useState<Goal[] | null>(null);
   const [moving, setMoving] = useState<Goal | null>(null);
   const [movingGoals, setMovingGoals] = useState<{ goals: Goal[]; title?: string; dest: Plan | null } | null>(null);
@@ -256,15 +258,25 @@ export function Plans() {
       )}
     </div>
   );
-  const side = season ? (
-    <div className="season-side">
+  // This season: a board of stages (Later → Up next → In progress). Next season keeps its list.
+  const boardOn = selected === 'current' && !!seasons.current && inSeason.length > 0;
+  const boardBy: 'path' | 'group' = by === 'path' && paths.length ? 'path' : 'group';
+  const board = useBoard(boardOn ? inSeason : [], boardBy);
+  const sideTop = season ? (
+    <>
       <SeasonStats season={season} members={inSeason} ideas={plannedIdeas.length} />
       <SeasonStart plan={season} goals={inSeason.map((m) => m.card.goal)} />
       <div className="row-between" style={{ padding: '0 4px' }}>
         <span className="xsmall muted">The season on one page</span>
         <SeasonCardButton plan={season} goals={inSeason.map((m) => m.card.goal)} />
       </div>
-      <SeasonOutcomes season={season} members={inSeason} onPlan={selected === 'next' && inSeason.length === 0 ? () => undefined : undefined} />
+    </>
+  ) : null;
+  const outcomes = season ? <SeasonOutcomes season={season} members={inSeason} onPlan={selected === 'next' && inSeason.length === 0 ? () => undefined : undefined} /> : null;
+  const side = season ? (
+    <div className="season-side">
+      {sideTop}
+      {outcomes}
     </div>
   ) : null;
 
@@ -317,9 +329,11 @@ export function Plans() {
 
       <div className="season-layout">
         <div className="season-main">
-          <div className="only-narrow">{side}</div>
+          {sideTop && <div className="only-narrow season-side">{sideTop}</div>}
+          {boardOn && <StageChips filter={stage} onChange={setStage} counts={board.counts} total={board.total} />}
+          {boardOn && <NextWeekLine items={board.nextWeek} week={board.week} onShow={() => setStage('soon')} />}
           {paths.length > 0 && (placed.length > 0 || plannedIdeas.length > 0) && (
-            <div className="row-between" style={{ gap: 8 }}>
+            <div className="row-between" style={{ gap: 8, justifyContent: boardOn ? 'flex-end' : 'space-between' }}>
               <span className="xsmall muted">Group by</span>
               <div className="seg" role="radiogroup" aria-label="Group goals by">
                 <button role="radio" aria-checked={by === 'path'} onClick={() => setBy('path')}>
@@ -331,7 +345,13 @@ export function Plans() {
               </div>
             </div>
           )}
-          {list}
+          {boardOn ? <StageBoard placed={inSeason} by={boardBy} filter={stage} onChange={setStage} dnd={dnd} /> : list}
+          {boardOn && others.length > 0 && (
+            <span className="xsmall muted">
+              Also in other seasons: {others.map((o) => `${o.card.goal.title} (${o.plan.name})`).join(', ')}.
+            </span>
+          )}
+          {outcomes && <div className="only-narrow season-side">{outcomes}</div>}
           <div className="row-start" style={{ gap: 8, alignItems: 'stretch' }}>
             <div className="grow">
               <IdeaAdd placeholder="Add a goal idea (it starts in your backlog)" after={(t) => toast(`${t} added to your backlog`)} />

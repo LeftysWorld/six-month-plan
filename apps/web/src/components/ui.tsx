@@ -42,6 +42,7 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   plus: <path d="M12 5v14M5 12h14" />,
+  bell: <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />,
   check: <path d="M5 12l5 5 9-10" />,
   minus: <path d="M6 12h12" />,
   play: <path d="M8 5.5v13l10-6.5z" />,
