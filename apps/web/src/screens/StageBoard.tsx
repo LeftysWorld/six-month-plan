@@ -10,6 +10,7 @@ import { href } from '../router.ts';
 import { Icon } from '../components/ui.tsx';
 import type { DragApi } from '../components/goalDrag.ts';
 import { GoalRow, type Placed } from './Season.tsx';
+import { BesidePanel, useBesideView } from '../components/BesidePanel.tsx';
 
 export type StageFilter = Stage | 'all';
 
@@ -225,61 +226,83 @@ function Empty({ items, filter, onChange }: { items: Item[]; filter: StageFilter
 export function StageBoard({ placed, by, filter, onChange, dnd }: { placed: Placed[]; by: 'path' | 'group'; filter: StageFilter; onChange: (f: StageFilter) => void; dnd?: DragApi }) {
   const wide = useWide();
   const { rows } = useBoard(placed, by);
+  const [besideView, setBesideView] = useBesideView();
+  const [focusId, setFocus] = useState<string | null>(null);
+  const [folded, setFolded] = useState<Set<string>>(() => new Set());
+  const toggleFold = (key: string) =>
+    setFolded((f) => {
+      const n = new Set(f);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
   const showPath = by === 'group';
   // Whole season: the board, three even columns.
   const cols = `minmax(150px, 210px) ${STAGES.map(() => 'minmax(0, 1fr)').join(' ')}`;
   if (rows.length === 0) return null;
 
-  // One stage picked: only its goals, in the detailed rows, grouped by path or group. Rows with
-  // nothing in that stage are left out and named underneath.
+  // One stage picked: only its goals, in the detailed rows, one column of group sections with
+  // gradient headers; beside it, the panel (Next 14 days by default). Narrow windows stack them.
   if (filter !== 'all') {
     const label = STAGES.find((s) => s.id === filter)!.label.toLowerCase();
     const shownRows = rows.map((r) => ({ r, mine: r.items.filter((x) => x.stage === filter) })).filter((x) => x.mine.length > 0);
     const hidden = rows.filter((r) => !r.items.some((x) => x.stage === filter));
+    const beside = rows.flatMap((r) => r.items).map((x) => ({ goal: x.placed.card.goal, plan: x.placed.plan, start: x.start, stage: x.stage }));
+    const uniq = beside.filter((x, i) => beside.findIndex((y) => y.goal.id === x.goal.id) === i);
     return (
-      <div className="stage-detail">
-        {shownRows.length === 0 && (
-          <div className="stage-empty">
-            <span>Nothing {label} this season.</span>
-            <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start' }} onClick={() => onChange('all')}>
-              See the whole season ›
-            </button>
-          </div>
-        )}
-        <div className="stage-detail-grid">
+      <div className="stage-reading">
+        <div className="stage-reading-main">
+          {shownRows.length === 0 && (
+            <div className="stage-empty">
+              <span>Nothing {label} this season.</span>
+              <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start' }} onClick={() => onChange('all')}>
+                See the whole season ›
+              </button>
+            </div>
+          )}
           {shownRows.map(({ r, mine }) => {
             const over = !!r.drop && dnd?.drag?.target === r.drop;
+            const shut = folded.has(r.key);
             return (
               <section key={r.key} className={`season-card group-card${over ? ' drop-on' : ''}`} style={{ ['--group-gradient' as string]: r.gradient }} data-drop={r.drop} aria-label={r.name}>
-                <div className="season-card-head group-head stage-rowhead">
-                  <span className="row-between" style={{ gap: 10 }}>
+                <div className="season-card-head group-head stage-sechead">
+                  <button type="button" className="stage-fold" onClick={() => toggleFold(r.key)} aria-expanded={!shut}>
                     <b>{r.name}</b>
-                    {r.to && (
-                      <a href={href(r.to)} className="season-open">
-                        Open <Icon name="chevron" size={14} stroke={2.4} />
-                      </a>
-                    )}
-                  </span>
-                  <span className="xsmall muted">
-                    {mine.length} {label}
-                    {r.items.length > mine.length ? ` · ${r.items.length - mine.length} more this season` : ''}
-                  </span>
+                    <span className="xsmall muted">
+                      {mine.length} {label}
+                      {r.items.length > mine.length ? ` · ${r.items.length - mine.length} more this season` : ''}
+                    </span>
+                  </button>
+                  {r.to && (
+                    <a href={href(r.to)} className="season-open">
+                      Open <Icon name="chevron" size={14} stroke={2.4} />
+                    </a>
+                  )}
+                  <button type="button" className="stage-fold-btn" onClick={() => toggleFold(r.key)} aria-label={shut ? `Show ${r.name}` : `Hide ${r.name}`}>
+                    <span style={{ display: 'inline-flex', transform: shut ? 'none' : 'rotate(90deg)', transition: 'transform 0.2s' }}>
+                      <Icon name="chevron" size={16} stroke={2.4} />
+                    </span>
+                  </button>
                 </div>
-                {mine.map((x) => (
-                  <GoalRow key={x.placed.card.goal.id} placed={x.placed} dnd={dnd} hidePath={!showPath} />
-                ))}
+                {!shut &&
+                  mine.map((x) => (
+                    <GoalRow key={x.placed.card.goal.id} placed={x.placed} dnd={dnd} hidePath={!showPath} onSelect={besideView === 'focus' ? (g) => setFocus(g.id) : undefined} selected={besideView === 'focus' && focusId === x.placed.card.goal.id} />
+                  ))}
               </section>
             );
           })}
+          {hidden.length > 0 && shownRows.length > 0 && (
+            <span className="xsmall muted" style={{ padding: '0 4px' }}>
+              Nothing {label} in {hidden.map((r) => r.name).join(', ')}.{' '}
+              <button type="button" className="link-btn xsmall" style={{ padding: 0 }} onClick={() => onChange('all')}>
+                See the whole season
+              </button>
+            </span>
+          )}
         </div>
-        {hidden.length > 0 && shownRows.length > 0 && (
-          <span className="xsmall muted" style={{ padding: '0 4px' }}>
-            Nothing {label} in {hidden.map((r) => r.name).join(', ')}.{' '}
-            <button type="button" className="link-btn xsmall" style={{ padding: 0 }} onClick={() => onChange('all')}>
-              See the whole season
-            </button>
-          </span>
-        )}
+        <aside className="stage-reading-side">
+          <BesidePanel goals={uniq} view={besideView} onView={setBesideView} focusId={focusId ?? shownRows[0]?.mine[0]?.placed.card.goal.id ?? null} />
+        </aside>
       </div>
     );
   }

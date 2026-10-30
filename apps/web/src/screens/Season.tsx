@@ -131,7 +131,7 @@ function startsLine(start: ISODate, today: ISODate): string {
 const STATUS_INK: Record<string, string> = { ahead: 'var(--blue-ink)', behind: 'var(--amber-ink)', on_track: 'var(--ink-2)', none: 'var(--muted)' };
 
 /** One goal as a row: name and status, a track against even pace, and where it is → what done is. */
-export function GoalRow({ placed, dnd, onMove, hidePath = false }: { placed: Placed; dnd?: DragApi; onMove?: (g: Goal) => void; hidePath?: boolean }) {
+export function GoalRow({ placed, dnd, onMove, hidePath = false, onSelect, selected = false }: { placed: Placed; dnd?: DragApi; onMove?: (g: Goal) => void; hidePath?: boolean; onSelect?: (g: Goal) => void; selected?: boolean }) {
   const view = useView();
   const { goal } = placed.card;
   const path = goal.path_id ? view.data.paths.find((p) => p.id === goal.path_id && !p.archived_at) : undefined;
@@ -148,7 +148,7 @@ export function GoalRow({ placed, dnd, onMove, hidePath = false }: { placed: Pla
   const nextPrize = goalPrizes(view, goal, view.today, placed.plan).find((p) => (p.status === 'open' || p.status === 'due') && !p.lost) ?? null;
   return (
     <div
-      className={`season-row${dragging ? ' lifted' : ''}${over ? ' drop-on' : ''}${insert}`}
+      className={`season-row${dragging ? ' lifted' : ''}${over ? ' drop-on' : ''}${insert}${selected ? ' selected' : ''}`}
       data-drop={goal.group_id ? undefined : `goal:${goal.id}`}
       data-row={goal.id}
       data-container={goal.group_id ?? 'loose'}
@@ -171,7 +171,20 @@ export function GoalRow({ placed, dnd, onMove, hidePath = false }: { placed: Pla
           {GRIP}
         </button>
       )}
-      <a href={href(`/goals/${goal.id}`)} draggable={false} className="season-row-link" onClick={(e) => dnd?.consumeClick() && e.preventDefault()}>
+      <a
+        href={href(`/goals/${goal.id}`)}
+        draggable={false}
+        className="season-row-link"
+        aria-current={selected ? 'true' : undefined}
+        onClick={(e) => {
+          if (dnd?.consumeClick()) return e.preventDefault();
+          // In Goal focus, a click shows the goal beside the list instead of opening it.
+          if (onSelect && !e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            onSelect(goal);
+          }
+        }}
+      >
         <span className="season-row-head">
           <span className="dot" style={{ width: 8, height: 8, flex: 'none', background: goal.color }} />
           <span className="season-row-title">{goal.title}</span>
