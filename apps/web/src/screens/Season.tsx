@@ -121,6 +121,13 @@ export const GRIP = (
   </svg>
 );
 
+/** "Starts Mon Nov 2 · in 4 days" for a goal that hasn't started. */
+function startsLine(start: ISODate, today: ISODate): string {
+  const n = daysBetween(today, start);
+  const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(`${start}T00:00:00Z`).getUTCDay()];
+  return `Starts ${day} ${shortDate(start)} · ${n <= 0 ? 'today' : n === 1 ? 'tomorrow' : `in ${n} days`}`;
+}
+
 const STATUS_INK: Record<string, string> = { ahead: 'var(--blue-ink)', behind: 'var(--amber-ink)', on_track: 'var(--ink-2)', none: 'var(--muted)' };
 
 /** One goal as a row: name and status, a track against even pace, and where it is → what done is. */
@@ -207,11 +214,23 @@ export function GoalRow({ placed, dnd, onMove, hidePath = false }: { placed: Pla
             </span>
           </>
         ) : (
-          <span className="season-row-foot">
-            <span className="muted">
-              {t.target} by {due}
+          <>
+            <span className="season-row-foot">
+              <span className="muted">
+                {t.target} by {due}
+              </span>
             </span>
-          </span>
+            <span className="season-row-week">
+              <span className="xsmall" style={{ color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>
+                {startsLine(view.startFor(goal, placed.plan), view.today)}
+              </span>
+              {next && (
+                <span className="xsmall muted" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  First: {next.title} · {shortDate(next.date)}
+                </span>
+              )}
+            </span>
+          </>
         )}
         {placed.card.reason && (
           <span className="season-row-needs xsmall" style={{ color: 'var(--amber-ink)' }}>

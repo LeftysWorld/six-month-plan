@@ -9,7 +9,7 @@ import { byOrder } from '../data/order.ts';
 import { href } from '../router.ts';
 import { Icon } from '../components/ui.tsx';
 import type { DragApi } from '../components/goalDrag.ts';
-import type { Placed } from './Season.tsx';
+import { GoalRow, type Placed } from './Season.tsx';
 
 export type StageFilter = Stage | 'all';
 
@@ -226,10 +226,63 @@ export function StageBoard({ placed, by, filter, onChange, dnd }: { placed: Plac
   const wide = useWide();
   const { rows } = useBoard(placed, by);
   const showPath = by === 'group';
-  // All three columns stay open: a picked stage is a little wider and the other two fade.
-  const faded = (s: Stage) => filter !== 'all' && filter !== s;
-  const cols = `minmax(150px, 210px) ${STAGES.map((s) => (filter === s.id ? 'minmax(0, 1.35fr)' : 'minmax(0, 1fr)')).join(' ')}`;
+  // Whole season: the board, three even columns.
+  const cols = `minmax(150px, 210px) ${STAGES.map(() => 'minmax(0, 1fr)').join(' ')}`;
   if (rows.length === 0) return null;
+
+  // One stage picked: only its goals, in the detailed rows, grouped by path or group. Rows with
+  // nothing in that stage are left out and named underneath.
+  if (filter !== 'all') {
+    const label = STAGES.find((s) => s.id === filter)!.label.toLowerCase();
+    const shownRows = rows.map((r) => ({ r, mine: r.items.filter((x) => x.stage === filter) })).filter((x) => x.mine.length > 0);
+    const hidden = rows.filter((r) => !r.items.some((x) => x.stage === filter));
+    return (
+      <div className="stage-detail">
+        {shownRows.length === 0 && (
+          <div className="stage-empty">
+            <span>Nothing {label} this season.</span>
+            <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start' }} onClick={() => onChange('all')}>
+              See the whole season ›
+            </button>
+          </div>
+        )}
+        <div className="stage-detail-grid">
+          {shownRows.map(({ r, mine }) => {
+            const over = !!r.drop && dnd?.drag?.target === r.drop;
+            return (
+              <section key={r.key} className={`season-card group-card${over ? ' drop-on' : ''}`} style={{ ['--group-gradient' as string]: r.gradient }} data-drop={r.drop} aria-label={r.name}>
+                <div className="season-card-head group-head stage-rowhead">
+                  <span className="row-between" style={{ gap: 10 }}>
+                    <b>{r.name}</b>
+                    {r.to && (
+                      <a href={href(r.to)} className="season-open">
+                        Open <Icon name="chevron" size={14} stroke={2.4} />
+                      </a>
+                    )}
+                  </span>
+                  <span className="xsmall muted">
+                    {mine.length} {label}
+                    {r.items.length > mine.length ? ` · ${r.items.length - mine.length} more this season` : ''}
+                  </span>
+                </div>
+                {mine.map((x) => (
+                  <GoalRow key={x.placed.card.goal.id} placed={x.placed} dnd={dnd} hidePath={!showPath} />
+                ))}
+              </section>
+            );
+          })}
+        </div>
+        {hidden.length > 0 && shownRows.length > 0 && (
+          <span className="xsmall muted" style={{ padding: '0 4px' }}>
+            Nothing {label} in {hidden.map((r) => r.name).join(', ')}.{' '}
+            <button type="button" className="link-btn xsmall" style={{ padding: 0 }} onClick={() => onChange('all')}>
+              See the whole season
+            </button>
+          </span>
+        )}
+      </div>
+    );
+  }
 
   if (wide) {
     return (
@@ -238,7 +291,7 @@ export function StageBoard({ placed, by, filter, onChange, dnd }: { placed: Plac
           <div className="sb-head" style={{ gridTemplateColumns: cols }}>
             <span className="sb-h sb-h-first">{by === 'path' ? 'Path' : 'Group'}</span>
             {STAGES.map((s, i) => (
-              <button key={s.id} type="button" className={`sb-h${filter === s.id ? ' on' : ''}`} onClick={() => onChange(filter === s.id ? 'all' : s.id)} aria-pressed={filter === s.id}>
+              <button key={s.id} type="button" className="sb-h" onClick={() => onChange(s.id)} title={`Only ${s.label.toLowerCase()}, in more detail`}>
                 <span className="stage-dot" style={{ background: s.color }} />
                 {s.label}
                 {i < STAGES.length - 1 && (
@@ -268,7 +321,7 @@ export function StageBoard({ placed, by, filter, onChange, dnd }: { placed: Plac
                 {STAGES.map((s) => {
                   const mine = r.items.filter((x) => x.stage === s.id);
                   return (
-                    <div key={s.id} className={`sb-cell sb-${s.id}${faded(s.id) ? ' faded' : ''}`}>
+                    <div key={s.id} className={`sb-cell sb-${s.id}`}>
                       {mine.length ? mine.map((x) => <MiniCard key={x.placed.card.goal.id} item={x} dnd={dnd} showPath={showPath} />) : <span className="sb-dash">—</span>}
                     </div>
                   );
