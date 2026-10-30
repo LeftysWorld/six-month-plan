@@ -3,6 +3,7 @@ import { applyOp, type AppData, type Op } from './model.ts';
 import { opsCreateGoal, opsCreatePlan, opsEnsureWeek, opsLogSession, opsToggleMilestone } from './ops.ts';
 import { invertOps, opsStopFrom } from './planPack.ts';
 import { MONTHLY_CHECK } from './plans/splitsBackbend.ts';
+import { pictureFor } from './plans/stretchPictures.ts';
 
 /**
  * Small changes to your plan, shipped with the app and applied on your data with one tap (Today
@@ -574,5 +575,45 @@ function nextSunday(d: ISODate): ISODate {
   return addDays(d, (7 - dow) % 7);
 }
 
+// ---------- Pictures for your stretches ----------
+
+/** Stretching tasks whose holds don't show your picture yet, with the holds that change. */
+function stretchPictureParts(data: AppData): { action: Action; holds: string[] }[] {
+  const out: { action: Action; holds: string[] }[] = [];
+  for (const a of data.actions) {
+    if (a.archived_at || !a.stretch_plan) continue;
+    const holds = a.stretch_plan.holds.filter((h) => {
+      const pic = pictureFor(h.name);
+      return pic && pic.kind === 'video' && !(h.demo?.kind === 'video' && h.demo.url === pic.url);
+    });
+    if (holds.length) out.push({ action: a, holds: holds.map((h) => h.name) });
+  }
+  return out;
+}
+
+export const stretchPicturesUpdate: AppUpdate = {
+  id: 'stretch-pictures-2026-10-30',
+  title: 'Pictures for your stretches',
+  nudge: 'Your pictures for the Daily Eight, Bridge Holds and Puppy Pose are ready: add them to See how?',
+  preview(data) {
+    const parts = stretchPictureParts(data);
+    if (!parts.length) return { done: true, lines: [], options: [] };
+    const names = [...new Set(parts.flatMap((p) => p.holds))];
+    return {
+      done: false,
+      lines: [`See how shows your picture for ${names.length} hold${names.length === 1 ? '' : 's'}: ${names.join(', ')}`, `On ${parts.length} stretching task${parts.length === 1 ? '' : 's'} (${parts.map((p) => `“${p.action.title}”`).join(', ')})`],
+      options: [],
+    };
+  },
+  ops(data) {
+    return stretchPictureParts(data).map(({ action }) => ({
+      kind: 'update' as const,
+      collection: 'actions' as const,
+      id: action.id,
+      patch: { stretch_plan: { ...action.stretch_plan!, holds: action.stretch_plan!.holds.map((h) => { const pic = pictureFor(h.name); return pic ? { ...h, demo: pic } : h; }) } },
+    }));
+  },
+};
+
 /** Every update the app ships, newest first. */
-export const APP_UPDATES: AppUpdate[] = [fermentUpdate, glampGroupUpdate, flexMeasuresUpdate, docStudyUpdate];
+export const APP_UPDATES: AppUpdate[] = [stretchPicturesUpdate, fermentUpdate, glampGroupUpdate, flexMeasuresUpdate, docStudyUpdate];

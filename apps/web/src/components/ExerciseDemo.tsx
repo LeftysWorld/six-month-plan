@@ -226,7 +226,7 @@ function LinkMedia({ url, title }: { url: string; title: string }) {
     );
   }
   if (kind === 'video') return <video className="demo-media" src={url} controls playsInline loop muted autoPlay />;
-  if (kind === 'image') return <img className="demo-media" src={url} alt={title} />;
+  if (kind === 'image') return <LinkImage url={url} title={title} />;
   return (
     <div className="demo-empty">
       <b>This link can't play inside the app.</b>
@@ -236,6 +236,32 @@ function LinkMedia({ url, title }: { url: string; title: string }) {
       <span className="xsmall muted">YouTube links, video files and pictures play here. For others, a YouTube link of the same move works best.</span>
     </div>
   );
+}
+
+/**
+ * A picture from a link. A DuckDuckGo image link (the proxy) falls back to the picture's own
+ * address if the proxy won't serve it; if neither loads, the link opens outside the app.
+ */
+function LinkImage({ url, title }: { url: string; title: string }) {
+  const sources = [url];
+  try {
+    const u = new URL(url);
+    const inner = u.hostname === 'external-content.duckduckgo.com' ? u.searchParams.get('u') : null;
+    if (inner) sources.push(inner);
+  } catch {
+    /* not a URL we can read */
+  }
+  const [at, setAt] = useState(0);
+  if (at >= sources.length)
+    return (
+      <div className="demo-empty">
+        <b>This picture didn't load.</b>
+        <a className="btn small" href={url} target="_blank" rel="noreferrer">
+          Open it
+        </a>
+      </div>
+    );
+  return <img key={sources[at]} className="demo-media" src={sources[at]} alt={title} referrerPolicy="no-referrer" onError={() => setAt((n) => n + 1)} />;
 }
 
 /** Your own photo or video, from your private file storage. */

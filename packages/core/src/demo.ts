@@ -215,6 +215,19 @@ export function youtubeStart(url: string): number {
 export function linkKind(url: string): 'youtube' | 'video' | 'image' | 'link' {
   if (youtubeId(url)) return 'youtube';
   const path = url.split(/[?#]/)[0]!.toLowerCase();
+  // An image search proxy (DuckDuckGo's "copy image address"): the picture is in the u= param.
+  if (/^https?:\/\/external-content\.duckduckgo\.com\/iu\//i.test(url)) {
+    try {
+      const inner = new URL(url).searchParams.get('u');
+      if (inner) {
+        const k = linkKind(inner);
+        return k === 'link' ? 'image' : k;
+      }
+    } catch {
+      /* fall through */
+    }
+    return 'image';
+  }
   if (/\.(mp4|webm|mov|m4v)$/.test(path)) return 'video';
   if (/\.(gif|jpe?g|png|webp|avif)$/.test(path)) return 'image';
   return 'link';

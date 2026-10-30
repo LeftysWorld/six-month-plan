@@ -1,10 +1,11 @@
-import { addDays, weekStart, type Action, type ActionSchedule, type Goal, type GoalGroup, type ISODate, type Milestone, type Plan, type Session } from '@six/core';
+import { addDays, weekStart, type Action, type ActionSchedule, type Goal, type GoalGroup, type ISODate, type Milestone, type Plan, type Session, type StretchPlan } from '@six/core';
 import { applyOp, type AppData, type Op } from './model.ts';
 import { View } from './derive.ts';
 import { isHabit } from './habits.ts';
 import { opsCreateGoal, opsEnsureWeek } from './ops.ts';
 import { opsCreateGroup } from './groups.ts';
 import { FLEX_GOALS, MONTHLY_CHECK, PLAN_NAME, PLAN_START, STRETCH_DAYS, STRETCH_DETAILS } from './plans/splitsBackbend.ts';
+import { withPictures } from './plans/stretchPictures.ts';
 
 /**
  * Apply the Splits & Backbend Plan to the data you already have, in one reviewed step:
@@ -126,9 +127,14 @@ export function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** Pictures (See how) aren't part of a pack version: yours stay when the holds change. */
+function noDemos(plan: StretchPlan | null | undefined): StretchPlan | null {
+  return plan ? { ...plan, holds: plan.holds.map(({ demo: _demo, ...h }) => h) } : null;
+}
+
 /** A stretching task already has this version's holds and notes. Line endings don't count. */
 function samePlan(a: Action, d: (typeof STRETCH_DAYS)[number]): boolean {
-  return canonical(a.stretch_plan) === canonical(d.plan) && (a.details ?? '').replace(/\r\n/g, '\n').trim() === STRETCH_DETAILS.trim();
+  return canonical(noDemos(a.stretch_plan)) === canonical(noDemos(d.plan)) && (a.details ?? '').replace(/\r\n/g, '\n').trim() === STRETCH_DETAILS.trim();
 }
 
 export function previewSplitsPack(data: AppData, today: ISODate): PackPreview {
@@ -369,7 +375,7 @@ export function opsApplySplitsPack(data: AppData, today: ISODate, choices: PackC
   if (p.state === 'none') {
     // 4. Five stretching tasks, shared by all four goals.
     for (const d of STRETCH_DAYS) {
-      const action: Action = { id: newId(), title: d.title, kind: 'stretch', planned_minutes: d.minutes, planned_count: null, min_label: 'The Daily Eight on easy-day effort', min_minutes: 15, min_count: null, priority: true, archived_at: null, details: STRETCH_DETAILS, stretch_plan: d.plan };
+      const action: Action = { id: newId(), title: d.title, kind: 'stretch', planned_minutes: d.minutes, planned_count: null, min_label: 'The Daily Eight on easy-day effort', min_minutes: 15, min_count: null, priority: true, archived_at: null, details: STRETCH_DETAILS, stretch_plan: withPictures(d.plan) };
       const schedule: ActionSchedule = { id: newId(), action_id: action.id, rule: 'days', days: [d.day], per_week: null, effective_from: start, effective_to: null };
       add([
         { kind: 'insert', collection: 'actions', rows: [action as unknown as Row] },
@@ -391,7 +397,7 @@ export function opsApplySplitsPack(data: AppData, today: ISODate, choices: PackC
     // An earlier version: the stretching tasks start earlier and get the current holds.
     for (const a of stretchActions(next)) {
       const d = STRETCH_DAYS.find((x) => x.title === a.title)!;
-      if (!samePlan(a, d)) add([{ kind: 'update', collection: 'actions', id: a.id, patch: { stretch_plan: d.plan, details: STRETCH_DETAILS, planned_minutes: d.minutes } }]);
+      if (!samePlan(a, d)) add([{ kind: 'update', collection: 'actions', id: a.id, patch: { stretch_plan: withPictures(d.plan, a.stretch_plan), details: STRETCH_DETAILS, planned_minutes: d.minutes } }]);
       for (const s of next.schedules.filter((x) => x.action_id === a.id && x.effective_from > start)) add([{ kind: 'update', collection: 'schedules', id: s.id, patch: { effective_from: start } }]);
     }
     const check = next.actions.find((a) => !a.archived_at && a.title === MONTHLY_CHECK.title);
