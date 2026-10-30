@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { addDays, habitDays, shortDate, weekStart, type Action, type ISODate, type Session } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { opsLogSession, opsRestoreSession } from '../data/ops.ts';
-import { blankHabit, habitSessions, habitWhen, habitsOf, opsCreateHabit, opsEditHabit, opsStopHabit, statsFor } from '../data/habits.ts';
+import { blankHabit, habitSessions, habitWhen, habitsOf, keptAndStopped, opsCreateHabit, opsEditHabit, opsPauseHabit, opsSmallToday, opsStopHabit, opsTapDay, readyToGraduate, slippingHabits, statsFor, trackRecord, usualRate, weekCells, weekKept, type CellState } from '../data/habits.ts';
+import { invertOps } from '../data/planPack.ts';
+import type { Op } from '../data/model.ts';
 import type { TaskInput } from '../data/breakdown.ts';
 import { href } from '../router.ts';
 import { Icon, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
@@ -22,19 +24,63 @@ export function habitToday(data: { sessions: Session[] }, actionId: string, toda
   return data.sessions.find((s) => s.action_id === actionId && !s.date && s.week_start === weekStart(today) && s.status === 'planned') ?? null;
 }
 
+const LATER_KEY = 'six.habits.graduateLater';
+const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const STATE_WORD: Record<CellState, string> = { done: 'done', small: 'small version', part: 'partly', missed: 'missed', skipped: 'skipped', planned: 'due', none: 'not a habit day', future: 'later this week' };
+
 export function Habits() {
-  const { data, today } = useStore();
+  const { data, today, commit } = useStore();
+  const toast = useToast();
   const [editing, setEditing] = useState<{ action: Action | null } | null>(null);
+  const [detail, setDetail] = useState<Action | null>(null);
+  const [weekOff, setWeekOff] = useState(0);
   const [showStopped, setShowStopped] = useState(false);
+  const [later, setLater] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(LATER_KEY) ?? '[]') as string[];
+    } catch {
+      return [];
+    }
+  });
   const all = habitsOf(data, today);
   const running = all.filter((h) => h.running);
-  const stopped = all.filter((h) => !h.running);
+  const { kept, stopped } = keptAndStopped(data, today);
   const dueToday = running.filter((h) => habitToday(data, h.action.id, today));
   const doneToday = dueToday.filter((h) => {
     const s = habitToday(data, h.action.id, today)!;
     return s.date === today && s.status !== 'planned' && s.status !== 'skipped';
   });
+  const monday = addDays(weekStart(today), -7 * weekOff);
+  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  // The worst two; the rest are named in a line.
+  // Real slips first (a usual pace to fall from), biggest drop first; habits with no record yet after.
+  const gap = (x: { kept: number; due: number; usual: number | null }) => (x.usual == null ? 1 : x.kept / Math.max(1, x.due) - x.usual);
+  const allSlipping = weekOff === 0 ? slippingHabits(data, today).sort((a, b) => gap(a) - gap(b)) : [];
+  const slipping = allSlipping.slice(0, 2);
+  const graduates = running.filter((h) => !later.includes(h.action.id) && readyToGraduate(data, h.action.id, today));
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
+
+  const withUndo = (ops: Op[], text: string) => {
+    const undo = invertOps(data, ops);
+    commit(ops);
+    toast(text, () => commit(undo));
+  };
+  const keepLater = (id: string) => {
+    const next = [...later, id];
+    setLater(next);
+    try {
+      localStorage.setItem(LATER_KEY, JSON.stringify(next));
+    } catch {
+      // storage blocked: just for now
+    }
+  };
+  const graduate = (action: Action) => withUndo(opsStopHabit(data, action, today), `${action.title} is automatic now. It moved to Kept.`);
+  const pause = (action: Action) => withUndo(opsPauseHabit(data, action, today), `${action.title} paused. It’s back ${shortDate(addDays(today, 7))}.`);
+  const tap = (action: Action, date: ISODate) => {
+    const ops = opsTapDay(data, action, date, today);
+    if (ops.length) commit(ops);
+  };
+
   return (
     <div className="stack rise">
       <div className="topbar">
@@ -52,14 +98,11 @@ export function Habits() {
           <Icon name="plus" size={15} stroke={2.4} /> New habit
         </button>
       </div>
-      <span className="small muted" style={{ marginTop: -6 }}>
-        Things you keep doing for their own sake, not for a goal. They also show on Today.
-      </span>
 
       {running.length === 0 && (
         <div className="card stack-sm">
           <span className="small" style={{ color: 'var(--ink-2)' }}>
-            No habits yet. Add something you want to keep doing, like “Clean house, every day” or “Call family, twice a week”.
+            No habits yet. Add something you want to keep doing for its own sake, like “Guitar, 4 times a week” or “Call family on Sundays”.
           </span>
           <button className="btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setEditing({ action: null })}>
             Add a habit
@@ -67,11 +110,162 @@ export function Habits() {
         </div>
       )}
 
-      <div className="habit-list">
-        {running.map((h) => (
-          <HabitCard key={h.action.id} action={h.action} when={habitWhen(h.schedule, today)} onEdit={() => setEditing({ action: h.action })} />
-        ))}
-      </div>
+      {slipping.length > 0 && (
+        <section className="card habit-alert slipping" aria-label="Slipping">
+          <span className="label">Slipping</span>
+          {slipping.map(({ action, why }) => {
+            const small = action.min_label?.trim();
+            const todayCell = weekCells(data, action.id, weekStart(today), today).find((c) => c.date === today)!;
+            const doneNow = todayCell.state === 'done' || todayCell.state === 'small';
+            return (
+              <div key={action.id} className="habit-alert-row">
+                <span className="grow">
+                  <b>{action.title}</b>
+                  <span className="xsmall muted">{why}</span>
+                </span>
+                <span className="row-start" style={{ gap: 6 }}>
+                  {!doneNow && (
+                    <button className="btn small primary" onClick={() => withUndo(small ? opsSmallToday(data, action, today) : opsTapDay(data, action, today, today), small ? `${action.title}: the small version counts.` : `${action.title} done today`)}>
+                      {small ? `Small version: ${small}` : 'Do it today'}
+                    </button>
+                  )}
+                  <button className="link-btn small" onClick={() => setEditing({ action })}>
+                    Fewer days
+                  </button>
+                  <button className="link-btn small" onClick={() => pause(action)}>
+                    Pause a week
+                  </button>
+                </span>
+              </div>
+            );
+          })}
+          {allSlipping.length > slipping.length && (
+            <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>
+              + {allSlipping.length - slipping.length} more slipping: {allSlipping.slice(2).map((x) => x.action.title).join(', ')}
+            </span>
+          )}
+        </section>
+      )}
+
+      {graduates.map(({ action }) => {
+        const r = trackRecord(data, action.id, today);
+        return (
+          <section key={action.id} className="card habit-alert graduate" aria-label={`${action.title} has stuck`}>
+            <span className="grow">
+              <b>{action.title} has stuck.</b>
+              <span className="xsmall muted">
+                {Math.floor(r.days / 7)} weeks, {Math.round((r.rate8 ?? 0) * 100)}% kept. Make it automatic: stop tracking it, and it moves to Kept.
+              </span>
+            </span>
+            <span className="row-start" style={{ gap: 6 }}>
+              <button className="btn small primary" onClick={() => graduate(action)}>
+                Make it automatic
+              </button>
+              <button className="btn small" onClick={() => keepLater(action.id)}>
+                Keep tracking
+              </button>
+            </span>
+          </section>
+        );
+      })}
+
+      {running.length > 0 && (
+        <section className="card habit-week-card" aria-label="Your habits this week">
+          <div className="hw-bar">
+            <div className="row-start" style={{ gap: 4, flexWrap: 'nowrap' }}>
+              <button className="icon-btn" aria-label="Previous week" onClick={() => setWeekOff(weekOff + 1)}>
+                <Icon name="back" size={16} stroke={2.4} />
+              </button>
+              <b className="hw-title">
+                {weekOff === 0 ? 'This week' : weekOff === 1 ? 'Last week' : `${weekOff} weeks ago`}
+                <span className="xsmall muted">
+                  {' '}
+                  · {shortDate(monday)} – {shortDate(addDays(monday, 6))}
+                </span>
+              </b>
+              <button className="icon-btn" aria-label="Next week" disabled={weekOff === 0} onClick={() => setWeekOff(Math.max(0, weekOff - 1))}>
+                <Icon name="chevron" size={16} stroke={2.4} />
+              </button>
+            </div>
+            <span className="xsmall muted">Tap a day: done, then the small version, then clear.</span>
+          </div>
+          <div className="hw-grid" role="grid" aria-label="Habits by day">
+            <div className="hw-row hw-head" role="row">
+              <span className="hw-name" />
+              {days.map((d, i) => (
+                <span key={d} className={`hw-day${d === today ? ' today' : ''}`} role="columnheader">
+                  {DOW[i]}
+                  <b>{Number(d.slice(8))}</b>
+                </span>
+              ))}
+              <span className="hw-sum">Week</span>
+            </div>
+            {running.map(({ action, schedule }) => {
+              const cells = weekCells(data, action.id, monday, today);
+              const w = weekKept(data, action.id, monday, today);
+              const usual = usualRate(data, action.id, today);
+              return (
+                <div key={action.id} className="hw-row" role="row">
+                  <button type="button" className="hw-name" onClick={() => setDetail(action)} aria-label={`${action.title}: details`}>
+                    <b>{action.title}</b>
+                    <span className="xsmall muted">{habitWhen(schedule, today)}</span>
+                  </button>
+                  {cells.map((c, i) => (
+                    <button
+                      key={c.date}
+                      type="button"
+                      role="gridcell"
+                      className={`hw-cell s-${c.state}${c.date === today ? ' today' : ''}`}
+                      disabled={!c.open}
+                      onClick={() => tap(action, c.date)}
+                      aria-label={`${action.title}, ${DOW[i]} ${shortDate(c.date)}: ${STATE_WORD[c.state]}`}
+                    >
+                      <span className="hw-mark" aria-hidden="true" />
+                    </button>
+                  ))}
+                  <span className="hw-sum">
+                    <b>
+                      {w.kept}
+                      <small> of {Math.max(w.planned, w.kept)}</small>
+                    </b>
+                    <span className="hw-trend" title={usual == null ? 'No record yet' : `Last 4 weeks: ${Math.round(usual * 100)}% kept`}>
+                      <i style={{ width: `${Math.round((usual ?? 0) * 100)}%` }} />
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="hw-legend" aria-label="Key">
+            <span>
+              <i className="hw-mark k-done" /> Done
+            </span>
+            <span>
+              <i className="hw-mark k-small" /> Small version
+            </span>
+            <span>
+              <i className="hw-mark k-missed" /> Missed
+            </span>
+            <span>
+              <i className="hw-mark k-none" /> Not a habit day
+            </span>
+            <span>Bar: last 4 weeks</span>
+          </div>
+        </section>
+      )}
+
+      {kept.length > 0 && (
+        <section className="card stack-sm" aria-label="Kept">
+          <span className="label">Kept · automatic now</span>
+          <div className="row-start" style={{ gap: 8 }}>
+            {kept.map((a) => (
+              <button key={a.id} type="button" className="chip habit-kept" onClick={() => setDetail(a)}>
+                <Icon name="check" size={13} stroke={2.6} /> {a.title}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {stopped.length > 0 && (
         <>
@@ -79,17 +273,76 @@ export function Habits() {
             {showStopped ? 'Hide' : 'Show'} stopped habits ({stopped.length})
           </button>
           {showStopped && (
-            <div className="habit-list">
-              {stopped.map((h) => (
-                <HabitCard key={h.action.id} action={h.action} when={habitWhen(h.schedule, today)} onEdit={() => setEditing({ action: h.action })} stopped />
+            <div className="row-start" style={{ gap: 8 }}>
+              {stopped.map((a) => (
+                <button key={a.id} type="button" className="chip" onClick={() => setDetail(a)}>
+                  {a.title}
+                </button>
               ))}
             </div>
           )}
         </>
       )}
 
+      {detail && (
+        <HabitDetail
+          action={detail}
+          onClose={() => setDetail(null)}
+          onEdit={() => {
+            setEditing({ action: detail });
+            setDetail(null);
+          }}
+          onPause={() => {
+            pause(detail);
+            setDetail(null);
+          }}
+          onGraduate={() => {
+            graduate(detail);
+            setDetail(null);
+          }}
+        />
+      )}
       {editing && <HabitSheet action={editing.action} onClose={() => setEditing(null)} />}
     </div>
+  );
+}
+
+/** One habit in depth: today, the streaks, the last 15 weeks, its small version and cue, and what to do with it. */
+function HabitDetail({ action, onClose, onEdit, onPause, onGraduate }: { action: Action; onClose: () => void; onEdit: () => void; onPause: () => void; onGraduate: () => void }) {
+  const { data, today } = useStore();
+  const h = habitsOf(data, today).find((x) => x.action.id === action.id);
+  const running = !!h?.running;
+  return (
+    <Sheet title={action.title} onClose={onClose}>
+      <HabitCard action={action} when={habitWhen(h?.schedule ?? null, today)} onEdit={onEdit} stopped={!running} />
+      <div className="stack-sm">
+        <span className="small">
+          <span className="muted">Small version: </span>
+          {action.min_label?.trim() || <span className="muted">none yet (add one in Edit)</span>}
+        </span>
+        {action.cue?.trim() && (
+          <span className="small">
+            <span className="muted">When: </span>
+            {action.cue}
+          </span>
+        )}
+      </div>
+      <div className="row-start" style={{ gap: 8 }}>
+        <button className="btn small" onClick={onEdit}>
+          {running ? 'Edit' : 'Start again'}
+        </button>
+        {running && (
+          <button className="btn small" onClick={onPause}>
+            Pause a week
+          </button>
+        )}
+        {running && (
+          <button className="btn small" onClick={onGraduate}>
+            Make it automatic
+          </button>
+        )}
+      </div>
+    </Sheet>
   );
 }
 
@@ -172,6 +425,7 @@ function HabitSheet({ action, onClose }: { action: Action | null; onClose: () =>
           kind: action.kind,
           minutes: action.planned_minutes,
           cue: action.cue ?? '',
+          minLabel: action.min_label ?? '',
           when: existing?.rule === 'per_week' ? 'per_week' : 'days',
           days: existing?.rule === 'days' ? existing.days : [1, 2, 3, 4, 5, 6, 7],
           perWeek: existing?.per_week ?? 3,
@@ -240,6 +494,10 @@ function HabitSheet({ action, onClose }: { action: Action | null; onClose: () =>
           <input type="date" min={v.start ?? today} value={v.through ?? ''} onChange={(e) => set({ through: e.target.value || null })} />
         </label>
       )}
+      <label className="field">
+        Small version, for off days (optional)
+        <input value={v.minLabel} onChange={(e) => set({ minLabel: e.target.value })} placeholder="e.g. 2 minutes" />
+      </label>
       <label className="field">
         When or where (optional)
         <input value={v.cue} onChange={(e) => set({ cue: e.target.value })} placeholder="e.g. After dinner" />
