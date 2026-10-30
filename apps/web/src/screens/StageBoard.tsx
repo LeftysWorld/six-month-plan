@@ -208,7 +208,7 @@ function MiniCard({ item, dnd, showPath, cell }: { item: Item; dnd?: DragApi; sh
 }
 
 function Empty({ items, filter, onChange }: { items: Item[]; filter: StageFilter; onChange: (f: StageFilter) => void }) {
-  const words: Record<StageFilter, string> = { later: 'later', soon: 'up next', now: 'in progress', all: 'this season' };
+  const words: Record<StageFilter, string> = { later: 'committed', soon: 'up next', now: 'in progress', all: 'this season' };
   const others = STAGES.filter((s) => s.id !== filter).map((s) => ({ s, n: items.filter((x) => x.stage === s.id).length })).filter((x) => x.n > 0);
   return (
     <div className="stage-empty">

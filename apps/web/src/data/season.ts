@@ -231,7 +231,7 @@ export function nextDue(view: View, goalId: string): { title: string; date: ISOD
 /** Where a goal stands in the season, left to right: not soon, starting within two weeks, under way. */
 export type Stage = 'later' | 'soon' | 'now';
 export const STAGES: { id: Stage; label: string; color: string }[] = [
-  { id: 'later', label: 'Later', color: '#9AA0AE' },
+  { id: 'later', label: 'Committed', color: '#9AA0AE' },
   { id: 'soon', label: 'Up next', color: '#E9A23B' },
   { id: 'now', label: 'In progress', color: '#2BB673' },
 ];
