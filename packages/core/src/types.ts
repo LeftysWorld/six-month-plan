@@ -250,6 +250,8 @@ export interface Session {
    * "times a week" sessions; missing on older rows and older databases.
    */
   scheduled_on?: ISODate | null;
+  /** A workout's overall effort, 1–10 (optional, asked when you finish). */
+  effort?: number | null;
 }
 
 /** A photo or any other file attached to a logged task. The bytes live in file storage; this row says where. */
@@ -274,6 +276,19 @@ export interface WorkoutSet {
   weight: number | null;
   reps: number | null;
   done: boolean;
+}
+
+/** How an exercise went in one logged workout: effort 1–10, whether it hurt (and where), a note. */
+export interface WorkoutExerciseLog {
+  id: string;
+  session_id: string;
+  exercise: string;
+  /** 1–10, how many more good reps were left on the last set (10 = none). Null: not rated. */
+  effort: number | null;
+  pain: boolean;
+  /** Where it hurt: knee, shoulder, lower back, elbow, wrist, other. Empty when it didn't. */
+  pain_where: string;
+  note: string;
 }
 
 export interface MeasurementType {

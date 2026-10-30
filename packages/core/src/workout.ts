@@ -106,21 +106,68 @@ export function targetText(ex: PlannedExercise, unit = 'lb'): string {
 
 export interface WeightSuggestion {
   weight: number | null;
-  /** plan: from the plan; last: what you used last time; up: you hit the top of the range on every set. */
-  why: 'plan' | 'last' | 'up';
+  /**
+   * plan: from the plan; last: what you used last time; up: you hit the top of the range on every
+   * set; allout: you hit it, but rated it 10 (nothing left), so the weight stays.
+   */
+  why: 'plan' | 'last' | 'up' | 'allout';
 }
 
 /**
  * The weight to start with: the plan's on the first time, then last time's weight, plus `step`
  * once every planned set reached the top of the rep range (double progression).
  */
-export function suggestWeight(ex: PlannedExercise, last: DoneSet[] | null, step = 5): WeightSuggestion {
+export function suggestWeight(ex: PlannedExercise, last: DoneSet[] | null, step = 5, lastEffort: number | null = null): WeightSuggestion {
   const used = (last ?? []).filter((s) => s.done && s.weight != null);
   if (!used.length) return { weight: ex.weight, why: 'plan' };
   const top = Math.max(...used.map((s) => s.weight!));
   const atTop = used.filter((s) => s.weight === top);
-  if (atTop.length >= ex.sets && atTop.every((s) => (s.reps ?? 0) >= ex.reps_max)) return { weight: top + step, why: 'up' };
+  if (atTop.length >= ex.sets && atTop.every((s) => (s.reps ?? 0) >= ex.reps_max)) {
+    // Every rep, but nothing left: earn it once more before the weight goes up.
+    if (lastEffort != null && lastEffort >= 10) return { weight: top, why: 'allout' };
+    return { weight: top + step, why: 'up' };
+  }
   return { weight: top, why: 'last' };
+}
+
+// ---------- Effort: 1–10 per exercise ----------
+
+/**
+ * The effort scale, by reps left on the last set (the lifting version of the 1–10 scale: 10 = no
+ * reps left, 9 = one, 8 = two…). Labelled every time so an 8 means the same thing each week.
+ */
+export const EFFORT_WORDS = ['', 'Very easy', 'Easy', 'Easy', 'Comfortable', 'Moderate', 'Working', 'Hard', 'Hard', 'Very hard', 'Max'] as const;
+export const EFFORT_LEFT = ['', '6+ reps left', '6+ reps left', '6+ reps left', '6+ reps left', '5 reps left', '4 reps left', '3 reps left', '2 reps left', '1 rep left', 'No reps left'] as const;
+/** Most sets should land here. */
+export const EFFORT_TARGET = { min: 7, max: 9 } as const;
+
+export type EffortZone = 'easy' | 'moderate' | 'target' | 'max';
+export function effortZone(n: number): EffortZone {
+  if (n <= 4) return 'easy';
+  if (n <= 6) return 'moderate';
+  if (n <= 9) return 'target';
+  return 'max';
+}
+
+/** A whole number 1–10, or null. */
+export function cleanEffort(n: unknown): number | null {
+  const v = typeof n === 'number' ? n : Number(n);
+  if (!Number.isFinite(v)) return null;
+  const r = Math.round(v);
+  return r >= 1 && r <= 10 ? r : null;
+}
+
+/**
+ * What the rating means for next time. `allTop`: every set done reached the top of the range.
+ * `weight`: the weight used (null for bodyweight).
+ */
+export function effortHint(effort: number, ctx: { allTop: boolean; weight: number | null; unit: string }): string {
+  const w = ctx.weight == null ? 'the same' : `${short(ctx.weight)} ${ctx.unit}`;
+  if (effort >= 10) return `All-out. Keep ${w} next time and watch your form on the last reps.`;
+  if (effort === 9) return `Right at the edge of your target. Keep ${w} next time.`;
+  if (effort >= 7) return ctx.allTop ? 'Top of your range at a hard effort: ready to move up next time.' : 'Right in your target. Same weight next time, chase one more rep.';
+  if (effort >= 5) return ctx.allTop ? 'Top of your range with reps to spare: move up next time.' : 'Some left in the tank. Push for one more rep a set next time.';
+  return ctx.allTop ? 'Felt easy at the top of your range: move up next time.' : 'Felt easy. Push for more reps next time, then more weight.';
 }
 
 const short = (n: number) => String(Math.round(n * 100) / 100);

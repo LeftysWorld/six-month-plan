@@ -58,6 +58,7 @@ export function opsRemovePracticeWorkouts(data: AppData): Op[] {
     const sessions = data.sessions.filter((s) => s.action_id === a.id);
     const ids = new Set(sessions.map((s) => s.id));
     for (const w of data.workoutSets.filter((w) => ids.has(w.session_id))) del('workoutSets', w.id);
+    for (const w of data.workoutExercises.filter((w) => ids.has(w.session_id))) del('workoutExercises', w.id);
     for (const f of data.attachments.filter((f) => ids.has(f.session_id))) del('attachments', f.id);
     for (const s of sessions) del('sessions', s.id);
     for (const s of data.schedules.filter((s) => s.action_id === a.id)) del('schedules', s.id);

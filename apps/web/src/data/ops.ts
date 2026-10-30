@@ -19,6 +19,7 @@ import {
   type SessionStatus,
   type StretchHoldLog,
   type WorkoutSet,
+  type WorkoutExerciseLog,
 } from '@six/core';
 import { applyOp, type AppData, type CollectionKey, type Op, type ReviewPayload } from './model.ts';
 import { opsRemoveFromGroup } from './groups.ts';
@@ -173,9 +174,10 @@ export function opsStartExtra(data: AppData, action: Action, date: ISODate): { o
 /** Delete an extra session (not a planned one) with its logged sets. Returns the ops that bring it back. */
 export function opsDeleteExtra(data: AppData, session: Session): { ops: Op[]; undo: Op[] } {
   const sets = data.workoutSets.filter((w) => w.session_id === session.id);
+  const logs = data.workoutExercises.filter((w) => w.session_id === session.id);
   return {
-    ops: [...sets.map((w): Op => ({ kind: 'delete', collection: 'workoutSets', id: w.id })), { kind: 'delete', collection: 'sessions', id: session.id }],
-    undo: [{ kind: 'insert', collection: 'sessions', rows: rows([session]) }, ...(sets.length ? [{ kind: 'insert', collection: 'workoutSets', rows: rows(sets) } as Op] : [])],
+    ops: [...sets.map((w): Op => ({ kind: 'delete', collection: 'workoutSets', id: w.id })), ...logs.map((w): Op => ({ kind: 'delete', collection: 'workoutExercises', id: w.id })), { kind: 'delete', collection: 'sessions', id: session.id }],
+    undo: [{ kind: 'insert', collection: 'sessions', rows: rows([session]) }, ...(sets.length ? [{ kind: 'insert', collection: 'workoutSets', rows: rows(sets) } as Op] : []), ...(logs.length ? [{ kind: 'insert', collection: 'workoutExercises', rows: rows(logs) } as Op] : [])],
   };
 }
 
@@ -230,6 +232,25 @@ export interface StretchSetInput {
   reps: number | null;
   done: boolean;
   pain: boolean;
+}
+
+/** How an exercise went, as entered in the workout log (no ids yet). */
+export type ExerciseLogInput = Omit<WorkoutExerciseLog, 'id' | 'session_id'>;
+
+/**
+ * Save a workout's per-exercise effort, pain and notes, replacing any saved before. Only exercises
+ * with something entered get a row.
+ */
+export function opsSaveExerciseLogs(data: AppData, sessionId: string, logs: ExerciseLogInput[]): { ops: Op[]; undo: Op[] } {
+  const existing = data.workoutExercises.filter((w) => w.session_id === sessionId);
+  const fresh: WorkoutExerciseLog[] = logs
+    .filter((l) => l.effort != null || l.pain || l.note.trim() !== '')
+    .map((l) => ({ id: newId(), session_id: sessionId, exercise: l.exercise, effort: l.effort, pain: l.pain, pain_where: l.pain ? l.pain_where : '', note: l.note.trim() }));
+  if (!existing.length && !fresh.length) return { ops: [], undo: [] };
+  return {
+    ops: [...existing.map((w): Op => ({ kind: 'delete', collection: 'workoutExercises', id: w.id })), ...(fresh.length ? [{ kind: 'insert', collection: 'workoutExercises', rows: rows(fresh) } as Op] : [])],
+    undo: [...fresh.map((w): Op => ({ kind: 'delete', collection: 'workoutExercises', id: w.id })), ...(existing.length ? [{ kind: 'insert', collection: 'workoutExercises', rows: rows(existing) } as Op] : [])],
+  };
 }
 
 /** Save a stretching session's sets, replacing any saved before (one row per set). */
@@ -563,6 +584,7 @@ export function opsDeleteGoal(data: AppData, goal: Goal): { ops: Op[]; files: st
   const attachments = data.attachments.filter((a) => sessionIds.has(a.session_id) || (a.action_id && own.has(a.action_id)));
   for (const a of attachments) del('attachments', a.id);
   for (const w of data.workoutSets.filter((w) => sessionIds.has(w.session_id))) del('workoutSets', w.id);
+  for (const w of data.workoutExercises.filter((w) => sessionIds.has(w.session_id))) del('workoutExercises', w.id);
   for (const h of data.stretchHolds.filter((h) => sessionIds.has(h.session_id))) del('stretchHolds', h.id);
   for (const s of sessions) del('sessions', s.id);
   for (const s of data.schedules.filter((x) => own.has(x.action_id))) del('schedules', s.id);

@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
+import { cleanEffort, effortHint, effortZone as effortZoneOf, parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, EFFORT_WORDS, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
-import { opsLogSession, opsRestoreSession, opsSaveWorkout, opsStartExtra } from '../data/ops.ts';
+import { opsLogSession, opsRestoreSession, opsSaveExerciseLogs, opsSaveWorkout, opsStartExtra } from '../data/ops.ts';
 import { cleanPlan } from '../data/breakdown.ts';
 import { SessionFiles, useAddFiles } from './Attachments.tsx';
 import type { AppData, Op } from '../data/model.ts';
 import { Icon, Sheet, useToast } from './ui.tsx';
 import { DemoButton } from './ExerciseDemo.tsx';
+import { blankFeedback, ExerciseFeedback, FinishWorkout, type ExerciseFeedbackValue } from './Effort.tsx';
 import { LinkToGoal, needsGoalLink } from './LinkToGoal.tsx';
 import { MoveDayPicker, moveDatesFor } from './MoveDayPicker.tsx';
 
@@ -187,6 +188,25 @@ function lastTime(data: AppData, session: Session): Map<string, DoneSet[]> {
   return new Map();
 }
 
+/** Each exercise's effort from the last workout of this task that rated it, by exercise. */
+function lastEfforts(data: AppData, session: Session): Map<string, number> {
+  const day = session.date ?? session.week_start;
+  const earlier = new Map(
+    data.sessions
+      .filter((s) => s.action_id === session.action_id && s.id !== session.id && s.status !== 'planned' && s.status !== 'skipped' && (s.date ?? s.week_start) <= day)
+      .map((s) => [s.id, s.date ?? s.week_start] as const),
+  );
+  const out = new Map<string, { effort: number; on: string }>();
+  for (const w of data.workoutExercises) {
+    const on = earlier.get(w.session_id);
+    if (on == null || w.effort == null) continue;
+    const k = w.exercise.toLowerCase();
+    const have = out.get(k);
+    if (!have || on > have.on) out.set(k, { effort: w.effort, on });
+  }
+  return new Map([...out].map(([k, v]) => [k, v.effort]));
+}
+
 const draftKey = (sessionId: string) => `six.workout.${sessionId}`;
 
 /** An exercise added during a workout; `keep` adds it to the task's plan when you finish. */
@@ -194,6 +214,8 @@ type Extra = PlannedExercise & { keep?: boolean };
 interface Draft {
   rows: Row[][];
   extras: Extra[];
+  /** Effort, pain and note per exercise, in plan order. */
+  feedback?: ExerciseFeedbackValue[];
 }
 
 function readDraft(sessionId: string): Draft | null {
@@ -237,13 +259,15 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   const day = session.date ?? today;
   const future = day > today;
   const last = lastTime(data, session);
+  const lastEffort = lastEfforts(data, session);
   const saved = data.workoutSets.filter((w) => w.session_id === session.id);
+  const savedFeedback = data.workoutExercises.filter((w) => w.session_id === session.id);
   // The draft kept on this device: the set rows and any exercises added today.
   const [draft] = useState<Draft | null>(() => readDraft(session.id));
   // Exercises added for this workout only (or to keep in the plan from now on).
   const [extras, setExtras] = useState<Extra[]>(() => draft?.extras ?? savedExtras(basePlan, saved));
   const plan: Extra[] = [...basePlan, ...extras];
-  const suggestions = plan.map((e) => suggestWeight(e, last.get(e.name.toLowerCase()) ?? null));
+  const suggestions = plan.map((e) => suggestWeight(e, last.get(e.name.toLowerCase()) ?? null, undefined, lastEffort.get(e.name.toLowerCase()) ?? null));
   const planWeight = (i: number) => suggestions[i]!.weight;
 
   const [rows, setRows] = useState<Row[][]>(() => {
@@ -265,6 +289,17 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
       }),
     );
   });
+  // Effort, pain and note per exercise: the draft's, else what was saved, else blank.
+  const [feedback, setFeedback] = useState<ExerciseFeedbackValue[]>(() => {
+    if (draft?.feedback && draft.feedback.length === plan.length) return draft.feedback;
+    return plan.map((e) => {
+      const f = savedFeedback.find((w) => w.exercise.toLowerCase() === e.name.toLowerCase());
+      return f ? { effort: cleanEffort(f.effort), pain: f.pain, where: f.pain_where, note: f.note } : blankFeedback();
+    });
+  });
+  const setFeedbackAt = (i: number, patch: Partial<ExerciseFeedbackValue>) => setFeedback((all) => all.map((f, a) => (a === i ? { ...f, ...patch } : f)));
+  const [sessionEffort, setSessionEffort] = useState<number | null>(() => cleanEffort(session.effort));
+  const [finishing, setFinishing] = useState(false);
   const firstOpen = (r: Row[][]) => r.findIndex((sets) => sets.some((x) => !x.done));
   const [open, setOpen] = useState<number>(() => Math.max(0, firstOpen(rows)));
   const [note, setNote] = useState(session.note);
@@ -274,11 +309,11 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   useEffect(() => {
     if (future) return;
     try {
-      localStorage.setItem(draftKey(session.id), JSON.stringify({ rows, extras } satisfies Draft));
+      localStorage.setItem(draftKey(session.id), JSON.stringify({ rows, extras, feedback } satisfies Draft));
     } catch {
       // storage blocked: the draft just isn't kept
     }
-  }, [rows, extras, future, session.id]);
+  }, [rows, extras, feedback, future, session.id]);
 
   // The rest timer counts to a time (not by ticks), so it stays right after the phone sleeps.
   useEffect(() => {
@@ -314,8 +349,9 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     setRows(next);
     const secs = restSeconds(plan[i]!.rest);
     const exerciseDone = next[i]!.every((y) => y.done);
-    if (exerciseDone) {
-      // Fold the finished exercise to what you did, and open the next one with sets left.
+    if (exerciseDone && feedback[i]?.effort != null) {
+      // Fold the finished exercise to what you did, and open the next one with sets left. One not
+      // rated yet stays open: the effort slider is right under its last set.
       setOpen(firstOpen(next));
     }
     const allDone = next.every((sets) => sets.every((y) => y.done));
@@ -349,6 +385,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     const ex: Extra = { ...(like ?? {}), name: adding.name.trim(), sets, reps_min: like && like.reps_max === reps ? like.reps_min : reps, reps_max: reps, weight, weight_note: '', rest: like?.rest ?? '', note: like?.note ?? '', keep: adding.keep };
     setExtras((x) => [...x, ex]);
     setRows((r) => [...r, Array.from({ length: sets }, () => ({ weight: weight == null ? '' : String(weight), reps: String(reps), done: false }))]);
+    setFeedback((f) => [...f, blankFeedback()]);
     setOpen(plan.length);
     setAdding(null);
   }
@@ -356,12 +393,36 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     const x = i - basePlan.length;
     setExtras((all) => all.filter((_, j) => j !== x));
     setRows((all) => all.filter((_, j) => j !== i));
+    setFeedback((all) => all.filter((_, j) => j !== i));
     setOpen(-1);
   }
   const canMove = moveDatesFor(view, session, today).length > 0;
   const workouts = data.actions.filter((a) => !a.archived_at && a.kind === 'workout' && a.workout_plan?.length);
   const doneCount = rows.flat().filter((r) => r.done).length;
   const total = rows.flat().length;
+
+  /** What to show under an exercise once rated: what the number means for next time. */
+  const hintFor = (i: number): string | null => {
+    const e = feedback[i]?.effort;
+    if (e == null) return null;
+    // It hurt: whatever the number, the advice is not to push it.
+    if (feedback[i]?.pain) return 'It hurt, so hold it next time: same weight or lighter, never more, until it stops.';
+    const e2 = plan[i]!;
+    const did = rows[i]!.map((r, k) => ({ ...actual(i, k), done: r.done })).filter((s) => s.done);
+    const allTop = did.length > 0 && did.every((s) => (s.reps ?? 0) >= e2.reps_max);
+    const weight = did.length ? did.reduce<number | null>((m, s) => (s.weight == null ? m : Math.max(m ?? 0, s.weight)), null) : planWeight(i);
+    return effortHint(e, { allTop, weight, unit });
+  };
+  /** Open an exercise and bring it (or a part of it) into view. */
+  const openAndShow = (i: number, part?: string) => {
+    setOpen(i);
+    window.setTimeout(() => {
+      const section = document.querySelectorAll('.workout-ex')[i];
+      const el = (part && section?.querySelector(part)) || section;
+      el?.scrollIntoView({ block: part ? 'center' : 'start', behavior: 'smooth' });
+    }, 80);
+  };
+  const unrated = plan.map((e, i) => ({ name: e.name, index: i })).filter((u) => rows[u.index]!.some((r) => r.done) && feedback[u.index]?.effort == null);
 
   function finish() {
     const before = session;
@@ -380,13 +441,21 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
       kept.length && action
         ? [{ kind: 'update', collection: 'actions', id: action.id, patch: { workout_plan: cleanPlan([...basePlan, ...kept.map(({ keep: _k, ...e }) => ({ ...e, note: e.note === 'Added this workout' ? '' : e.note }))]) } }]
         : [];
-    commit([...saveOps, ...planOps, ...opsLogSession(session, { status, note, on: today })]);
+    const logs = opsSaveExerciseLogs(
+      data,
+      session.id,
+      plan.map((e, i) => ({ exercise: e.name, effort: cleanEffort(feedback[i]?.effort), pain: !!feedback[i]?.pain, pain_where: feedback[i]?.where ?? '', note: feedback[i]?.note ?? '' })),
+    );
+    const effortChanged = sessionEffort !== cleanEffort(session.effort);
+    const effortOps: Op[] = effortChanged ? [{ kind: 'update', collection: 'sessions', id: session.id, patch: { effort: sessionEffort } }] : [];
+    const effortUndo: Op[] = effortChanged ? [{ kind: 'update', collection: 'sessions', id: session.id, patch: { effort: cleanEffort(session.effort) } }] : [];
+    commit([...saveOps, ...logs.ops, ...planOps, ...opsLogSession(session, { status, note, on: today }), ...effortOps]);
     try {
       localStorage.removeItem(draftKey(session.id));
     } catch {
       // nothing to clear
     }
-    toast(`${session.title}: ${doneCount} of ${total} sets`, () => commit([...undoSets, ...opsRestoreSession(before)]));
+    toast(`${session.title}: ${doneCount} of ${total} sets`, () => commit([...undoSets, ...logs.undo, ...opsRestoreSession(before), ...effortUndo]));
     onClose();
   }
 
@@ -406,7 +475,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
               </button>
             )}
             {!future && doneCount > 0 && (
-              <button type="button" className="btn small primary" onClick={finish}>
+              <button type="button" className="btn small primary" onClick={() => setFinishing(true)}>
                 {session.status === 'planned' ? 'Finish' : 'Save'}
               </button>
             )}
@@ -448,7 +517,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
           const isOpen = open === i;
           const did = mine.map((r, k) => ({ ...actual(i, k), done: r.done })).filter((s) => s.done);
           return (
-            <section key={i} className={`workout-ex${isOpen ? ' open' : ''}`} aria-label={e.name}>
+            <section key={i} className={`workout-ex${isOpen ? ' open' : ''}${feedback[i]?.pain ? ' pain' : ''}`} aria-label={e.name}>
               <button type="button" className="workout-ex-head" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? -1 : i)}>
                 <span className={`workout-ex-badge${finished ? ' done' : ''}`}>{finished ? <Icon name="check" size={13} stroke={3} /> : i + 1}</span>
                 <span className="grow" style={{ minWidth: 0 }}>
@@ -461,6 +530,12 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
                         </span>
                       ))}
                       {done < mine.length && <span className="xsmall muted">{mine.length - done} not done</span>}
+                      {feedback[i]?.effort != null && (
+                        <span className={`effort-chip z-${effortZoneOf(feedback[i]!.effort!)}`}>
+                          {feedback[i]!.effort} · {EFFORT_WORDS[feedback[i]!.effort!]}
+                        </span>
+                      )}
+                      {feedback[i]?.pain && <span className="effort-chip hurt">Hurt{feedback[i]!.where ? `: ${feedback[i]!.where.toLowerCase()}` : ''}</span>}
                     </span>
                   ) : (
                     <span className="xsmall muted num">
@@ -484,6 +559,11 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
                   {sug.why === 'up' && !future && (
                     <span className="workout-up">
                       ↑ Up to {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time
+                    </span>
+                  )}
+                  {sug.why === 'allout' && !future && (
+                    <span className="workout-up">
+                      Staying at {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time, but rated it 10 (nothing left). Earn it once more.
                     </span>
                   )}
                   {e.note && <span className="xsmall muted">{e.note}</span>}
@@ -567,6 +647,22 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
                       )}
                     </div>
                   )}
+                  {!future && done > 0 && (
+                    <ExerciseFeedback
+                      name={e.name}
+                      value={feedback[i] ?? blankFeedback()}
+                      onChange={(patch) => setFeedbackAt(i, patch)}
+                      hint={hintFor(i)}
+                      last={lastEffort.get(e.name.toLowerCase()) ?? null}
+                      next={
+                        finished && firstOpen(rows) >= 0 && firstOpen(rows) !== i
+                          ? { label: plan[firstOpen(rows)]!.name, go: () => openAndShow(firstOpen(rows)) }
+                          : finished && firstOpen(rows) < 0
+                            ? { label: 'finish the workout', go: () => setFinishing(true) }
+                            : null
+                      }
+                    />
+                  )}
                 </div>
               )}
             </section>
@@ -630,7 +726,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
             Note
             <textarea rows={2} value={note} onChange={(x) => setNote(x.target.value)} placeholder="How it felt, the knee, anything to change" />
           </label>
-          <button className="btn primary" disabled={doneCount === 0} onClick={finish}>
+          <button className="btn primary" disabled={doneCount === 0} onClick={() => setFinishing(true)}>
             {session.status === 'planned' ? (doneCount >= total ? 'Finish workout' : `Finish: ${doneCount} of ${total} sets`) : 'Save changes'}
           </button>
           {onGeneral && (
@@ -672,6 +768,24 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
             </div>
           )}
         </div>
+      )}
+      {finishing && (
+        <FinishWorkout
+          summary={`${doneCount} of ${total} sets${doneCount >= total ? ': all done' : ''}`}
+          unrated={unrated}
+          effort={sessionEffort}
+          onEffort={setSessionEffort}
+          onRate={(i) => {
+            setFinishing(false);
+            openAndShow(i, '.ex-feedback');
+          }}
+          onSave={() => {
+            setFinishing(false);
+            finish();
+          }}
+          onBack={() => setFinishing(false)}
+          saveLabel={session.status === 'planned' ? 'Save workout' : 'Save changes'}
+        />
       )}
       {restEnd != null && (
         <div className="rest-bar" role="timer" aria-live="off">

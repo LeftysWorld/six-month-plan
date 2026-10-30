@@ -22,6 +22,7 @@ import type {
   StretchHoldLog,
   WeekPlan,
   WorkoutSet,
+  WorkoutExerciseLog,
 } from '@six/core';
 
 /** Everything the app holds in memory. One person's data is small enough to load whole. */
@@ -38,6 +39,7 @@ export interface AppData {
   schedules: ActionSchedule[];
   sessions: Session[];
   workoutSets: WorkoutSet[];
+  workoutExercises: WorkoutExerciseLog[];
   /** Holds ticked off in logged stretching sessions. */
   stretchHolds: StretchHoldLog[];
   measurementTypes: MeasurementType[];
@@ -72,6 +74,7 @@ export const TABLES: Record<CollectionKey, string> = {
   schedules: 'action_schedules',
   sessions: 'sessions',
   workoutSets: 'workout_sets',
+  workoutExercises: 'workout_exercises',
   stretchHolds: 'stretch_holds',
   measurementTypes: 'measurement_types',
   measurements: 'measurements',
@@ -120,6 +123,7 @@ export function emptyData(): AppData {
     schedules: [],
     sessions: [],
     workoutSets: [],
+    workoutExercises: [],
     stretchHolds: [],
     measurementTypes: [],
     measurements: [],

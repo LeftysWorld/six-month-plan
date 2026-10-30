@@ -43,6 +43,11 @@
   --violet-ink: #5340e0;
   --danger: #d0342c;
   --danger-soft: rgba(208, 52, 44, 0.1);
+  /* Effort 1–10: easy · moderate · target (7–9) · max. Lightness differs too, not just hue. */
+  --effort-easy: #2f6bd6; --effort-easy-ink: #2558b8; --effort-easy-soft: rgba(47, 107, 214, 0.11);
+  --effort-moderate: #6b57e8; --effort-moderate-ink: #5340e0; --effort-moderate-soft: rgba(107, 87, 232, 0.11);
+  --effort-target: #4a33d6; --effort-target-ink: #3d27c4; --effort-target-soft: rgba(74, 51, 214, 0.11);
+  --effort-max: #b45309; --effort-max-ink: #9a4507; --effort-max-soft: rgba(180, 83, 9, 0.12);
   --toast-bg: #151726;
   --glow: rgba(124, 104, 255, 0.16);
   --glow-2: rgba(79, 211, 232, 0.12);
@@ -115,6 +120,10 @@
     --violet-ink: #c9c0ff;
     --danger: #ff6b6b;
     --danger-soft: rgba(255, 107, 107, 0.14);
+  --effort-easy: #6ea2ff; --effort-easy-ink: #a3c3ff; --effort-easy-soft: rgba(110, 162, 255, 0.15);
+  --effort-moderate: #a99bff; --effort-moderate-ink: #c3b9ff; --effort-moderate-soft: rgba(169, 155, 255, 0.15);
+  --effort-target: #8b74ff; --effort-target-ink: #b6a8ff; --effort-target-soft: rgba(139, 116, 255, 0.18);
+  --effort-max: #ffa45c; --effort-max-ink: #ffc49b; --effort-max-soft: rgba(255, 164, 92, 0.15);
     --toast-bg: #171a2b;
     --glow: rgba(124, 104, 255, 0.22);
     --glow-2: rgba(79, 211, 232, 0.08);
@@ -162,6 +171,10 @@
   --violet-ink: #c9c0ff;
   --danger: #ff6b6b;
   --danger-soft: rgba(255, 107, 107, 0.14);
+  --effort-easy: #6ea2ff; --effort-easy-ink: #a3c3ff; --effort-easy-soft: rgba(110, 162, 255, 0.15);
+  --effort-moderate: #a99bff; --effort-moderate-ink: #c3b9ff; --effort-moderate-soft: rgba(169, 155, 255, 0.15);
+  --effort-target: #8b74ff; --effort-target-ink: #b6a8ff; --effort-target-soft: rgba(139, 116, 255, 0.18);
+  --effort-max: #ffa45c; --effort-max-ink: #ffc49b; --effort-max-soft: rgba(255, 164, 92, 0.15);
   --toast-bg: #171a2b;
   --glow: rgba(124, 104, 255, 0.22);
   --glow-2: rgba(79, 211, 232, 0.08);
@@ -2151,3 +2164,65 @@ img.demo-media { background: var(--fill); }
 .demo-plan-steps p { margin: 0; }
 @media (min-width: 700px) { .demo-options { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .demo-kit { min-height: 36px; padding: 0 12px; font-size: 13px; }
+
+/* ---------- Effort per exercise (1–10 slider, hurt, note) ---------- */
+.z-none { --z: var(--border-strong); --z-ink: var(--muted); --z-soft: transparent; }
+.z-easy { --z: var(--effort-easy); --z-ink: var(--effort-easy-ink); --z-soft: var(--effort-easy-soft); }
+.z-moderate { --z: var(--effort-moderate); --z-ink: var(--effort-moderate-ink); --z-soft: var(--effort-moderate-soft); }
+.z-target { --z: var(--effort-target); --z-ink: var(--effort-target-ink); --z-soft: var(--effort-target-soft); }
+.z-max { --z: var(--effort-max); --z-ink: var(--effort-max-ink); --z-soft: var(--effort-max-soft); }
+.ex-feedback { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--line-2); }
+.effort-readout { display: inline-flex; align-items: baseline; gap: 2px; color: var(--z-ink); flex: none; }
+.effort-readout b { font-size: 40px; line-height: 0.9; letter-spacing: -0.05em; }
+.effort-readout span { font-size: 14px; font-weight: 600; color: var(--muted); }
+.effort { display: flex; flex-direction: column; gap: 6px; }
+/* The whole strip takes a tap or a drag; vertical swipes still scroll the sheet. */
+.effort-track { position: relative; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; height: 48px; align-items: center; touch-action: pan-y; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; border-radius: 12px; }
+.effort-track:focus-within { outline: 3px solid var(--accent); outline-offset: 3px; }
+.effort-track:focus-within:not(:has(:focus-visible)) { outline: none; }
+.effort-cell { position: relative; height: 100%; display: flex; align-items: center; }
+.effort-cell i { display: block; width: 100%; height: 10px; border-radius: 5px; background: var(--line); transition: background 0.12s; }
+.effort-cell.on i { background: var(--z); }
+.effort-thumb { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: var(--surface, #fff); border: 3px solid var(--z); box-sizing: border-box; box-shadow: 0 2px 8px rgba(11, 13, 24, 0.22); transition: transform 0.15s var(--spring); }
+.effort-track:active .effort-thumb { transform: scale(1.12); }
+.effort-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; pointer-events: none; }
+.effort-nums { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; margin-top: -6px; row-gap: 2px; }
+.effort-nums > span:not(.effort-target) { text-align: center; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.effort-nums > span.on { color: var(--z-ink); font-weight: 700; }
+.effort-target { grid-row: 2; text-align: center; font-size: 11px; font-weight: 600; color: var(--effort-target-ink); border: 1.5px solid color-mix(in srgb, var(--effort-target) 45%, transparent); border-top: 0; border-radius: 0 0 6px 6px; padding-top: 2px; line-height: 1.2; }
+.effort-read { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 12px; background: var(--z-soft); }
+.effort-read b { font-size: 14px; color: var(--z-ink); }
+.effort-read span { font-size: 13px; color: var(--ink-2); line-height: 1.4; }
+.ex-feedback-btns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ex-fb-btn { min-height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; padding: 0 10px; }
+.ex-fb-btn.on { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-soft); color: var(--accent-ink); }
+.ex-fb-btn.hurt { border-color: color-mix(in srgb, var(--amber-ink) 40%, transparent); background: var(--amber-soft); color: var(--amber-ink); }
+.ex-hurt { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--amber-soft); color: var(--ink); }
+.ex-hurt > b { font-size: 14px; color: var(--amber-ink); }
+.ex-hurt .chip { min-height: 36px; padding: 0 12px; font-size: 13.5px; }
+.ex-hurt .chip[aria-pressed='true'] { background: var(--amber-ink); border-color: var(--amber-ink); color: var(--ground); }
+.effort-chip { font-size: 12.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--z-soft); color: var(--z-ink); font-variant-numeric: tabular-nums; }
+.effort-chip.hurt { background: var(--amber-soft); color: var(--amber-ink); }
+.effort-scale { display: flex; flex-direction: column; gap: 2px; }
+.effort-scale-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 14px; }
+.effort-scale-row.target { background: var(--effort-target-soft); }
+.effort-pill { height: 32px; border-radius: 10px; background: var(--z); color: #fff; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+.effort-tip { font-size: 13.5px; line-height: 1.45; padding: 12px 14px; border-radius: 14px; background: var(--effort-target-soft); color: var(--ink); }
+.finish-unrated { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 16px; background: var(--accent-soft); }
+.finish-effort { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.finish-effort button { min-height: 48px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-weight: 650; font-size: 17px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.finish-effort button.on { background: var(--effort-target); border-color: var(--effort-target); color: #fff; }
+.tag { font-size: 12px; font-weight: 600; color: var(--muted); padding: 2px 8px; border-radius: 999px; background: var(--fill); }
+/* Wider screens: the 1–10 row fits on one line; the slider keeps a comfortable length. */
+@media (min-width: 520px) {
+  .finish-effort { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+  .finish-effort button { min-height: 44px; font-size: 16px; }
+}
+@media (min-width: 900px) {
+  .effort-track { height: 44px; }
+}
+/* Very narrow phones: smaller buttons' text, still 44px tall. */
+@media (max-width: 350px) {
+  .ex-fb-btn { font-size: 13px; gap: 5px; }
+  .effort-readout b { font-size: 34px; }
+}
