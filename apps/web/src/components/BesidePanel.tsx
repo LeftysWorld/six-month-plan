@@ -127,27 +127,27 @@ function Agenda({ goals }: { goals: BesideGoal[] }) {
           </button>
         )}
       </div>
-      <div className="cal-strip" aria-hidden="true">
+      <div className="bp-cal" aria-hidden="true">
         {days.slice(0, 7).map((d) => (
-          <span key={d} className="cal-h">
+          <span key={d} className="bp-cal-h">
             {dow(d)}
           </span>
         ))}
       </div>
-      <div className="cal-strip" role="group" aria-label="The next 14 days">
+      <div className="bp-cal" role="group" aria-label="The next 14 days">
         {days.map((d) => {
           const xs = of(d);
           return (
             <button
               key={d}
               type="button"
-              className={`cal-day${xs.length ? '' : ' empty'}${d === today ? ' today' : ''}${day === d ? ' sel' : ''}`}
+              className={`bp-day${xs.length ? '' : ' empty'}${d === today ? ' today' : ''}${day === d ? ' sel' : ''}`}
               onClick={() => setDay(day === d ? null : d)}
               aria-pressed={day === d}
               aria-label={`${dow(d)} ${shortDate(d)}: ${xs.length ? `${xs.length} thing${xs.length === 1 ? '' : 's'}` : 'nothing'}`}
             >
               <b>{Number(d.slice(8))}</b>
-              <span className="cal-dots">
+              <span className="bp-dots">
                 {xs.slice(0, 4).map((x, i) => (
                   <i key={i} className={mark(x)} style={{ background: x.color, color: x.color }} />
                 ))}
@@ -156,7 +156,7 @@ function Agenda({ goals }: { goals: BesideGoal[] }) {
           );
         })}
       </div>
-      <div className="cal-legend">
+      <div className="bp-legend">
         <span>
           <i className="dot-date" />
           Date to hit

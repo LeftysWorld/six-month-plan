@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { addDays, isoWeekday, type ISODate } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
@@ -36,24 +36,102 @@ function shiftMonth(ym: string, by: number): string {
 /** The month last shown, so coming back from a day lands on the same month. */
 let lastMonth: string | null = null;
 
+/** Months to show at first, and how many more load as you near the bottom. */
+const FIRST = 4;
+const MORE = 3;
+const MAX = 36;
+
 export function Calendar() {
   const { data, today } = useStore();
   const view = useView();
-  const [month, setMonthState] = useState(lastMonth ?? monthOf(today));
+  const home = lastMonth ?? monthOf(today);
+  // The months on the page: from `start`, `count` of them, one under the other.
+  const [start, setStart] = useState(home);
+  const [count, setCount] = useState(FIRST);
+  // The month in view (the bar names it; the arrows move from it).
+  const [month, setMonthState] = useState(home);
   const setMonth = (m: string) => {
     lastMonth = m;
     setMonthState(m);
   };
   const [repeating, setRepeating] = useState(false);
-  const first = `${month}-01`;
-  const gridStart = addDays(first, 1 - isoWeekday(first));
-  const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
-  // Drop a last row that's entirely next month.
-  const shown = cells.slice(35).every((d) => monthOf(d) !== month) ? cells.slice(0, 35) : cells;
-  const items = calendarItems(view, shown[0]!, shown.at(-1)!);
+  const months = Array.from({ length: count }, (_, i) => shiftMonth(start, i));
+  const rangeStart = `${months[0]}-01`;
+  const rangeEnd = addDays(`${shiftMonth(months.at(-1)!, 1)}-01`, -1);
+  const items = calendarItems(view, rangeStart, rangeEnd);
   const [y, m] = month.split('-').map(Number) as [number, number];
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   const upcoming = [...items.entries()].filter(([d]) => d >= today && monthOf(d) === month).reduce((n, [, l]) => n + l.filter((x) => !x.done && x.kind !== 'season').length, 0);
+
+  const refs = useRef(new Map<string, HTMLElement>());
+  const bottom = useRef<HTMLDivElement>(null);
+  const pendingScroll = useRef<string | null>(home);
+  // While a jump from the arrows is still scrolling, the bar keeps the month you picked.
+  const holdUntil = useRef(0);
+
+  // Scroll a month's heading to just under the pinned bar.
+  const scrollTo = (ym: string, smooth = true) => {
+    const el = refs.current.get(ym);
+    if (!el) return false;
+    const bar = document.querySelector('.cal-sticky') as HTMLElement | null;
+    const top = el.getBoundingClientRect().top + window.scrollY - (bar?.offsetHeight ?? 0) - 8;
+    // Glide for a month or two; jump for long trips (a smooth scroll across a year takes too long).
+    const far = Math.abs(top - window.scrollY) > window.innerHeight * 2.5;
+    window.scrollTo({ top, behavior: smooth && !far ? 'smooth' : 'auto' });
+    return true;
+  };
+  const go = (ym: string) => {
+    holdUntil.current = Date.now() + 900;
+    if (ym < start) {
+      // Earlier than the first month on the page: add the months before it.
+      setStart(ym);
+      setCount((c) => c + monthsBetween(ym, start));
+      pendingScroll.current = ym;
+    } else if (ym > months.at(-1)!) {
+      setCount((c) => Math.min(MAX, c + monthsBetween(months.at(-1)!, ym)));
+      pendingScroll.current = ym;
+    } else scrollTo(ym);
+    setMonth(ym);
+  };
+  // After months are added, land on the one asked for.
+  useEffect(() => {
+    const want = pendingScroll.current;
+    if (!want) return;
+    pendingScroll.current = null;
+    // The first month on the page needs no scroll (the page opens at the top); others glide into view.
+    if (want === start && want === home) return;
+    requestAnimationFrame(() => scrollTo(want));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [start, count]);
+  // The month in view follows the scroll.
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    // Entries only report changes, so keep every month that's on screen and name the earliest.
+    const onScreen = new Set<string>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const ym = (e.target as HTMLElement).dataset.month!;
+          if (e.isIntersecting) onScreen.add(ym);
+          else onScreen.delete(ym);
+        }
+        const first = [...onScreen].sort()[0];
+        if (first && Date.now() > holdUntil.current) setMonth(first);
+      },
+      { rootMargin: '-140px 0px -55% 0px' },
+    );
+    refs.current.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [start, count]);
+  // Near the bottom: load the next few months.
+  useEffect(() => {
+    const el = bottom.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setCount((c) => Math.min(MAX, c + MORE)), { rootMargin: '600px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [count]);
 
   return (
     <div className="stack rise">
@@ -67,69 +145,108 @@ export function Calendar() {
       </div>
       <h1 style={{ marginTop: -4 }}>Calendar</h1>
 
-      <section className="card cal" aria-label={`${MONTHS[m - 1]} ${y}`}>
-        <div className="cal-bar">
-          <div className="row-start" style={{ gap: 4, flexWrap: 'nowrap' }}>
-            <button className="icon-btn" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>
-              <Icon name="back" size={16} stroke={2.4} />
-            </button>
-            <b className="cal-month">
-              {MONTHS[m - 1]} {y}
-            </b>
-            <button className="icon-btn" aria-label="Next month" onClick={() => setMonth(shiftMonth(month, 1))}>
-              <Icon name="chevron" size={16} stroke={2.4} />
-            </button>
-          </div>
-          <div className="row-start" style={{ gap: 6 }}>
-            <button className={`chip cal-chip`} aria-pressed={repeating} onClick={() => setRepeating(!repeating)} title="Show how many repeating tasks run each day">
-              Repeating
-            </button>
-            {monthOf(today) !== month && (
-              <button className="btn small" onClick={() => setMonth(monthOf(today))}>
-                This month
+      <section className="card cal cal-scroll" aria-label="Calendar">
+        <div className="cal-sticky">
+          <div className="cal-bar">
+            <div className="row-start" style={{ gap: 4, flexWrap: 'nowrap' }}>
+              <button className="icon-btn" aria-label="Previous month" onClick={() => go(shiftMonth(month, -1))}>
+                <Icon name="back" size={16} stroke={2.4} />
               </button>
-            )}
+              <b className="cal-month" aria-live="polite">
+                {MONTHS[m - 1]} {y}
+              </b>
+              <button className="icon-btn" aria-label="Next month" onClick={() => go(shiftMonth(month, 1))}>
+                <Icon name="chevron" size={16} stroke={2.4} />
+              </button>
+            </div>
+            <div className="row-start" style={{ gap: 6 }}>
+              <button className={`chip cal-chip`} aria-pressed={repeating} onClick={() => setRepeating(!repeating)} title="Show how many repeating tasks run each day">
+                Repeating
+              </button>
+              {monthOf(today) !== month && (
+                <button className="btn small" onClick={() => go(monthOf(today))}>
+                  This month
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="cal-grid cal-dows" aria-hidden="true">
+            {DAYS.map((d) => (
+              <span key={d} className="cal-dow">
+                {d}
+              </span>
+            ))}
           </div>
         </div>
-        <span className="xsmall muted cal-hint">Tap a day to open it.</span>
-        <div className="cal-grid" role="grid">
-          {DAYS.map((d) => (
-            <span key={d} className="cal-dow" role="columnheader">
-              {d}
-            </span>
-          ))}
-          {shown.map((d) => {
-            const list = items.get(d) ?? [];
-            const rep = repeating ? repeatingOn(data, d) : null;
-            const out = monthOf(d) !== month;
-            return (
-              <button
-                key={d}
-                type="button"
-                role="gridcell"
-                className={`cal-cell${out ? ' out' : ''}${d === today ? ' today' : ''}${d < today ? ' past' : ''}`}
-                aria-label={`Open ${dayTitle(d)}${list.length ? `: ${list.map((x) => x.title).join(', ')}` : ''}`}
-                onClick={() => navigate(d === today ? '/today' : `/today/${d}`)}
-              >
-                <span className="cal-num">{Number(d.slice(8))}</span>
-                <span className="cal-items">
-                  {list.slice(0, 3).map((x) => (
-                    <span key={x.id} className={`cal-pill k-${x.kind}${x.done ? ' done' : ''}`} style={{ ['--c' as string]: x.color }}>
-                      <KindMark kind={x.kind} />
-                      <span className="cal-pill-text">{x.title}</span>
-                    </span>
-                  ))}
-                  {list.length > 3 && <span className="cal-more">+{list.length - 3}</span>}
-                </span>
-                <span className="cal-dots" aria-hidden="true">
-                  {list.slice(0, 4).map((x) => (
-                    <span key={x.id} className={`cal-dot k-${x.kind}${x.done ? ' done' : ''}`} style={{ ['--c' as string]: x.color }} />
-                  ))}
-                </span>
-                {rep && rep.goals + rep.habits > 0 && <span className="cal-rep">{rep.goals + rep.habits} repeating</span>}
-              </button>
-            );
-          })}
+        <span className="xsmall muted cal-hint">Tap a day to open it. Scroll for the months ahead.</span>
+        {months.map((ym) => {
+          const [yy, mm] = ym.split('-').map(Number) as [number, number];
+          const first = `${ym}-01`;
+          const lead = isoWeekday(first) - 1;
+          const days = Number(addDays(`${shiftMonth(ym, 1)}-01`, -1).slice(8));
+          const cells: (ISODate | null)[] = [...Array.from({ length: lead }, () => null), ...Array.from({ length: days }, (_, i) => addDays(first, i))];
+          while (cells.length % 7) cells.push(null);
+          return (
+            <div
+              key={ym}
+              className="cal-month-block"
+              data-month={ym}
+              ref={(el) => {
+                if (el) refs.current.set(ym, el);
+                else refs.current.delete(ym);
+              }}
+            >
+              <h2 className={`cal-month-title${ym === monthOf(today) ? ' now' : ''}`}>
+                {MONTHS[mm - 1]} <span>{yy}</span>
+              </h2>
+              <div className="cal-grid" role="grid" aria-label={`${MONTHS[mm - 1]} ${yy}`}>
+                {cells.map((d, i) => {
+                  if (!d) return <span key={`b${i}`} className="cal-cell blank" aria-hidden="true" />;
+                  const list = items.get(d) ?? [];
+                  const rep = repeating ? repeatingOn(data, d) : null;
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      role="gridcell"
+                      className={`cal-cell${d === today ? ' today' : ''}${d < today ? ' past' : ''}`}
+                      aria-label={`Open ${dayTitle(d)}${list.length ? `: ${list.map((x) => x.title).join(', ')}` : ''}`}
+                      onClick={() => {
+                        lastMonth = ym;
+                        navigate(d === today ? '/today' : `/today/${d}`);
+                      }}
+                    >
+                      <span className="cal-num">{Number(d.slice(8))}</span>
+                      <span className="cal-items">
+                        {list.slice(0, 3).map((x) => (
+                          <span key={x.id} className={`cal-pill k-${x.kind}${x.done ? ' done' : ''}`} style={{ ['--c' as string]: x.color }}>
+                            <KindMark kind={x.kind} />
+                            <span className="cal-pill-text">{x.title}</span>
+                          </span>
+                        ))}
+                        {list.length > 3 && <span className="cal-more">+{list.length - 3}</span>}
+                      </span>
+                      <span className="cal-dots" aria-hidden="true">
+                        {list.slice(0, 4).map((x) => (
+                          <span key={x.id} className={`cal-dot k-${x.kind}${x.done ? ' done' : ''}`} style={{ ['--c' as string]: x.color }} />
+                        ))}
+                      </span>
+                      {rep && rep.goals + rep.habits > 0 && <span className="cal-rep">{rep.goals + rep.habits} repeating</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottom} className="cal-more-months">
+          {count < MAX ? (
+            <button type="button" className="link-btn small" onClick={() => setCount((c) => Math.min(MAX, c + MORE))}>
+              Show more months
+            </button>
+          ) : (
+            <span className="xsmall muted">That’s three years out.</span>
+          )}
         </div>
         <div className="cal-legend" aria-label="Key">
           {(['task', 'milestone', 'checkpoint', 'start', 'finish', 'season'] as CalKind[]).map((k) => (
@@ -141,6 +258,13 @@ export function Calendar() {
       </section>
     </div>
   );
+}
+
+/** How many months from one to another (both YYYY-MM). */
+function monthsBetween(a: string, b: string): number {
+  const [ay, am] = a.split('-').map(Number) as [number, number];
+  const [by, bm] = b.split('-').map(Number) as [number, number];
+  return (by - ay) * 12 + (bm - am);
 }
 
 /** A small mark for each kind: a square for a one-day task, a ring for a date to hit, a bar end for a goal's start or due date. */
