@@ -1869,14 +1869,15 @@ a.sb-name:hover { color: var(--accent-ink); }
 .cal-cell.blank:hover { background: color-mix(in srgb, var(--fill) 40%, transparent); }
 .cal-more-months { display: flex; justify-content: center; padding: 14px; border-top: 1px solid var(--line); }
 
-/* Today on the calendar: the circled number, plus a tinted, outlined day and a label; past days step back. */
+/* Today on the calendar: the circled number, a soft tint and a thin line across the top; past days step back a little. */
 .cal-num-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.cal-today-tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-ink); }
-.cal-cell.today { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent-ink); z-index: 1; }
-.cal-cell.today:hover { background: color-mix(in srgb, var(--accent-soft) 80%, var(--fill)); }
-.cal-cell.past .cal-num { color: var(--muted); font-weight: 500; }
-.cal-cell.past .cal-items, .cal-cell.past .cal-dots { opacity: 0.6; }
+.cal-today-tag { font-size: 11.5px; font-weight: 600; color: var(--accent-ink); }
+.cal-cell.today { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); box-shadow: inset 0 3px 0 var(--accent-ink); }
+.cal-cell.today:hover { background: var(--accent-soft); }
+.cal-cell.past .cal-num { color: var(--muted); }
+.cal-cell.past .cal-items, .cal-cell.past .cal-dots { opacity: 0.75; }
 @media (max-width: 700px) {
   .cal-num-row { justify-content: center; }
   .cal-today-tag { display: none; }
 }
+
