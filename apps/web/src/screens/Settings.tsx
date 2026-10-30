@@ -12,6 +12,7 @@ import { BackLink, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import type { ShellProps } from '../App.tsx';
 import { getTheme, setTheme, type Theme } from '../theme.ts';
 import { ReminderSettings } from '../components/ReminderSettings.tsx';
+import { CoachSetup } from '../components/CoachSetup.tsx';
 
 function download(name: string, content: string, type: string) {
   const blob = new Blob([content], { type });
@@ -362,6 +363,12 @@ export function Settings({ demo, email, onExitDemo, onEnterDemo, onSignOut }: Sh
           <input type="checkbox" checked={p.coach_share_bodyweight ?? true} onChange={(e) => commit(opsProfile({ coach_share_bodyweight: e.target.checked }))} />
           <span>Include my body weight and body measurements (waist, chest, arms, shoulders…). They change how strength progress reads while losing weight. Nothing else you track is shared.</span>
         </label>
+        <details className="task-details">
+          <summary>Set up the weekly coach</summary>
+          <div className="task-details-body" style={{ whiteSpace: 'normal', maxHeight: 'none', overflow: 'visible' }}>
+            <CoachSetup />
+          </div>
+        </details>
       </div>
 
       <div className="section-label">Time available each day</div>

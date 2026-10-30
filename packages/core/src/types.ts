@@ -31,6 +31,8 @@ export interface Profile {
   review_reminder?: boolean;
   /** Whether the workout history report (and so the workout coach) includes your weekly body weight. Default on. */
   coach_share_bodyweight?: boolean;
+  /** SHA-256 of the workout coach's key (made in Settings → Workout coach). The key itself is never stored. */
+  coach_key_hash?: string | null;
 }
 
 /**

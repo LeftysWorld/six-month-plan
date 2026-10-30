@@ -61,6 +61,7 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261123000000_idea_plans.sql', table: 'goal_ideas', columns: ['plan_draft'] },
   { file: '20261124000000_workout_effort.sql', table: 'workout_exercises', columns: [], creates: true },
   { file: '20261124000000_workout_effort.sql', table: 'sessions', columns: ['effort'] },
+  { file: '20261125000000_coach_key.sql', table: 'profiles', columns: ['coach_key_hash'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */

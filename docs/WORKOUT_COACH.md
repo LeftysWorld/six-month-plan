@@ -13,32 +13,20 @@ changes until you decide.
 | Effort, pain and notes | `supabase/migrations/20261124000000_workout_effort.sql`; `apps/web/src/components/Effort.tsx` | Under each exercise: a 1–10 effort slider (by reps left on the last set), "Hurt or felt wrong" and where, a note. Finishing asks for an optional 1–10 for the whole workout. Stored in `workout_exercises` and `sessions.effort`. (The 20261116 migration's `workout_sets.rir`/`pain` columns are no longer written.) |
 | The snapshot and the report | `supabase/functions/_shared/workout_history.ts` | One pure function builds the snapshot (JSON, schema `2`) from your data up to a date; another renders it as the report you read. The app and the Edge Function run the same code. |
 | Workout report page | `apps/web/src/screens/WorkoutReport.tsx` (`#/workouts/report`, linked from Review and Settings) | **Generate report** (3, 6, 12 or 24 months, as of any date), copy or download it, and the coach's reports with **Applied / Partly / Declined** and a note. |
-| The agent's door | `supabase/functions/workout-agent/index.ts` | `GET /history` (JSON or `format=md`) and `POST /reports`. Agent key or your sign-in. |
+| The agent's door | `supabase/functions/_shared/workout_agent.ts`, served by the app on Vercel at `/api/workout-agent` (`apps/web/api/workout-agent/[route].js`, bundled from `apps/web/api-src/workout-agent.ts` by `apps/web/scripts/build-agent-api.mjs`) | `GET /history` (JSON or `format=md`) and `POST /reports`. The coach's key (made in Settings, stored only as a hash) or your sign-in. The Supabase Edge Function in `supabase/functions/workout-agent` runs the same code, if you'd rather deploy it there. |
 | Coach reports | `workout_reports` table | One per as-of date. A re-run replaces it until you mark it. |
 | Body weight and measurements | Settings → Workout coach | On by default: the report includes your weight (weekly averages, 4-week trend) and body measurements you track (waist, chest, arms, shoulders, neck, thighs…: any measurement in inches, cm or % with a body-part name). Flexibility tests and other measurements are never shared. Turn it off and the agent sees none of it. |
 
-## Set it up
+## Set it up (no command line)
 
-1. **Run the migrations.** Supabase → SQL Editor: paste and run
-   `supabase/migrations/20261116000000_workout_coach.sql`, then
-   `supabase/migrations/20261124000000_workout_effort.sql` (the app's banner names whichever is missing).
-   Both are safe to run twice.
-2. **Deploy the function** (needs the Supabase CLI once: `npm i -g supabase`, then `supabase login` and
-   `supabase link --project-ref YOUR-REF`):
-
-   ```bash
-   supabase functions deploy workout-agent --no-verify-jwt
-   supabase secrets set WORKOUT_AGENT_KEY="$(openssl rand -hex 32)" WORKOUT_AGENT_USER_ID=YOUR-USER-UUID
-   ```
-
-   Your user UUID is under Authentication → Users. Keep the key: the agent repo needs it as a GitHub
-   secret. `--no-verify-jwt` is needed because the agent's key isn't a Supabase sign-in; the function
-   checks the key (or your sign-in) itself.
-3. **Check it** (replace the URL and key):
-
-   ```bash
-   curl -s "https://YOUR-REF.supabase.co/functions/v1/workout-agent/history?format=md" -H "x-agent-key: YOUR-KEY" | head -30
-   ```
+1. **Run the migrations.** Supabase → SQL Editor: paste and run, in order,
+   `supabase/migrations/20261116000000_workout_coach.sql`, `supabase/migrations/20261124000000_workout_effort.sql`
+   and `supabase/migrations/20261125000000_coach_key.sql`. Each is safe to run twice. (The editor warns
+   about "destructive operations": that's a `drop … if exists` that's immediately recreated; nothing is deleted.)
+2. **In the app: Settings → Workout coach → Set up the weekly coach.** It walks through the rest:
+   the server's database key (one value pasted into Vercel's Environment Variables, then Redeploy), a
+   connection test, the coach's key (one button), and what to paste into the workout-coach repo's
+   GitHub secrets, each with a Copy button.
 
 ## What the agent can and can't do
 
