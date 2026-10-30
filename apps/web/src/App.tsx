@@ -239,8 +239,8 @@ function Shell(props: ShellProps) {
           <span className="brand">Six Months</span>
           <NavLink to="/today" icon="today" label="Today" current={tab === 'today'} />
           <NavLink to="/goals" icon="plans" label="Goals" current={tab === 'goals'} />
-          <NavLink to="/calendar" icon="calendar" label="Calendar" current={tab === 'calendar'} />
           <NavLink to="/habits" icon="habit" label="Habits" current={tab === 'habits'} />
+          <NavLink to="/calendar" icon="calendar" label="Calendar" current={tab === 'calendar'} />
           <NavLink to="/review" icon="review" label="Review" current={tab === 'review'} />
         </nav>
         <button type="button" className="dock-add" aria-label="Add a task, log something or save a goal idea" onClick={() => setAdding(true)}>
