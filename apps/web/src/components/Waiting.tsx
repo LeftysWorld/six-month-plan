@@ -69,7 +69,7 @@ export function StartAnywaySheet({ idea, info, onClose }: { idea: GoalIdea; info
             commit(opsStartAnyway(idea, info, reason));
             toast(`${idea.title} isn't waiting anymore`);
             onClose();
-            navigate(`/goals/new?idea=${idea.id}`);
+            navigate(`/ideas/${idea.id}/plan`);
           }}
         >
           Start anyway
@@ -127,7 +127,7 @@ export function WaitingReady() {
               onClick={() => {
                 if (w.kind === 'idea') {
                   commit(opsSetWaiting('ideas', w.idea, ''));
-                  navigate(`/goals/new?idea=${w.idea.id}`);
+                  navigate(`/ideas/${w.idea.id}/plan`);
                 } else {
                   commit(opsSetWaiting('groups', w.group, ''));
                   toast(`${w.group.name} isn't waiting anymore`);

@@ -5,6 +5,7 @@ import { useView } from '../data/useView.ts';
 import { opsAddIdea, opsDeleteIdea, opsEditIdea, opsPlaceIdea, opsRestoreIdea, opsSetStatus } from '../data/backlog.ts';
 import { useListDrag, type ListDragApi } from '../components/listDrag.ts';
 import { GRIP } from './Season.tsx';
+import { draftProgress } from '../data/ideaPlan.ts';
 import { href } from '../router.ts';
 import { opsSetIdeaPath, pathLetter, pathsOf } from '../data/paths.ts';
 import { Icon, Sheet, useToast } from '../components/ui.tsx';
@@ -629,6 +630,7 @@ function IdeaRow({
   const waiting = !!wait && !wait.met;
   const [startAnyway, setStartAnyway] = useState(false);
   const age = ageInDays(idea);
+  const progress = draftProgress(idea.plan_draft as never);
   const plannedFor = idea.plan_id ? data.plans.find((p) => p.id === idea.plan_id) : undefined;
   const ready = ideaReady(idea);
   const lifted = dnd.drag?.id === idea.id;
@@ -671,6 +673,16 @@ function IdeaRow({
           {bucket === 'backlog' && idea.note.trim() && !idea.done_means?.trim() ? ' · what does done look like?' : ''}
           {age >= 60 ? ` · written down ${age} days ago` : ''}
         </span>
+        {progress > 0 && (
+          <span className="xsmall row-start" style={{ gap: 6, color: progress >= 3 ? 'var(--blue-ink)' : 'var(--accent-ink)', fontWeight: 600 }}>
+            <span className="plan-pips" aria-hidden="true">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <i key={i} className={i < progress ? 'on' : ''} />
+              ))}
+            </span>
+            {progress >= 3 ? `Planned · ready to make a goal (${progress}/5)` : `Plan ${progress}/5`}
+          </span>
+        )}
         {plannedFor && (
           <span className="xsmall" style={{ color: 'var(--ink-2)' }}>
             Planned: {plannedFor.name}
@@ -687,8 +699,8 @@ function IdeaRow({
                 Start anyway
               </button>
             ) : (
-              <a className="btn small primary" href={href(`/goals/new?idea=${idea.id}`)}>
-                Make it a goal
+              <a className="btn small primary" href={href(`/ideas/${idea.id}/plan`)} title="Plan it, then make it a goal: the finish, the 3-month checkpoint and the first month come first">
+                {progress >= 3 ? 'Make it a goal' : 'Plan & make it a goal'}
               </a>
             )}
             <button type="button" className="link-btn small" onClick={onUnselect}>
@@ -700,6 +712,9 @@ function IdeaRow({
             <button type="button" className={`btn small${ready ? ' primary' : ''}`} onClick={onSelect} title={ready ? 'Move to Selected for next' : 'Add why it matters and what done looks like first'}>
               {ready ? 'Select for next' : 'Fill in to select'}
             </button>
+            <a className="link-btn small" href={href(`/ideas/${idea.id}/plan`)} style={{ display: 'inline-flex', alignItems: 'center' }}>
+              Plan
+            </a>
             <button type="button" className="link-btn small" onClick={onDiscard}>
               Discard
             </button>
@@ -771,8 +786,8 @@ function IdeaSheet({ idea, onClose }: { idea: GoalIdea; onClose: () => void }) {
               Start anyway
             </button>
           ) : (
-            <a className="btn small" href={href(`/goals/new?idea=${idea.id}&path=${pathId}`)}>
-              Make it a goal
+            <a className="btn small" href={href(`/ideas/${idea.id}/plan?path=${pathId}`)}>
+              Plan & make it a goal
             </a>
           )}
         </div>

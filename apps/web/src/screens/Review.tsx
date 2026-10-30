@@ -42,6 +42,7 @@ import type { AppData, Op, ReviewPayload } from '../data/model.ts';
 import { opsArchiveAction, opsArchiveGoal, opsCompleteGoal, opsCompleteReview, opsCreatePlan, opsLinkGoalToPlan, opsReplacePath, opsUpdateGoal } from '../data/ops.ts';
 import { catchUp, catchUpPlan, chainFor, isSet, opsSetLevel } from '../data/chain.ts';
 import { isPlannedDown, targetText, targetsAt } from '../data/ladder.ts';
+import { firstWeekUnplanned } from '../data/ideaPlan.ts';
 import { planHref } from './PlanGoal.tsx';
 import { withOps } from '../data/breakdown.ts';
 import { actionLookup, commitmentTrail, obstacleSentence, planTrend, readCheck, timeAverages, trendFor, weekdaySentence } from '../data/insights.ts';
@@ -485,6 +486,19 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
       )}
 
       {isWeekly && <WaitingReviewCard />}
+
+      {/* A goal that starts this week or next arrives planned: its first week is set here. */}
+      {isWeekly &&
+        firstWeekUnplanned(view).map(({ goal: g, monday }) => (
+          <div key={g.id} className="banner warn" role="status">
+            <span>
+              <b>{g.title}</b> starts {shortDate(view.startFor(g, view.planForGoal(g)!))}, and its first week isn't planned yet.
+            </span>
+            <a className="btn small" href={href(planHref(g.id, 'week', monday, true))}>
+              Plan its first week
+            </a>
+          </div>
+        ))}
 
       {/* Each goal: how it went. */}
       <div className="card stack-sm">

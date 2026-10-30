@@ -407,7 +407,7 @@ export function PathDetail({ id }: { id: string }) {
         {p.waiting.map((i) => (
           <div key={i.id} className="row-between small" style={{ gap: 8 }}>
             <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</span>
-            <a className="link-btn small" href={href(`/goals/new?idea=${i.id}&path=${path.id}`)} style={{ flex: 'none' }}>
+            <a className="link-btn small" href={href(`/ideas/${i.id}/plan?path=${path.id}`)} style={{ flex: 'none' }}>
               Make it a goal
             </a>
           </div>

@@ -17,6 +17,7 @@ import {
   type Session,
   forecastFinish,
   weekToPlan,
+  addDays as addDaysCore,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt } from '../data/derive.ts';
@@ -694,18 +695,22 @@ function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain
   const nextMonday = weekToPlan(today);
   const nextPlanned = nextMonday !== monday && targetsAt(data, goal.id, plan.id, 'week', ladderPeriods(view, goal, plan, nextMonday).week.start).length > 0;
   const open = (step: string, m = monday) => () => navigate(planHref(goal.id, step as never, m));
+  // Late in the week with nothing set for it, but next week planned: show next week's goals.
+  const nextWeek = !weekSet && nextPlanned ? targetsAt(data, goal.id, plan.id, 'week', ladderPeriods(view, goal, plan, nextMonday).week.start) : [];
   const lines: { key: string; name: string; text: string; when: string; status: { text: string; label: PaceLabel } | null; current: boolean; onClick?: () => void; edit: boolean; empty?: string }[] = [
-    {
-      key: 'week',
-      name: 'This week',
-      text: weekText,
-      when: rangeLabel(week.node),
-      status: doneOf(ladder.week) ?? weekStatus,
-      current: true,
-      onClick: ladder.week.length > 1 || planned ? open('week') : () => onEdit('week'),
-      edit: true,
-      empty: '+ Set this week\u2019s goal',
-    },
+    nextWeek.length
+      ? { key: 'week', name: 'Next week', text: nextWeek.map((x) => targetText(goal, x)).join(' · '), when: `by ${shortDate(addDaysCore(nextMonday, 6))}`, status: null, current: true, onClick: open('week', nextMonday), edit: true }
+      : {
+          key: 'week',
+          name: 'This week',
+          text: weekText,
+          when: rangeLabel(week.node),
+          status: doneOf(ladder.week) ?? weekStatus,
+          current: true,
+          onClick: ladder.week.length > 1 || planned ? open('week') : () => onEdit('week'),
+          edit: true,
+          empty: '+ Set this week\u2019s goal',
+        },
     ...(planned
       ? [
           { key: 'month', name: 'This month', text: ladder.month.map((x) => targetText(goal, x)).join(' · '), when: `by ${shortDate(periodEnd(p, p.month))}`, status: doneOf(ladder.month), current: false, onClick: open('month'), edit: true, empty: '+ Set this month' },

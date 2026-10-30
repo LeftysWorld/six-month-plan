@@ -6,6 +6,8 @@ import { type View } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { CHAIN_LEVELS, catchUpPlan, chainFor, isSet, type Chain, type ChainLevel, type CatchUp } from '../data/chain.ts';
 import type { AppData } from '../data/model.ts';
+import { isPlannedDown } from '../data/ladder.ts';
+import { firstWeekMissing } from '../data/ideaPlan.ts';
 import { goalPrizes } from '../data/prizes.ts';
 import { PrizeTag } from '../components/Prize.tsx';
 import { firstCheckpoint, goalTrack, groupSentence, groupTrack, nextCheckpoint, nextDue, nextReviewWord, nextSeasonDates, weekDots, type Seasons } from '../data/season.ts';
@@ -54,15 +56,22 @@ export function goalCards(view: View, data: AppData, plan: Plan, today: ISODate)
       const overdue = data.milestones.some((m) => m.goal_id === goal.id && !m.completed_at && m.due_date < today);
       const age = goal.type === 'number' ? readingAge(view, goal, today) : 0;
       const stale = started && (age == null || age > 7);
-      const needs = started && (!!fix || gaps.length > 0 || overdue || stale);
-      const rank = (fix ? 0 : overdue ? 1 : gaps.length ? 2 : stale ? 3 : 10) * 100 + i;
+      // Up next with no first week, or (for goals made before the plan was required) never planned down.
+      const firstWeek = !started ? firstWeekMissing(view, goal, plan) : null;
+      const unplanned = !isPlannedDown(view, goal, plan);
+      const needs = (started && (!!fix || gaps.length > 0 || overdue || stale || unplanned)) || !!firstWeek;
+      const rank = (fix ? 0 : overdue ? 1 : firstWeek ? 1.5 : unplanned ? 1.8 : gaps.length ? 2 : stale ? 3 : 10) * 100 + i;
       const reason = !needs
         ? null
         : fix
           ? fix.text
           : overdue
             ? 'A date to hit has passed'
-            : gaps.length
+            : firstWeek
+              ? `Starts ${shortDate(start)}: plan its first week`
+              : unplanned
+                ? 'Not planned down yet: Plan this goal'
+                : gaps.length
               ? `Set this ${gaps.map((l) => LEVEL_WORD[l]).join(', ')} goal`
               : age == null
                 ? 'No reading yet'

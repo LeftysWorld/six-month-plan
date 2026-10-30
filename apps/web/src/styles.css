@@ -2108,3 +2108,12 @@ button.hw-name:hover b { color: var(--accent-ink); }
   .ladder-aside { display: flex !important; flex-direction: column; }
   .ladder-nav { display: flex !important; }
 }
+
+/* Make it a goal: the plan on an idea */
+.ladder-nav-row.waits, .ladder-rail-seg.waits { opacity: 0.55; cursor: default; }
+.ladder-nav-row.waits:hover { background: transparent; }
+.ladder-cascade-item:disabled { cursor: default; opacity: 0.7; }
+.ladder-step-preview.required { background: var(--accent-soft); }
+.plan-pips { display: inline-flex; gap: 3px; }
+.plan-pips i { width: 10px; height: 4px; border-radius: 2px; background: var(--track); }
+.plan-pips i.on { background: currentColor; }

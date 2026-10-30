@@ -54,6 +54,7 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261121000000_gradient_slots.sql', table: 'paths', columns: ['gradient_slot'] },
   { file: '20261122000000_plan_ladder.sql', table: 'plan_steps', columns: ['slot', 'done_means'] },
   { file: '20261122000000_plan_ladder.sql', table: 'goals', columns: ['pace_curve'] },
+  { file: '20261123000000_idea_plans.sql', table: 'goal_ideas', columns: ['plan_draft'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */

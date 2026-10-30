@@ -399,6 +399,8 @@ export interface GoalIdea {
   plan_id?: string | null;
   planned_start?: ISODate | null;
   planned_end?: ISODate | null;
+  /** The plan drafted for it before it's a goal (Plan this goal on an idea). Its shape is the web app's IdeaPlanDraft. Missing on older databases. */
+  plan_draft?: Record<string, unknown> | null;
 }
 
 // ---------- Odyssey paths ----------

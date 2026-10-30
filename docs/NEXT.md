@@ -20,8 +20,12 @@ it cut the model down to what one person needs. This is what the app is now, and
   redoes the week and its tasks, and each month review the month.
 - **Groups** hold goals that work together and share tasks; a group with two or more goals shows one
   bar. Group outcomes are gone.
-- The **backlog** is one ordered list. **Make it a goal** opens one page: goal, when, this week,
-  first task. No selected column, no limit, no readiness rule, no prepare-then-commit.
+- The **backlog**: a title is enough to add an idea; **Select for next** needs why and done means.
+  **Make it a goal** runs Plan this goal on the idea (`IdeaLadder` in `screens/PlanGoal.tsx`, step 1 in
+  `screens/PlanWhat.tsx`, data in `data/ideaPlan.ts`) and is gated: the goal is made only once the
+  6-month, 3-month and month levels are set. The plan screens read a preview (the data as it will be
+  once the goal is made, built in memory from the idea's `plan_draft`), so suggestions and hours work
+  before the goal exists. The old one-page Make a goal form (`GoalNew.tsx`) is gone.
 - **Odyssey paths** sit above the seasons: three five-year lives, each with a headline, a line per
   year, four gauges and open questions. Goals and ideas point at a path; a path's progress is rolled
   up from its goals. The 3-month checkpoint re-rates the gauges; the retrospective asks what the
@@ -47,6 +51,7 @@ Run in order; each is safe to run twice:
   'backlog'; `bucketOf` in core/backlog.ts).
 - `20261122000000_plan_ladder.sql` — `plan_steps.slot`, `plan_steps.done_means`, `goals.pace_curve`: Plan this goal
   (up to three targets per level, each with a done-means line; the pace for suggestions).
+- `20261123000000_idea_plans.sql` — `goal_ideas.plan_draft`: an idea's plan before it's a goal.
 
 ## Still open
 

@@ -15,7 +15,6 @@ import { Today } from './screens/Today.tsx';
 import { QuickAdd } from './screens/today/QuickAdd.tsx';
 import { useShownDay } from './data/shownDay.ts';
 import { Plans } from './screens/Plans.tsx';
-import { GoalNew } from './screens/GoalNew.tsx';
 import { ReviewHub } from './screens/ReviewHub.tsx';
 import { Review } from './screens/Review.tsx';
 import { ReviewDetail, ReviewList } from './screens/ReviewPast.tsx';
@@ -26,7 +25,7 @@ import { Settings } from './screens/Settings.tsx';
 import { setAppBadge } from './push.ts';
 import { WelcomeBack } from './screens/WelcomeBack.tsx';
 import { Flow } from './screens/Flow.tsx';
-import { PlanGoal } from './screens/PlanGoal.tsx';
+import { PlanGoal, PlanIdea } from './screens/PlanGoal.tsx';
 import { Backlog } from './screens/Backlog.tsx';
 import { Completed } from './screens/Completed.tsx';
 import { Roadmap } from './screens/Roadmap.tsx';
@@ -192,7 +191,8 @@ function Shell(props: ShellProps) {
       break;
     case 'plans':
     case 'goals':
-      if (s0 === 'goals' && s1 === 'new') screen = <GoalNew ideaId={route.query.get('idea')} pathId={route.query.get('path')} />;
+      // Making a goal runs the plan on an idea (a new one for "Make a goal"): it's a goal once steps 1–3 are set.
+      if (s0 === 'goals' && s1 === 'new') screen = <PlanIdea key={route.query.get('idea') ?? 'new'} ideaId={route.query.get('idea') ?? 'new'} step={route.query.get('step') ?? (route.query.get('idea') ? null : 'season')} pathId={route.query.get('path')} />;
       else if (s0 === 'goals' && s1 === 'backlog') screen = <Backlog />;
       else if (s0 === 'goals' && s1 === 'completed') screen = <Completed />;
       else if (s0 === 'goals' && (s1 === 'roadmap' || s1 === 'timeline')) screen = <Roadmap />;
@@ -207,6 +207,9 @@ function Shell(props: ShellProps) {
       else if (s1 === 'past') screen = s2 ? <ReviewDetail id={s2} /> : <ReviewList />;
       else if (s1 === 'then-now') screen = <ThenNow planId={route.query.get('plan')} />;
       else screen = <ReviewHub />;
+      break;
+    case 'ideas':
+      screen = s1 ? <PlanIdea key={s1} ideaId={s1} step={route.query.get('step')} pathId={route.query.get('path')} /> : <Plans />;
       break;
     case 'progress':
       screen = <Progress />;
@@ -230,7 +233,7 @@ function Shell(props: ShellProps) {
       screen = <Today />;
   }
 
-  const tab = s0 === 'calendar' ? 'calendar' : s0 === 'habits' ? 'habits' : s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'paths' || s0 === 'roadmap' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
+  const tab = s0 === 'calendar' ? 'calendar' : s0 === 'habits' ? 'habits' : s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'ideas' || s0 === 'paths' || s0 === 'roadmap' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
 
   return (
     <div className="shell">

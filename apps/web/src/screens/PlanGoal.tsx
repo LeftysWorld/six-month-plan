@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   MAX_TARGETS,
   PACE_CURVES,
@@ -10,7 +10,9 @@ import {
   totalBy,
   weekLoad,
   weekStart,
+  type CascadeNode,
   type Goal,
+  type GoalIdea,
   type ISODate,
   type PaceCurve,
   type Plan,
@@ -19,10 +21,13 @@ import {
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { fmt } from '../data/derive.ts';
-import type { Op } from '../data/model.ts';
+import type { AppData, Op } from '../data/model.ts';
+import type { View } from '../data/derive.ts';
 import { opsAddMilestone, opsUpdateGoal } from '../data/ops.ts';
 import { href, navigate } from '../router.ts';
 import { Empty, Icon, Sheet, useToast, WEEKDAY_NAMES } from '../components/ui.tsx';
+import { draftGaps, draftOf, draftProgress, ideaPreview, opsCommitIdea, opsNewIdeaWithDraft, opsSaveDraft, type IdeaPlanDraft } from '../data/ideaPlan.ts';
+import { WhatStep } from './PlanWhat.tsx';
 import {
   LADDER_STEPS,
   blankTarget,
@@ -73,6 +78,42 @@ const LEVEL_NAME: Record<TargetLevel, string> = { quarter: '3 months', month: '1
 const TARGET_COLORS = ['var(--accent-ink)', 'var(--blue-ink)', 'var(--amber-ink)'];
 const TARGET_FILLS = ['var(--accent-soft)', 'var(--blue-soft)', 'var(--amber-soft)'];
 
+/**
+ * Everything a step reads and writes. On a goal it's the real data; on an idea (Make it a goal) it's a
+ * preview of the data as it will be once the goal is made, and every save goes to the idea's draft.
+ */
+export interface LadderEnv {
+  mode: 'goal' | 'idea';
+  data: AppData;
+  view: View;
+  today: ISODate;
+  /** Real changes (the reminder switch, ticking a target, linking a running task). */
+  commit: (ops: Op[]) => void;
+  saveLevel: (level: TargetLevel, node: CascadeNode, drafts: TargetDraft[], curve: PaceCurve | null) => void;
+  saveSeason: (patch: Partial<Goal>, totals: string[]) => void;
+  taskDrafts: TaskDraft[];
+  setTaskDrafts: (d: TaskDraft[]) => void;
+  /** The first week and its tasks are planned now (always, for a goal; for an idea, when it starts this week or next). */
+  soon: boolean;
+  closeHref: string;
+  startBack: { href: string; label: string };
+  finish: () => void;
+  finishLabel: string;
+  /** What's missing before finish can run (an idea can't be made a goal until steps 1–3 are set). */
+  gaps: string[];
+  idea: GoalIdea | null;
+  draft: IdeaPlanDraft | null;
+  saveDraft: (d: IdeaPlanDraft, then?: LadderStep) => void;
+}
+
+const LadderCtx = createContext<LadderEnv | null>(null);
+
+export function useLadder(): LadderEnv {
+  const v = useContext(LadderCtx);
+  if (!v) throw new Error('useLadder must be used inside a plan');
+  return v;
+}
+
 export function PlanGoal({ goalId, step: stepParam, week, from }: { goalId: string; step: string | null; week: string | null; from: string | null }) {
   const view = useView();
   const goal = view.goal(goalId);
@@ -88,10 +129,146 @@ export function PlanGoal({ goalId, step: stepParam, week, from }: { goalId: stri
   const monday = week && /^\d{4}-\d{2}-\d{2}$/.test(week) ? weekStart(week) : defaultMonday(view, goal, plan);
   const planned = isPlannedDown(view, goal, plan);
   const step: LadderStep = isLadderStep(stepParam) ? stepParam : planned ? 'review' : 'start';
-  return <PlanScreens key={`${goal.id}-${step}-${monday}`} goal={goal} plan={plan} monday={monday} step={step} saturday={from === 'review'} />;
+  return <GoalLadder key={`${goal.id}-${monday}`} goal={goal} plan={plan} monday={monday} step={step} saturday={from === 'review'} />;
 }
 
-interface StepProps {
+/** The plan for a goal that exists: saves go straight to the data. */
+function GoalLadder({ goal, plan, monday, step, saturday }: { goal: Goal; plan: Plan; monday: ISODate; step: LadderStep; saturday: boolean }) {
+  const { data, today, commit } = useStore();
+  const view = useView();
+  const toast = useToast();
+  const p = ladderPeriods(view, goal, plan, monday);
+  const [tasks, setTasks] = useState<TaskDraft[]>(() => loadTaskDrafts(goal.id, monday));
+  const go = (s: LadderStep) => navigate(`/goals/${goal.id}/plan?step=${s}&week=${monday}${saturday ? '&from=review' : ''}`);
+  const env: LadderEnv = {
+    mode: 'goal',
+    data,
+    view,
+    today,
+    commit,
+    saveLevel(level, node, drafts, curve) {
+      const ops: Op[] = opsSaveTargets(data, goal, plan, level, node, drafts);
+      if (curve && curve !== curveOf(goal)) ops.push(...opsUpdateGoal(goal, { pace_curve: curve }));
+      commit(ops);
+    },
+    saveSeason(patch, totals) {
+      const ops: Op[] = Object.keys(patch).length ? opsUpdateGoal(goal, patch) : [];
+      for (const t of totals) if (leadingNumber(t) != null) ops.push(...opsAddMilestone(goal.id, t, p.end));
+      commit(ops);
+    },
+    taskDrafts: tasks,
+    setTaskDrafts(d) {
+      setTasks(d);
+      saveTaskDrafts(goal.id, monday, d);
+    },
+    soon: true,
+    closeHref: saturday ? '/review' : `/goals/${goal.id}`,
+    startBack: { href: `/goals/${goal.id}`, label: goal.title.length > 28 ? 'Goal' : goal.title },
+    finish() {
+      const t = ladderTargets(data, goal, plan, p).week;
+      const { ops, undo, made } = opsCommitTasks(data, goal, p, t, tasks, today);
+      commit(ops);
+      setTasks([]);
+      saveTaskDrafts(goal.id, monday, []);
+      navigate(saturday ? '/review' : `/goals/${goal.id}`);
+      toast(made ? `Plan started: ${made} task${made === 1 ? '' : 's'} on your days` : 'Plan saved', made ? () => commit(undo) : undefined);
+    },
+    finishLabel: tasks.length ? 'Start the plan' : 'Done',
+    gaps: [],
+    idea: null,
+    draft: null,
+    saveDraft() {},
+  };
+  return (
+    <LadderCtx.Provider value={env}>
+      <PlanScreens key={step} goal={goal} plan={plan} p={p} step={step} saturday={saturday} go={go} />
+    </LadderCtx.Provider>
+  );
+}
+
+/**
+ * Make it a goal: the plan run on a backlog idea (or on a new one, for "Make a goal"). The goal is
+ * made only once the 6-month, 3-month and month levels are set; until then it's a draft on the idea.
+ */
+export function PlanIdea({ ideaId, step: stepParam, pathId }: { ideaId: string; step: string | null; pathId: string | null }) {
+  const { data } = useStore();
+  const idea = ideaId === 'new' ? null : data.ideas.find((i) => i.id === ideaId) ?? null;
+  if (ideaId !== 'new' && !idea) return <Empty title="That idea isn't in your backlog any more." />;
+  if (idea && idea.status === 'started' && idea.goal_id) {
+    return (
+      <Empty title={`${idea.title} is already a goal.`}>
+        <a href={href(`/goals/${idea.goal_id}/plan`)}>Open its plan</a>
+      </Empty>
+    );
+  }
+  return <IdeaLadder key={idea?.id ?? 'new'} idea={idea} stepParam={stepParam} pathId={pathId} />;
+}
+
+function IdeaLadder({ idea, stepParam, pathId }: { idea: GoalIdea | null; stepParam: string | null; pathId: string | null }) {
+  const { data, today, commit } = useStore();
+  const view = useView();
+  const toast = useToast();
+  // A draft that isn't saved yet keeps the same ids for as long as the page is open.
+  const [fresh] = useState(() => draftOf(view, idea, pathId));
+  const draft = useMemo(() => (idea?.plan_draft ? draftOf(view, idea, pathId) : fresh), [idea?.plan_draft, fresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  const preview = useMemo(() => ideaPreview(data, draft, today), [data, draft, today]);
+  const progress = draftProgress(idea?.plan_draft as IdeaPlanDraft | null | undefined);
+  const step: LadderStep = isLadderStep(stepParam) ? stepParam : progress > 0 ? 'review' : 'start';
+  const base = (id: string) => `/ideas/${id}/plan`;
+  const go = (s: LadderStep) => {
+    if (idea) navigate(`${base(idea.id)}?step=${s}`);
+    else if (s === 'start' || s === 'season') navigate(`${base('new')}?step=${s}${pathId ? `&path=${pathId}` : ''}`);
+  };
+  const saveDraft = (d: IdeaPlanDraft, then?: LadderStep) => {
+    if (idea) {
+      commit(opsSaveDraft(idea, d));
+      if (then) navigate(`${base(idea.id)}?step=${then}`);
+      return;
+    }
+    // "Make a goal" from nothing: the first save makes it an idea, so leaving half-way keeps it in the backlog.
+    const made = opsNewIdeaWithDraft(data, d);
+    commit(made.ops);
+    navigate(`${base(made.idea.id)}?step=${then ?? 'quarter'}`);
+  };
+  const gaps = draftGaps(data, draft, today);
+  const env: LadderEnv = {
+    mode: 'idea',
+    data: preview.data,
+    view: preview.view,
+    today,
+    commit,
+    saveLevel(level, _node, drafts, curve) {
+      saveDraft({ ...draft, [level]: drafts.filter((d) => d.text.trim() || d.value != null), ...(curve ? { pace: curve } : {}) });
+    },
+    saveSeason() {},
+    taskDrafts: draft.tasks,
+    setTaskDrafts(d) {
+      saveDraft({ ...draft, tasks: d });
+    },
+    soon: preview.soon,
+    closeHref: '/goals/backlog',
+    startBack: { href: '/goals/backlog', label: 'Backlog' },
+    finish() {
+      if (!idea || gaps.length) return;
+      const { ops, undo, goalId, tasks } = opsCommitIdea(data, idea, draft, today);
+      commit(ops);
+      navigate(`/goals/${goalId}`);
+      toast(`${draft.input.title.trim()} is a goal${tasks ? `, with ${tasks} task${tasks === 1 ? '' : 's'} on your days` : ''}`, () => commit(undo));
+    },
+    finishLabel: 'Make it a goal',
+    gaps: idea ? gaps : ['the 6-month step'],
+    idea,
+    draft,
+    saveDraft,
+  };
+  return (
+    <LadderCtx.Provider value={env}>
+      <PlanScreens key={step} goal={preview.goal} plan={preview.plan} p={preview.p} step={step} saturday={false} go={go} />
+    </LadderCtx.Provider>
+  );
+}
+
+export interface StepProps {
   goal: Goal;
   plan: Plan;
   p: LadderPeriods;
@@ -100,20 +277,17 @@ interface StepProps {
   go: (s: LadderStep) => void;
 }
 
-function PlanScreens({ goal, plan, monday, step, saturday }: { goal: Goal; plan: Plan; monday: ISODate; step: LadderStep; saturday: boolean }) {
-  const view = useView();
-  const p = ladderPeriods(view, goal, plan, monday);
-  const go = (s: LadderStep) => navigate(`/goals/${goal.id}/plan?step=${s}&week=${monday}${saturday ? '&from=review' : ''}`);
-  const props: StepProps = { goal, plan, p, step, saturday, go };
-  switch (step) {
+function PlanScreens(props: StepProps) {
+  const { mode } = useLadder();
+  switch (props.step) {
     case 'start':
       return <StartStep {...props} />;
     case 'season':
-      return <SeasonStep {...props} />;
+      return mode === 'idea' ? <WhatStep {...props} /> : <SeasonStep {...props} />;
     case 'quarter':
     case 'month':
     case 'week':
-      return <LevelStep {...props} level={step} />;
+      return <LevelStep {...props} level={props.step} />;
     case 'tasks':
       return <TasksStep {...props} />;
     default:
@@ -126,7 +300,7 @@ function PlanScreens({ goal, plan, monday, step, saturday }: { goal: Goal; plan:
 const STEP_LABEL: Record<LadderStep, string> = { start: 'Plan this goal', season: 'Step 1 of 5', quarter: 'Step 2 of 5', month: 'Step 3 of 5', week: 'Step 4 of 5', tasks: 'Step 5 of 5', review: 'Your plan' };
 const PREV: Record<LadderStep, LadderStep | null> = { start: null, season: 'start', quarter: 'season', month: 'quarter', week: 'month', tasks: 'week', review: 'tasks' };
 
-function Shell({
+export function Shell({
   goal,
   plan,
   p,
@@ -171,8 +345,9 @@ function Shell({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [nextDisabled]);
+  const env = useLadder();
   const prev = backTo === undefined ? PREV[step] : backTo;
-  const label = saturday && step === 'week' ? 'Saturday review' : STEP_LABEL[step];
+  const label = saturday && step === 'week' ? 'Saturday review' : env.mode === 'idea' && step === 'start' ? 'Make it a goal' : STEP_LABEL[step];
   return (
     <div className="ladder rise">
       <div className="ladder-top">
@@ -182,13 +357,13 @@ function Shell({
             Back
           </button>
         ) : (
-          <a className="back" href={href(`/goals/${goal.id}`)}>
+          <a className="back" href={href(env.startBack.href)}>
             <Icon name="back" />
-            {goal.title.length > 28 ? 'Goal' : goal.title}
+            {env.startBack.label}
           </a>
         )}
         <span className="mono ladder-step-label">{label}</span>
-        <a className="icon-btn ladder-close" href={href(saturday ? '/review' : `/goals/${goal.id}`)} aria-label="Close the plan">
+        <a className="icon-btn ladder-close" href={href(env.closeHref)} aria-label="Close the plan">
           <Icon name="x" />
         </a>
       </div>
@@ -235,7 +410,8 @@ function Shell({
 
 /** The ladder on a computer: every level, what you set on it, and a link to change it. */
 function LadderNav({ goal, plan, p, step, go }: Pick<StepProps, 'goal' | 'plan' | 'p' | 'step' | 'go'>) {
-  const { data } = useStore();
+  const { data, soon, mode } = useLadder();
+  const later = !soon ? `When it's up next · from ${shortDate(addDays(weekStart(p.start), -7))}` : null;
   const t = ladderTargets(data, goal, plan, p);
   const rows: { s: LadderStep; name: string; when: string; done: string; ask: string }[] = [
     { s: 'season', name: '6 months', when: shortDate(p.end), done: goal.done_means.trim() || goal.title, ask: `What's true on ${shortDate(p.end)}` },
@@ -252,8 +428,10 @@ function LadderNav({ goal, plan, p, step, go }: Pick<StepProps, 'goal' | 'plan' 
         const current = r.s === step;
         const past = step === 'review' || (order >= 0 && i < order);
         const filled = !!r.done;
+        const waits = !!later && (r.s === 'week' || r.s === 'tasks');
+        if (waits) r.ask = later!;
         return (
-          <button key={r.s} type="button" className={`ladder-nav-row${current ? ' current' : ''}`} aria-current={current ? 'step' : undefined} onClick={() => go(r.s)}>
+          <button key={r.s} type="button" className={`ladder-nav-row${current ? ' current' : ''}${waits ? ' waits' : ''}`} aria-current={current ? 'step' : undefined} disabled={waits} onClick={() => go(r.s)}>
             <span className={`ladder-dot${current ? ' current' : filled || past ? ' done' : ''}`} aria-hidden="true">
               {!current && (filled || past) && <Icon name="check" size={12} stroke={3} />}
             </span>
@@ -270,7 +448,7 @@ function LadderNav({ goal, plan, p, step, go }: Pick<StepProps, 'goal' | 'plan' 
         <span className={`ladder-dot${step === 'review' ? ' current' : ''}`} aria-hidden="true" />
         <span className="ladder-nav-text">
           <b>The plan on one page</b>
-          <span className="muted">Review and start</span>
+          <span className="muted">{mode === 'idea' ? 'Review and make it a goal' : 'Review and start'}</span>
         </span>
       </button>
     </nav>
@@ -279,6 +457,7 @@ function LadderNav({ goal, plan, p, step, go }: Pick<StepProps, 'goal' | 'plan' 
 
 /** The ladder on a phone: five segments across the top. */
 function LadderRail({ goal, p, step, go }: Pick<StepProps, 'goal' | 'plan' | 'p' | 'step' | 'go'>) {
+  const { soon } = useLadder();
   const order = step === 'review' ? 5 : LADDER_STEPS.indexOf(step as (typeof LADDER_STEPS)[number]);
   const items: { s: LadderStep; name: string; when: string }[] = [
     { s: 'season', name: '6 mo', when: shortDate(p.end) },
@@ -290,10 +469,10 @@ function LadderRail({ goal, p, step, go }: Pick<StepProps, 'goal' | 'plan' | 'p'
   return (
     <nav className="ladder-rail only-narrow" aria-label={`${goal.title}: plan levels`}>
       {items.map((x, i) => (
-        <button key={x.s} type="button" className={`ladder-rail-seg${i < order ? ' done' : i === order ? ' current' : ''}`} aria-current={i === order ? 'step' : undefined} onClick={() => go(x.s)}>
+        <button key={x.s} type="button" className={`ladder-rail-seg${i < order ? ' done' : i === order ? ' current' : ''}${!soon && i >= 3 ? ' waits' : ''}`} aria-current={i === order ? 'step' : undefined} disabled={!soon && i >= 3} onClick={() => go(x.s)}>
           <span className="ladder-rail-bar" aria-hidden="true" />
           <span className="ladder-rail-name">{x.name}</span>
-          <span className="ladder-rail-when">{x.when}</span>
+          <span className="ladder-rail-when">{!soon && i >= 3 ? 'Later' : x.when}</span>
         </button>
       ))}
     </nav>
@@ -350,7 +529,8 @@ function Meter({ label, right, share, ok, note }: { label: string; right: string
 
 function StartStep(props: StepProps) {
   const { goal, plan, p, go } = props;
-  const view = useView();
+  const { view, mode, idea, soon, draft } = useLadder();
+  const isIdea = mode === 'idea';
   const group = goal.group_id ? view.data.groups.find((g) => g.id === goal.group_id) : undefined;
   const path = goal.path_id ? view.data.paths.find((x) => x.id === goal.path_id) : undefined;
   const span = Math.max(1, daysBetween(p.start, p.end));
@@ -377,11 +557,11 @@ function StartStep(props: StepProps) {
   return (
     <Shell
       {...props}
-      kicker={[plan.name, group?.name, path?.name].filter(Boolean).join(' · ')}
-      title={goal.title}
-      sub={`Finishes ${shortDate(p.end)} · ${Math.max(0, daysBetween(view.today, p.end))} days`}
-      nextLabel="Plan this goal"
-      onNext={() => go('season')}
+      kicker={isIdea ? `From your backlog${draft?.input.planId ? ` · ${plan.name}` : ''}` : [plan.name, group?.name, path?.name].filter(Boolean).join(' · ')}
+      title={isIdea ? idea?.title || 'A new goal' : goal.title}
+      sub={isIdea ? 'Plan it to make it a goal. The finish, the 3-month checkpoint and the first month come first; nothing is a goal until they are set.' : `Finishes ${shortDate(p.end)} · ${Math.max(0, daysBetween(view.today, p.end))} days`}
+      nextLabel={isIdea ? (draft?.what ? 'Carry on planning' : 'Start planning') : 'Plan this goal'}
+      onNext={() => go(isIdea && draft?.what ? 'quarter' : 'season')}
       aside={
         <Card title="How often you come back">
           {cadence.map(([a, b, c]) => (
@@ -397,9 +577,11 @@ function StartStep(props: StepProps) {
       }
     >
       <div className="card ladder-card">
-        <b>{isPlannedDown(view, goal, plan) ? 'Plan it again, top to bottom' : "This goal isn't planned down yet"}</b>
+        <b>{isIdea ? 'Planned before it becomes a goal' : isPlannedDown(view, goal, plan) ? 'Plan it again, top to bottom' : "This goal isn't planned down yet"}</b>
         <span className="small muted" style={{ lineHeight: 1.5 }}>
-          Work from the finish back to this week. Each step suggests targets from the one above it and from the hours you have.
+          {isIdea
+            ? `Steps 1 to 3 are needed to make it a goal. ${soon ? 'It starts this week or next, so you plan its first week and tasks too.' : "Its first week and tasks are planned once it's up next."} You can stop at any point: the plan stays with the idea.`
+            : 'Work from the finish back to this week. Each step suggests targets from the one above it and from the hours you have.'}
         </span>
         <div className="ladder-timeline" role="img" aria-label={marks.map((m) => `${m.name}: ${shortDate(m.d)}`).join(', ')}>
           <span className="ladder-timeline-line" />
@@ -413,8 +595,11 @@ function StartStep(props: StepProps) {
         </div>
         <div className="ladder-steps-preview">
           {steps.map(([name, q], i) => (
-            <div key={name} className="ladder-step-preview">
-              <span className="mono" style={{ color: 'var(--accent-ink)' }}>Step {i + 1}</span>
+            <div key={name} className={`ladder-step-preview${isIdea && i < 3 ? ' required' : ''}`}>
+              <span className="mono" style={{ color: 'var(--accent-ink)' }}>
+                Step {i + 1}
+                {isIdea ? (i < 3 ? ' · needed' : soon ? '' : ' · later') : ''}
+              </span>
               <b className="small">{name}</b>
               <span className="xsmall muted">{q}</span>
             </div>
@@ -429,8 +614,7 @@ function StartStep(props: StepProps) {
 
 function SeasonStep(props: StepProps) {
   const { goal, p, go } = props;
-  const { data, today, commit } = useStore();
-  const view = useView();
+  const { data, today, view, saveSeason } = useLadder();
   const [doneMeans, setDoneMeans] = useState(goal.done_means);
   const [why, setWhy] = useState(goal.why);
   const existingTotals = data.milestones.filter((m) => m.goal_id === goal.id && (m.value != null || leadingNumber(m.title) != null)).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
@@ -444,13 +628,10 @@ function SeasonStep(props: StepProps) {
         : 'A practice to keep';
 
   function save() {
-    const ops: Op[] = [];
     const patch: Partial<Goal> = {};
     if (doneMeans.trim() !== goal.done_means.trim()) patch.done_means = doneMeans.trim();
     if (why.trim() !== goal.why.trim()) patch.why = why.trim();
-    if (Object.keys(patch).length) ops.push(...opsUpdateGoal(goal, patch));
-    for (const t of newTotals) if (leadingNumber(t) != null) ops.push(...opsAddMilestone(goal.id, t, p.end));
-    commit(ops);
+    saveSeason(patch, newTotals);
     go('quarter');
   }
 
@@ -538,8 +719,7 @@ function SeasonStep(props: StepProps) {
 
 function LevelStep(props: StepProps & { level: TargetLevel }) {
   const { goal, plan, p, level, go, saturday } = props;
-  const { data, today, commit } = useStore();
-  const view = useView();
+  const { data, today, view, saveLevel, mode, soon } = useLadder();
   const node = p[level];
   const end = periodEnd(p, node);
   const parentLevel = level === 'quarter' ? null : level === 'month' ? 'quarter' : 'month';
@@ -552,7 +732,7 @@ function LevelStep(props: StepProps & { level: TargetLevel }) {
   const suggestions = useMemo(() => suggestionsFor(view, { ...goal, pace_curve: curve }, plan, level, p, parents), [view, goal, curve, plan, level, p, parents]);
   const used = new Set(drafts.map((d) => d.text.trim().toLowerCase()));
   const open = suggestions.filter((s) => !used.has(s.text.trim().toLowerCase()));
-  const nextStep: LadderStep = level === 'quarter' ? 'month' : level === 'month' ? 'week' : 'tasks';
+  const nextStep: LadderStep = level === 'quarter' ? 'month' : level === 'month' ? (soon ? 'week' : 'review') : 'tasks';
   const filled = drafts.filter((d) => d.text.trim() || d.value != null).length;
 
   function useSuggestion(s: (typeof suggestions)[number]) {
@@ -563,11 +743,10 @@ function LevelStep(props: StepProps & { level: TargetLevel }) {
   }
 
   function save() {
-    const ops: Op[] = opsSaveTargets(data, goal, plan, level, node, drafts);
-    if (level === 'quarter' && curve !== curveOf(goal)) ops.push(...opsUpdateGoal(goal, { pace_curve: curve }));
-    commit(ops);
+    saveLevel(level, node, drafts, level === 'quarter' ? curve : null);
     go(nextStep);
   }
+  const required = mode === 'idea' && level !== 'week' && filled === 0;
 
   const kicker =
     level === 'quarter' ? `Step 2 of 5 · Checkpoint · ${shortDate(end)}` : level === 'month' ? `Step 3 of 5 · If you started Monday · ${shortDate(end)}` : `Step 4 of 5 · Week of ${shortDate(p.monday)} · by Sunday ${shortDate(addDays(p.monday, 6))}`;
@@ -593,8 +772,9 @@ function LevelStep(props: StepProps & { level: TargetLevel }) {
       sub={sub}
       context={<ContextCard label={contextLabel} lines={contextLines} />}
       aside={<LevelAside goal={goal} plan={plan} p={p} level={level} drafts={drafts} />}
-      nextLabel={level === 'quarter' ? 'Next: this month' : level === 'month' ? 'Next: this week' : saturday ? "Next: next week's tasks" : 'Next: tasks for this week'}
+      nextLabel={level === 'quarter' ? 'Next: this month' : level === 'month' ? (soon ? 'Next: this week' : 'Next: review the plan') : saturday ? "Next: next week's tasks" : 'Next: tasks for this week'}
       onNext={save}
+      nextDisabled={required}
     >
       {level === 'week' && <LastWeek goal={goal} plan={plan} p={p} show={saturday} />}
       {level === 'quarter' && (total || goal.type === 'number') && <PacePicker goal={goal} p={p} curve={curve} setCurve={setCurve} total={total?.target ?? null} unit={total?.unit ?? goal.unit ?? ''} />}
@@ -621,6 +801,7 @@ function LevelStep(props: StepProps & { level: TargetLevel }) {
           By {shortDate(level === 'week' ? addDays(p.monday, 6) : end)} · up to {MAX_TARGETS}
         </span>
         <TargetsEditor goal={goal} level={level} drafts={drafts} setDrafts={setDrafts} parents={parents} total={total?.unit ?? null} />
+        {required && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>Needed to make it a goal: set at least one target (or use a suggestion).</span>}
       </div>
     </Shell>
   );
@@ -733,8 +914,8 @@ function PacePicker({ goal, p, curve, setCurve, total, unit }: { goal: Goal; p: 
 }
 
 /** The right-hand column of a level: what else needs your hours, and whether this level fits. */
-function LevelAside({ goal, plan, p, level, drafts }: { goal: Goal; plan: Plan; p: LadderPeriods; level: TargetLevel; drafts: TargetDraft[] }) {
-  const view = useView();
+function LevelAside({ goal, p, level, drafts }: { goal: Goal; plan: Plan; p: LadderPeriods; level: TargetLevel; drafts: TargetDraft[] }) {
+  const { view } = useLadder();
   const hours = hoursFor(view, goal, p.monday);
   if (level === 'quarter') {
     const others = othersOverRange(view, goal, p.monday, periodEnd(p, p.quarter)).slice(0, 5);
@@ -809,15 +990,14 @@ function LevelAside({ goal, plan, p, level, drafts }: { goal: Goal; plan: Plan; 
 
 /** Saturday: how last week's targets went, and where the month stands. */
 function LastWeek({ goal, plan, p, show }: { goal: Goal; plan: Plan; p: LadderPeriods; show: boolean }) {
-  const { data, today, commit } = useStore();
-  const view = useView();
+  const { data, today, commit, view, mode } = useLadder();
   const toast = useToast();
   const prevMonday = addDays(p.monday, -7);
   const prev = ladderPeriods(view, goal, plan, prevMonday);
   const last = targetsAt(data, goal.id, plan.id, 'week', prev.week.start).filter((s) => s.target_note.trim() || s.target_value != null);
   const total = goalTotal(data, goal, today);
   const month = targetsAt(data, goal.id, plan.id, 'month', p.month.start).find((s) => s.target_value != null);
-  if (!show && last.length === 0) return null;
+  if (mode === 'idea' || (!show && last.length === 0)) return null;
   if (last.length === 0 && !total) return null;
   const review = data.reviews.find((r) => r.kind === 'weekly' && r.period_start <= prevMonday && r.period_end >= prevMonday && r.status === 'done');
   const result = review?.goal_results?.find((r) => r.goal_id === goal.id)?.result;
@@ -866,17 +1046,11 @@ function LastWeek({ goal, plan, p, show }: { goal: Goal; plan: Plan; p: LadderPe
 
 function TasksStep(props: StepProps) {
   const { goal, plan, p, go } = props;
-  const { data, today, commit } = useStore();
-  const view = useView();
+  const { data, today, commit, view, taskDrafts: drafts, setTaskDrafts: setDrafts, mode } = useLadder();
   const toast = useToast();
   const targets = ladderTargets(data, goal, plan, p).week;
-  const [drafts, setDraftsState] = useState<TaskDraft[]>(() => loadTaskDrafts(goal.id, p.monday));
   const [editing, setEditing] = useState<TaskDraft | null>(null);
   const [kept, setKept] = useState<ISODate[]>([]);
-  const setDrafts = (next: TaskDraft[]) => {
-    setDraftsState(next);
-    saveTaskDrafts(goal.id, p.monday, next);
-  };
   const chips = weekChips(view, goal, p.monday, targets, drafts);
   const available = data.profile.available_minutes;
   const placed = chips.map((c) => ({ key: c.key, taskKey: c.taskKey, date: c.date, minutes: c.minutes, movable: !!c.draftKey }));
@@ -1023,7 +1197,7 @@ function TasksStep(props: StepProps) {
         )}
       </div>
       <span className="xsmall muted">
-        {drafts.length} new task{drafts.length === 1 ? '' : 's'} · {hoursText(mineMinutes)} for this goal this week{budget ? ` of about ${hoursText(budget)} you have for it` : ''}. Nothing is saved until you start the plan.
+        {drafts.length} new task{drafts.length === 1 ? '' : 's'} · {hoursText(mineMinutes)} for this goal this week{budget ? ` of about ${hoursText(budget)} you have for it` : ''}. {mode === 'idea' ? 'They go on your days when you make it a goal.' : 'Nothing is saved until you start the plan.'}
       </span>
       {editing && <TaskDraftSheet draft={editing} goal={goal} targets={targets} p={p} onClose={() => setEditing(null)} onSave={saveDraft} onRemove={(key) => { setDrafts(drafts.filter((d) => d.key !== key)); setEditing(null); toast('Task removed from the plan'); }} />}
     </Shell>
@@ -1151,7 +1325,7 @@ function WeekBars({ p, load, chips }: { p: LadderPeriods; load: ReturnType<typeo
 }
 
 function TaskDraftSheet({ draft, goal, targets, p, onClose, onSave, onRemove }: { draft: TaskDraft; goal: Goal; targets: PlanStep[]; p: LadderPeriods; onClose: () => void; onSave: (d: TaskDraft) => void; onRemove: (key: string) => void }) {
-  const { data, today } = useStore();
+  const { data, today } = useLadder();
   const [d, setD] = useState<TaskDraft>(draft);
   const total = goalTotal(data, goal, today);
   const isNew = !draft.title;
@@ -1241,19 +1415,17 @@ function TaskDraftSheet({ draft, goal, targets, p, onClose, onSave, onRemove }: 
 // ---------- The plan on one page ----------
 
 function ReviewStep(props: StepProps) {
-  const { goal, plan, p, go, saturday } = props;
-  const { data, today, commit } = useStore();
-  const view = useView();
-  const toast = useToast();
+  const { goal, plan, p, go } = props;
+  const { data, today, commit, view, taskDrafts: drafts, finish, finishLabel, gaps, mode, soon, draft } = useLadder();
+  const isIdea = mode === 'idea';
   const t = ladderTargets(data, goal, plan, p);
-  const drafts = loadTaskDrafts(goal.id, p.monday);
   const chips = weekChips(view, goal, p.monday, t.week, drafts);
   const firstDay = today > p.monday ? today : p.monday;
   const firstChips = chips.filter((c) => c.mine && c.date === firstDay);
   const unplanned = unplannedGoals(view, goal.id).slice(0, 4);
   const reminder = data.profile.review_reminder !== false;
   const levels: { s: LadderStep; name: string; when: string; text: string }[] = [
-    { s: 'season', name: '6 months', when: shortDate(p.end), text: goal.done_means.trim() || goal.title },
+    { s: 'season', name: '6 months', when: shortDate(p.end), text: isIdea && !draft?.what ? '' : goal.done_means.trim() || goal.title },
     { s: 'quarter', name: '3 months', when: shortDate(periodEnd(p, p.quarter)), text: t.quarter.map((x) => targetText(goal, x)).join(' · ') },
     { s: 'month', name: '1 month', when: shortDate(periodEnd(p, p.month)), text: t.month.map((x) => targetText(goal, x)).join(' · ') },
     { s: 'week', name: 'This week', when: shortDate(addDays(p.monday, 6)), text: t.week.map((x) => targetText(goal, x)).join(' · ') },
@@ -1261,28 +1433,22 @@ function ReviewStep(props: StepProps) {
       s: 'tasks',
       name: 'Tasks',
       when: `${shortDate(p.monday)} –`,
-      text: `${chips.filter((c) => c.mine).length} on the calendar · ${hoursText(chips.filter((c) => c.mine).reduce((s, c) => s + c.minutes, 0))}${drafts.length ? ` · ${drafts.length} new` : ''}`,
+      text: chips.some((c) => c.mine) ? `${chips.filter((c) => c.mine).length} on the calendar · ${hoursText(chips.filter((c) => c.mine).reduce((s, c) => s + c.minutes, 0))}${drafts.length ? ` · ${drafts.length} new` : ''}` : '',
     },
   ];
-  const missing = levels.filter((l) => !l.text);
-
-  function start() {
-    const { ops, undo, made } = opsCommitTasks(data, goal, p, t.week, drafts, today);
-    commit(ops);
-    saveTaskDrafts(goal.id, p.monday, []);
-    navigate(saturday ? '/review' : `/goals/${goal.id}`);
-    toast(made ? `Plan started: ${made} task${made === 1 ? '' : 's'} on your days` : 'Plan saved', made ? () => commit(undo) : undefined);
-  }
+  const waits = (s: LadderStep) => !soon && (s === 'week' || s === 'tasks');
+  const missing = levels.filter((l) => !l.text && !waits(l.s));
 
   return (
     <Shell
       {...props}
-      kicker={goal.title}
+      kicker={isIdea ? `${draft?.input.title || 'New goal'} · from your backlog` : goal.title}
       title="Your plan, top to bottom"
-      sub="Every level answers to the one above it. Tap any level to change it."
-      backTo="tasks"
-      nextLabel={drafts.length ? 'Start the plan' : 'Done'}
-      onNext={start}
+      sub={isIdea ? 'Every level answers to the one above it. Make it a goal once the first three are set.' : 'Every level answers to the one above it. Tap any level to change it.'}
+      backTo={soon ? 'tasks' : 'month'}
+      nextLabel={finishLabel}
+      onNext={finish}
+      nextDisabled={gaps.length > 0}
       aside={
         <>
           {unplanned.length > 0 && (
@@ -1303,7 +1469,7 @@ function ReviewStep(props: StepProps) {
     >
       <div className="ladder-cascade">
         {levels.map((l, i) => (
-          <button key={l.s} type="button" className={`ladder-cascade-item${l.text ? '' : ' empty'}`} onClick={() => go(l.s)}>
+          <button key={l.s} type="button" className={`ladder-cascade-item${l.text && !waits(l.s) ? '' : ' empty'}`} disabled={waits(l.s)} onClick={() => go(l.s)}>
             <span className={`ladder-dot${l.text ? ' done' : ''}`} aria-hidden="true">
               {l.text && <Icon name="check" size={12} stroke={3} />}
             </span>
@@ -1312,12 +1478,17 @@ function ReviewStep(props: StepProps) {
               <span className="mono" style={{ color: 'var(--accent-ink)' }}>
                 {l.name} · {l.when}
               </span>
-              <span className="small strong">{l.text || 'Not set yet: tap to add'}</span>
+              <span className="small strong">{waits(l.s) ? `When it's up next (it starts ${shortDate(p.start)})` : l.text || 'Not set yet: tap to add'}</span>
             </span>
           </button>
         ))}
       </div>
-      {missing.length > 0 && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>{missing.map((m) => m.name).join(', ')} {missing.length === 1 ? 'is' : 'are'} still empty. The plan works without, but each level is what the one below is checked against.</span>}
+      {isIdea && gaps.length > 0 && (
+        <div className="banner warn" role="status">
+          <span>Needed to make it a goal: {gaps.join(', ')}.</span>
+        </div>
+      )}
+      {!isIdea && missing.length > 0 && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>{missing.map((m) => m.name).join(', ')} {missing.length === 1 ? 'is' : 'are'} still empty. The plan works without, but each level is what the one below is checked against.</span>}
       <div className="ladder-two">
         <Card title={`${firstDay === today ? 'Today' : shortDate(firstDay)} on Today`}>
           {firstChips.length === 0 && <span className="small muted">Nothing for this goal that day.</span>}
