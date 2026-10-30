@@ -216,7 +216,10 @@ export function Calendar() {
                         navigate(d === today ? '/today' : `/today/${d}`);
                       }}
                     >
-                      <span className="cal-num">{Number(d.slice(8))}</span>
+                      <span className="cal-num-row">
+                        <span className="cal-num">{Number(d.slice(8))}</span>
+                        {d === today && <span className="cal-today-tag">Today</span>}
+                      </span>
                       <span className="cal-items">
                         {list.slice(0, 3).map((x) => (
                           <span key={x.id} className={`cal-pill k-${x.kind}${x.done ? ' done' : ''}`} style={{ ['--c' as string]: x.color }}>
