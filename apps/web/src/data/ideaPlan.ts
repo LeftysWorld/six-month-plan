@@ -92,7 +92,7 @@ export function draftOf(view: View, idea: GoalIdea | null, pathId: string | null
   if (d && d.v === 1 && d.input && d.goalId) {
     const blank = blankIdeaDraft(view, idea, pathId);
     // The idea's own fields win: they may have been edited in the backlog since the draft was saved.
-    const fromIdea = idea ? { title: idea.title, why: idea.note ?? '', doneMeans: idea.done_means ?? d.input.doneMeans ?? '', ...(pathId ? { pathId } : {}) } : {};
+    const fromIdea = idea ? { title: idea.title, why: idea.note ?? '', doneMeans: idea.done_means ?? d.input.doneMeans ?? '', pathId: pathId ?? idea.path_id ?? null } : {};
     return { ...blank, ...d, input: { ...blank.input, ...d.input, ...fromIdea } };
   }
   return blankIdeaDraft(view, idea, pathId);

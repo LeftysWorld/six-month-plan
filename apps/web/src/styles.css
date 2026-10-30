@@ -559,7 +559,7 @@ input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-o
 .chip { font-size: 14px; font-weight: 500; padding: 0 16px; min-height: 40px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; transition: background 0.15s, color 0.15s, transform 0.15s var(--spring); }
 .chip:hover { border-color: var(--border-strong); }
 .chip:active { transform: scale(0.95); }
-.chip[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--ground); }
+.chip[aria-pressed='true'], .chip[aria-checked='true'] { background: var(--ink); border-color: var(--ink); color: var(--ground); }
 .choice {
   display: flex;
   flex-direction: column;

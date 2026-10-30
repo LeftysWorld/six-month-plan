@@ -172,8 +172,9 @@ export function WhatStep(props: StepProps) {
 
       {paths.length > 0 && (
         <div className="stack-sm">
-          <span className="label">Which path is this a bet on?</span>
-          <div className="chips" role="radiogroup" aria-label="Path">
+          <span className="label">Which Odyssey path does it move forward? (optional)</span>
+          <span className="xsmall muted">Pick the future this goal builds toward; its progress counts toward that path. Tap it again to clear.</span>
+          <div className="chips" role="radiogroup" aria-label="Odyssey path">
             {paths.map((p) => (
               <button key={p.id} type="button" className="chip" role="radio" aria-checked={input.pathId === p.id} onClick={() => set({ pathId: input.pathId === p.id ? null : p.id })} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
                 <span className="dot" style={{ width: 7, height: 7, background: p.color }} />
