@@ -33,6 +33,7 @@ import { Calendar } from './screens/Calendar.tsx';
 import { Habits } from './screens/Habits.tsx';
 import { GroupPage } from './screens/GroupPage.tsx';
 import { PathDetail, Paths } from './screens/Paths.tsx';
+import { WorkoutReport } from './screens/WorkoutReport.tsx';
 
 const MODE_KEY = 'six.mode';
 
@@ -214,6 +215,9 @@ function Shell(props: ShellProps) {
     case 'progress':
       screen = <Progress />;
       break;
+    case 'workouts':
+      screen = <WorkoutReport />;
+      break;
     case 'roadmap':
       screen = <Roadmap />;
       break;
@@ -233,7 +237,7 @@ function Shell(props: ShellProps) {
       screen = <Today />;
   }
 
-  const tab = s0 === 'calendar' ? 'calendar' : s0 === 'habits' ? 'habits' : s0 === 'review' || s0 === 'progress' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'ideas' || s0 === 'paths' || s0 === 'roadmap' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
+  const tab = s0 === 'calendar' ? 'calendar' : s0 === 'habits' ? 'habits' : s0 === 'review' || s0 === 'progress' || s0 === 'workouts' ? 'review' : s0 === 'plans' || s0 === 'goals' || s0 === 'ideas' || s0 === 'paths' || s0 === 'roadmap' ? 'goals' : s0 === 'settings' ? 'none' : 'today';
 
   return (
     <div className="shell">

@@ -1,3 +1,4 @@
+import { todayIn } from '@six/core';
 import type {
   Action,
   ActionGoal,
@@ -21,6 +22,8 @@ import type {
   Session,
   StretchHoldLog,
   WeekPlan,
+  WorkoutPlanVersion,
+  WorkoutReport,
   WorkoutSet,
   WorkoutExerciseLog,
 } from '@six/core';
@@ -57,6 +60,10 @@ export interface AppData {
   paths: Path[];
   /** Small dated experiments that answer a path's questions. */
   experiments: PathExperiment[];
+  /** Every version of every workout's plan (recorded by the database). */
+  planVersions: WorkoutPlanVersion[];
+  /** Reports from the workout coach agent. */
+  workoutReports: WorkoutReport[];
 }
 
 export type CollectionKey = Exclude<keyof AppData, 'profile'>;
@@ -86,6 +93,8 @@ export const TABLES: Record<CollectionKey, string> = {
   groups: 'goal_groups',
   paths: 'paths',
   experiments: 'path_experiments',
+  planVersions: 'workout_plan_versions',
+  workoutReports: 'workout_reports',
 };
 
 export const COLLECTIONS = Object.keys(TABLES) as CollectionKey[];
@@ -135,6 +144,8 @@ export function emptyData(): AppData {
     groups: [],
     paths: [],
     experiments: [],
+    planVersions: [],
+    workoutReports: [],
   };
 }
 
@@ -185,6 +196,31 @@ function sessionKey(s: Pick<Session, 'action_id' | 'week_start' | 'origin' | 'sl
 
 /** Apply one op to in-memory data and return the new data (never mutates the input). */
 export function applyOp(data: AppData, op: Op): AppData {
+  const next = applyOpOnly(data, op);
+  return op.kind === 'insert' || op.kind === 'update' ? (op.collection === 'actions' ? recordPlanVersions(data, next) : next) : next;
+}
+
+/**
+ * The database records a new plan version whenever a workout's plan changes (a trigger on actions).
+ * The same happens here in memory, so the workout report shows the change at once, and demo mode,
+ * which has no database, keeps a plan history too. In Supabase mode these rows are replaced by the
+ * real ones on the next load.
+ */
+function recordPlanVersions(before: AppData, after: AppData): AppData {
+  const was = new Map(before.actions.map((a) => [a.id, a.workout_plan ?? null]));
+  const fresh: WorkoutPlanVersion[] = [];
+  const today = todayIn(after.profile.timezone);
+  for (const a of after.actions) {
+    const plan = a.workout_plan;
+    if (!plan || plan.length === 0) continue;
+    const old = was.get(a.id);
+    if (old !== undefined && JSON.stringify(old) === JSON.stringify(plan)) continue;
+    fresh.push({ id: crypto.randomUUID(), action_id: a.id, plan, details: a.details ?? '', effective_on: today, source: 'app', reason: '', created_at: new Date().toISOString() });
+  }
+  return fresh.length ? { ...after, planVersions: [...after.planVersions, ...fresh] } : after;
+}
+
+function applyOpOnly(data: AppData, op: Op): AppData {
   switch (op.kind) {
     case 'insert': {
       const list = data[op.collection] as unknown as AnyRow[];

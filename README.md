@@ -98,6 +98,10 @@ Six tabs, one job each: **Today** to do, **Goals** to see and shape, **Roadmap**
 - **Settings**: name, time zone, units, appearance (match device, dark, light), reminders, minutes available per weekday, export JSON/CSV, start from scratch.
 - **Demo mode** runs entirely in the browser with example data. Works offline: changes queue up and save when the connection returns.
 
+## Workout report and the workout coach
+
+**Review → Workout report** (or Settings → Workout coach) makes your whole workout history into one report in a tap: the plan and every change to it, each workout set by set, how each exercise is trending, your notes and past coach decisions. While logging a workout, one optional tap after each set records how many reps you had left, and each exercise has "This hurt or felt wrong". The weekly workout coach (a separate repo, `workout-coach`) reads the same report through the `workout-agent` Edge Function and writes back a recommendation you mark Applied, Partly or Declined. Setup and what the agent can and can't reach: `docs/WORKOUT_COACH.md`. Needs `supabase/migrations/20261116000000_workout_coach.sql`.
+
 ## Run it locally (demo mode, 2 minutes)
 
 Requirements: Node.js 20 or newer.

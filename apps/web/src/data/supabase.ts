@@ -44,6 +44,10 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261113000000_goal_order.sql', table: 'goal_groups', columns: ['sort_order'] },
   { file: '20261114000000_backlog_selected.sql', table: 'goal_ideas', columns: ['shortlisted_at'] },
   { file: '20261115000000_session_scheduled_on.sql', table: 'sessions', columns: ['scheduled_on'] },
+  { file: '20261116000000_workout_coach.sql', table: 'workout_plan_versions', columns: [], creates: true },
+  { file: '20261116000000_workout_coach.sql', table: 'workout_reports', columns: [], creates: true },
+  { file: '20261116000000_workout_coach.sql', table: 'workout_sets', columns: ['rir', 'pain'] },
+  { file: '20261116000000_workout_coach.sql', table: 'profiles', columns: ['coach_share_bodyweight'] },
   { file: '20261117000000_stretching.sql', table: 'stretch_holds', columns: [], creates: true },
   { file: '20261117000000_stretching.sql', table: 'actions', columns: ['stretch_plan'] },
   { file: '20261118000000_stretch_sets.sql', table: 'stretch_holds', columns: ['set_no', 'seconds', 'reps'] },
@@ -77,6 +81,8 @@ const BLANK_TEXT: Record<string, string[]> = {
   goal_ideas: ['note'],
   sessions: ['note'],
   measurements: ['note'],
+  workout_plan_versions: ['details', 'reason', 'source'],
+  workout_reports: ['snapshot_hash', 'content_md', 'model', 'prompt_version', 'user_note'],
 };
 
 /** Null → '' for the table's not-null text columns, so an export round-trips. */
@@ -357,6 +363,28 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
         ['change_log', incoming.changeLog], ['goal_ideas', (incoming.ideas ?? []).map((i) => ({ ...without(i, GONE_IDEA_COLUMNS), status: (i as { status: string }).status === 'selected' ? 'backlog' : i.status }))],
       ];
       for (const [table, rows] of rest) if (rows?.length) await insert(table, rows);
+      // Inserting the workouts made the database record each plan as a new version dated today.
+      // Put the file's plan history back instead (or, for an older export without it, one starting
+      // version per workout dated from when its schedule began).
+      const { error: ve } = await sb.from('workout_plan_versions').delete().eq('user_id', userId);
+      if (ve && !looksMissing(ve.message)) throw new Error(`workout_plan_versions: ${ve.message}`);
+      if (!ve) {
+        const versions = incoming.planVersions?.length
+          ? incoming.planVersions
+          : (incoming.actions ?? [])
+              .filter((a) => a.workout_plan?.length)
+              .map((a) => ({
+                id: crypto.randomUUID(),
+                action_id: a.id,
+                plan: a.workout_plan,
+                details: a.details ?? '',
+                effective_on: (incoming.schedules ?? []).filter((x) => x.action_id === a.id).map((x) => x.effective_from).sort()[0] ?? new Date().toISOString().slice(0, 10),
+                source: 'backfill',
+                reason: 'The plan as it stood when plan history began',
+              }));
+        if (versions.length) await insert('workout_plan_versions', versions);
+        if (incoming.workoutReports?.length) await insert('workout_reports', incoming.workoutReports);
+      }
     },
 
     async wipeAll(): Promise<void> {
@@ -366,6 +394,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       for (let i = 0; i < paths.length; i += 100) await sb.storage.from(BUCKET).remove(paths.slice(i, i + 100));
       // Children first so nothing is left pointing at a deleted row (the foreign keys cascade anyway).
       const order = [
+        'workout_reports', 'workout_plan_versions',
         'attachments', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'workout_exercises', 'stretch_holds', 'sessions',
         'path_experiments', 'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
         'plan_steps', 'plan_goals', 'goals', 'goal_groups', 'plans', 'paths', 'measurement_types',

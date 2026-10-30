@@ -4,7 +4,7 @@ import { opsProfile } from '../data/ops.ts';
 import { PlanPackSheet } from './PlanPackSheet.tsx';
 import { AppUpdatesList } from './UpdateSheet.tsx';
 import { resetDemo } from '../data/local.ts';
-import { navigate } from '../router.ts';
+import { href, navigate } from '../router.ts';
 import { opsAddIdeas, parseIdeaFile, type IdeaFileItem } from '../data/backlog.ts';
 import type { AppData } from '../data/model.ts';
 import { opsAddPracticeWorkout, opsRemovePracticeWorkouts, practiceSource, practiceWorkouts } from '../data/practice.ts';
@@ -350,6 +350,19 @@ export function Settings({ demo, email, onExitDemo, onEnterDemo, onSignOut }: Sh
         <AppUpdatesList />
       </div>
       {pack && <PlanPackSheet onClose={() => setPack(false)} />}
+      <div className="section-label">Workout coach</div>
+      <div className="card stack-sm">
+        <span className="small">
+          Your workout history as one report: every workout, set, plan change and note, with how each exercise is trending. The workout coach reads the same report each week and writes back a recommendation.
+        </span>
+        <a className="btn small" href={href('/workouts/report')} style={{ alignSelf: 'flex-start' }}>
+          Open the workout report
+        </a>
+        <label className="check-row small">
+          <input type="checkbox" checked={p.coach_share_bodyweight ?? true} onChange={(e) => commit(opsProfile({ coach_share_bodyweight: e.target.checked }))} />
+          <span>Include my weekly body weight (it changes how strength progress reads while losing weight). Nothing else from your goals is ever shared.</span>
+        </label>
+      </div>
 
       <div className="section-label">Time available each day</div>
       <div className="card stack-sm">
