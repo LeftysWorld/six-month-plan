@@ -41,6 +41,8 @@ import { groupScoreText } from '@six/core';
 import type { AppData, Op, ReviewPayload } from '../data/model.ts';
 import { opsArchiveAction, opsArchiveGoal, opsCompleteGoal, opsCompleteReview, opsCreatePlan, opsLinkGoalToPlan, opsReplacePath, opsUpdateGoal } from '../data/ops.ts';
 import { catchUp, catchUpPlan, chainFor, isSet, opsSetLevel } from '../data/chain.ts';
+import { isPlannedDown, targetText, targetsAt } from '../data/ladder.ts';
+import { planHref } from './PlanGoal.tsx';
 import { withOps } from '../data/breakdown.ts';
 import { actionLookup, commitmentTrail, obstacleSentence, planTrend, readCheck, timeAverages, trendFor, weekdaySentence } from '../data/insights.ts';
 import { href, navigate, useRoute } from '../router.ts';
@@ -368,11 +370,17 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
       next = withOps(next, more);
     };
     if (digest) add([{ kind: 'update', collection: 'reviews', id: payload.review.id, patch: { digest: digest.text } }]);
-    // A week goal that was hit is marked complete (and unmarked if it wasn't).
+    // A week goal that was hit is marked complete (and unmarked if it wasn't). A week with several
+    // goals: "hit" ticks them all; otherwise the ones you ticked during the week stay ticked.
     for (const r of results) {
       const step = r.step_id ? next.planSteps.find((s) => s.id === r.step_id) : null;
       if (!step) continue;
       const done = r.result === 'hit';
+      const siblings = next.planSteps.filter((x) => x.goal_id === step.goal_id && x.plan_id === step.plan_id && x.level === step.level && x.start_date === step.start_date);
+      if (siblings.length > 1) {
+        if (done) for (const x of siblings) if (!x.completed_at) add([{ kind: 'update', collection: 'planSteps', id: x.id, patch: { completed_at: now } }]);
+        continue;
+      }
       if (!!step.completed_at !== done) add([{ kind: 'update', collection: 'planSteps', id: step.id, patch: { completed_at: done ? now : null } }]);
     }
     if (kind === 'quarter' && plan) {
@@ -508,6 +516,16 @@ function ReviewRun({ kind, plan, period }: { kind: ReviewKind; plan: Plan | null
                   </span>
                 )}
                 {fix && <span className="xsmall" style={{ color: 'var(--amber-ink)' }}>{fix}</span>}
+                {isWeekly && gp && isPlannedDown(view, l.goal, gp) && nextMonday <= gp.end_date && (
+                  <a className="xsmall" style={{ fontWeight: 600 }} href={href(planHref(l.goal.id, 'week', nextMonday, true))}>
+                    Plan next week from the month →
+                  </a>
+                )}
+                {(kind === 'block' || kind === 'quarter') && gp && isPlannedDown(view, l.goal, gp) && addDays(period.end, 1) <= gp.end_date && (
+                  <a className="xsmall" style={{ fontWeight: 600 }} href={href(planHref(l.goal.id, kind === 'block' ? 'month' : 'quarter', weekStart(addDays(period.end, 1))))}>
+                    {kind === 'block' ? 'Plan the next month →' : 'Plan the next 3 months →'}
+                  </a>
+                )}
               </div>
               <div className="seg review-rate" role="group" aria-label={`How did ${l.goal.title} go?`}>
                 {(['hit', 'partly', 'missed'] as const).map((r) => (
@@ -1182,7 +1200,14 @@ function goalLines(data: AppData, view: View, goals: Goal[], planOf: (g: Goal) =
     if (kind === 'weekly') {
       const link = chainFor(data, goal, plan, period.start < plan.start_date ? plan.start_date : period.start).week;
       const value = link.step?.target_value != null && goal.type === 'number' ? `${fmt(link.step.target_value)} ${goal.unit ?? ''}`.trim() : '';
-      const note = isSet(link) ? [value, link.step!.target_note.trim()].filter(Boolean).join(' · ') : 'No week goal was written down.';
+      // A week planned in Plan this goal can hold up to three goals; they're judged together.
+      const many = targetsAt(data, goal.id, plan.id, 'week', link.node.start).filter((x) => x.target_note.trim() || x.target_value != null);
+      const note =
+        many.length > 1
+          ? many.map((x) => `${x.completed_at ? '✓ ' : ''}${targetText(goal, x)}`).join(' · ')
+          : isSet(link)
+            ? [value, link.step!.target_note.trim()].filter(Boolean).join(' · ')
+            : 'No week goal was written down.';
       return { goal, note, stepId: link.step?.id ?? null };
     }
     // Month and 3-month: the dates hit in the period, against what was due.

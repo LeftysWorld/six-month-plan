@@ -10,8 +10,14 @@ it cut the model down to what one person needs. This is what the app is now, and
 - A **season** is the review calendar: month reviews, a 3-month checkpoint, a retrospective. Every
   goal shares it; each goal keeps its own dates inside it. There are no own clocks, no batches, no
   "starts after": a goal that follows another just starts later.
-- A goal is broken down two ways only: **dates to hit** (milestones) and **this week's goal**.
-  Month and 3-month notes are gone from the app (rows from before stay in the database as history).
+- A goal is broken down by **Plan this goal** (`screens/PlanGoal.tsx`, `data/ladder.ts`,
+  `packages/core/src/ladder.ts`): 6 months (the goal) → 3 months → this month → this week → the
+  week's tasks, top down. Each level is up to three `plan_steps` rows for the period (`slot` 0–2),
+  each pointing at a target above it (`parent_id`); a task points at the week target it serves
+  (`actions.step_id`). `goals.pace_curve` shapes the suggestions for a running total. **Dates to
+  hit** (milestones) still sit alongside. The October cut had dropped the month and 3-month levels;
+  this brings them back as the spine of the app, kept light: you plan all five once, then Saturday
+  redoes the week and its tasks, and each month review the month.
 - **Groups** hold goals that work together and share tasks; a group with two or more goals shows one
   bar. Group outcomes are gone.
 - The **backlog** is one ordered list. **Make it a goal** opens one page: goal, when, this week,
@@ -39,6 +45,8 @@ Run in order; each is safe to run twice:
   (`apps/web/src/data/order.ts`).
 - `20261114000000_backlog_selected.sql` — `goal_ideas.shortlisted_at`: the Selected for next bucket (status stays
   'backlog'; `bucketOf` in core/backlog.ts).
+- `20261122000000_plan_ladder.sql` — `plan_steps.slot`, `plan_steps.done_means`, `goals.pace_curve`: Plan this goal
+  (up to three targets per level, each with a done-means line; the pace for suggestions).
 
 ## Still open
 
@@ -50,8 +58,10 @@ Run in order; each is safe to run twice:
 - Morning/evening dismissals, review drafts and the midweek check are per device (`localStorage`).
   A `device_state` jsonb column on `profiles` would sync them.
 - Multi-tab: two tabs with pending changes overwrite each other's outbox.
-- `plan_steps` month/quarter rows and `plans.solo` could be dropped in a later migration once you're
-  sure you won't want to look at them.
+- `plans.solo` could be dropped in a later migration. (`plan_steps` month/quarter rows are in use again.)
+- Plan this goal: the task drafts for a week live on the device until **Start the plan**; a
+  `device_state` column would carry them between phone and computer. Moving a task that's already
+  running to another day is done on Today (the planner moves only the tasks you're planning).
 
 ## How this branch was verified
 

@@ -52,6 +52,8 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261120000000_idea_groups_and_plans.sql', table: 'goal_ideas', columns: ['group_id', 'plan_id', 'planned_start', 'planned_end'] },
   { file: '20261121000000_gradient_slots.sql', table: 'goal_groups', columns: ['gradient_slot'] },
   { file: '20261121000000_gradient_slots.sql', table: 'paths', columns: ['gradient_slot'] },
+  { file: '20261122000000_plan_ladder.sql', table: 'plan_steps', columns: ['slot', 'done_means'] },
+  { file: '20261122000000_plan_ladder.sql', table: 'goals', columns: ['pace_curve'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */
@@ -62,6 +64,7 @@ const GONE_GROUP_COLUMNS = ['outcome'];
 /** Text columns that are `not null default ''`: an export may carry them as null, which the default doesn't cover. */
 const BLANK_TEXT: Record<string, string[]> = {
   goals: ['prize', 'prize_on_time', 'completion_note', 'reflection', 'why', 'done_means'],
+  plan_steps: ['target_note', 'done_means'],
   milestones: ['prize', 'title'],
   goal_groups: ['prize', 'week_goal'],
   reviews: ['digest', 'went_well', 'got_in_way', 'change_next', 'carry_forward'],

@@ -81,6 +81,8 @@ export interface Goal {
   prize_on_time_claimed_at?: string | null;
   /** Hand-set position among its siblings (its group, or the loose goals) on the Goals page. Missing on older databases. */
   sort_order?: number | null;
+  /** How the goal's running total or number is spread over its run, for the plan's suggestions. Missing on older databases (even). */
+  pace_curve?: import('./ladder.ts').PaceCurve | null;
 }
 
 /** A named group of goals that work together, made by dragging one goal onto another (like a phone folder). */
@@ -142,6 +144,10 @@ export interface PlanStep {
   /** What this stage should look like, in your own words. */
   target_note: string;
   completed_at: string | null;
+  /** Which of the period's targets this is (0–2): a level holds up to three. Missing on older databases (0). */
+  slot?: number;
+  /** How you'll know this target is done, in a line. Missing on older databases. */
+  done_means?: string;
 }
 
 export interface Milestone {

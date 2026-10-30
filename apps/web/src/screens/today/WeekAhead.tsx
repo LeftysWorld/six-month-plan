@@ -5,6 +5,7 @@ import { useView } from '../../data/useView.ts';
 import { chainFor, isSet, periodStatus } from '../../data/chain.ts';
 import { groupWeekGoal } from '../../data/groups.ts';
 import { tallyFor, tallyInWeek } from '../../data/tally.ts';
+import { targetText, targetsAt } from '../../data/ladder.ts';
 import { href } from '../../router.ts';
 import { Icon, useToast } from '../../components/ui.tsx';
 
@@ -26,9 +27,11 @@ export function WeekAhead() {
   });
   if (goals.length === 0) return null;
 
-  const rows = goals.map((g) => {
+  const rows = goals.flatMap((g) => {
     const plan = view.planForGoal(g)!;
     const chain = chainFor(data, g, plan, today);
+    // A week planned in Plan this goal can hold up to three goals: one row each, ticked one by one.
+    const many = targetsAt(data, g.id, plan.id, 'week', chain.week.node.start).filter((x) => x.target_note.trim() || x.target_value != null);
     const step = chain.week.step;
     const set = isSet(chain.week);
     const value = g.type === 'number' ? step?.target_value ?? null : null;
@@ -37,7 +40,8 @@ export function WeekAhead() {
     // A running total says what this week added and what the week needs.
     const tally = data.milestones.filter((m) => m.goal_id === g.id && isTally(m) && !m.completed_at).map((m) => ({ m, t: tallyFor(view, m, today) })).find((x) => x.t);
     const tallyLine = tally?.t ? `+${tallyInWeek(data, tally.m, monday)} this week${tally.t.perDay ? ` · ~${tally.t.perDay * Math.min(7, left + 1)} more to stay on pace` : ''}` : null;
-    return { g, step, set, text, done: !!step?.completed_at, status, tallyLine };
+    if (many.length > 1) return many.map((x, i) => ({ key: x.id, first: i === 0, g, step: x as typeof step, set: true, text: targetText(g, x), done: !!x.completed_at, status: null as typeof status, tallyLine: i === 0 ? tallyLine : null }));
+    return [{ key: g.id, first: true, g, step, set, text, done: !!step?.completed_at, status, tallyLine }];
   });
   const groups = data.groups
     .map((gr) => ({ gr, line: groupWeekGoal(gr, monday), members: rows.filter((r) => r.g.group_id === gr.id) }))
@@ -54,7 +58,7 @@ export function WeekAhead() {
   };
 
   const line = (row: (typeof rows)[number]) => (
-    <div key={row.g.id} className="week-ahead-row">
+    <div key={row.key} className="week-ahead-row">
       {row.set ? (
         <button
           type="button"
@@ -72,10 +76,12 @@ export function WeekAhead() {
         </span>
       )}
       <a href={href(`/goals/${row.g.id}`)} className="week-ahead-body">
-        <span className="xsmall muted row-start" style={{ gap: 6 }}>
-          {row.set && <span className="dot" style={{ width: 7, height: 7, background: row.g.color }} />}
-          {row.g.title}
-        </span>
+        {row.first && (
+          <span className="xsmall muted row-start" style={{ gap: 6 }}>
+            {row.set && <span className="dot" style={{ width: 7, height: 7, background: row.g.color }} />}
+            {row.g.title}
+          </span>
+        )}
         {row.set ? (
           <span className="small week-ahead-text" style={row.done ? { textDecoration: 'line-through', color: 'var(--muted)' } : undefined}>
             {row.text}

@@ -16,6 +16,7 @@ import {
   type PlanStep,
   type Session,
   forecastFinish,
+  weekToPlan,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt } from '../data/derive.ts';
@@ -28,7 +29,9 @@ import { GoalGroupCard } from '../components/Connections.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { WeightChart } from '../components/WeightChart.tsx';
 import { opsLogSession, opsLogUnplanned, opsRestoreSession, opsToggleMilestone, opsUpdateGoal } from '../data/ops.ts';
-import { href } from '../router.ts';
+import { href, navigate } from '../router.ts';
+import { ladderPeriods, ladderTargets, periodEnd, targetText, targetsAt } from '../data/ladder.ts';
+import { planHref } from './PlanGoal.tsx';
 import {
   isOnce,
   opsCopyTasks,
@@ -498,7 +501,15 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
     .sort((a, b) => (a.schedule.effective_from < b.schedule.effective_from ? -1 : 1))
     .slice(0, 4);
   const over = week.end_date < today;
-  const weekText = isSet(chain.week) ? [chain.week.step?.target_value != null ? `${fmt(chain.week.step.target_value)} ${goal.unit ?? ''}`.trim() : '', chain.week.step?.target_note.trim() ?? ''].filter(Boolean).join(' · ') : '';
+  // A week can hold up to three goals (set in Plan this goal); one is edited here, more open the plan.
+  const weekTargets = targetsAt(data, goal.id, plan.id, 'week', chain.week.node.start).filter((s) => s.target_note.trim() || s.target_value != null);
+  const weekText =
+    weekTargets.length > 1
+      ? weekTargets.map((s) => targetText(goal, s)).join(' · ')
+      : isSet(chain.week)
+        ? [chain.week.step?.target_value != null ? `${fmt(chain.week.step.target_value)} ${goal.unit ?? ''}`.trim() : '', chain.week.step?.target_note.trim() ?? ''].filter(Boolean).join(' · ')
+        : '';
+  const editWeek = weekTargets.length > 1 ? () => navigate(planHref(goal.id, 'week', weekStart(chain.week.node.start))) : onEditWeek;
   const prevWeek = weeks.filter((w) => w.end_date < week.start_date).at(-1);
   const prevTasks = prevWeek ? tasksInRange(data, goal.id, dateRange(prevWeek), prevWeek.id).filter((t) => t.origin === 'here' && !tasks.some((x) => x.action.id === t.action.id)) : [];
   const left = daysBetween(today, week.end_date);
@@ -541,8 +552,8 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
           {!over ? ` · ${left === 0 ? 'last day' : `${left} day${left === 1 ? '' : 's'} left`}` : ''}
         </span>
       </div>
-      <button type="button" className="week-goal" onClick={onEditWeek}>
-        <span className="mono" style={{ color: 'var(--accent-ink)' }}>WEEK GOAL</span>
+      <button type="button" className="week-goal" onClick={editWeek}>
+        <span className="mono" style={{ color: 'var(--accent-ink)' }}>{weekTargets.length > 1 ? 'WEEK GOALS' : 'WEEK GOAL'}</span>
         {weekText ? <span className="week-goal-text">{weekText}</span> : <span className="week-goal-text muted">What should be true by {shortDate(week.end_date)}?</span>}
         <span className="xsmall" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{weekText ? 'Edit' : 'Set it'}</span>
       </button>
@@ -651,23 +662,56 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
   );
 }
 
-/** The plan: this week's goal, the next dates to hit, and the season's finish, soonest first. Tap a line to edit it. */
+/**
+ * The plan: the ladder from this week up to the season's finish (this week, this month, the 3-month
+ * checkpoint), the next dates to hit, and the finish. Tap a level to open it in Plan this goal.
+ */
 function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain: Chain; onEdit: (level: ChainLevel | 'goal') => void }) {
   const { data, today } = useStore();
   const view = useView();
   const seasonTarget = goal.type === 'number' && goal.target_value != null ? `${fmt(goal.target_value)} ${goal.unit ?? ''}`.trim() : '';
   const week = chain.week;
-  const weekSet = isSet(week);
+  const monday = weekStart(today < plan.start_date ? plan.start_date : today);
+  const p = ladderPeriods(view, goal, plan, monday);
+  const ladder = ladderTargets(data, goal, plan, p);
+  const planned = ladder.quarter.length > 0 || ladder.month.length > 0;
+  const weekSet = isSet(week) || ladder.week.length > 0;
   const weekValue = goal.type === 'number' ? week.step?.target_value ?? week.suggested : null;
-  const weekText = weekSet ? [weekValue != null ? `${fmt(weekValue)} ${goal.unit ?? ''}`.trim() : '', week.step!.target_note.trim()].filter(Boolean).join(' · ') : '';
+  const weekText =
+    ladder.week.length > 1
+      ? ladder.week.map((x) => targetText(goal, x)).join(' · ')
+      : weekSet && week.step
+        ? [weekValue != null ? `${fmt(weekValue)} ${goal.unit ?? ''}`.trim() : '', week.step.target_note.trim()].filter(Boolean).join(' · ')
+        : '';
   const weekStatus = weekSet && view.startFor(goal, plan) <= today ? periodStatus(view, data, goal, plan, week, today) : null;
+  const doneOf = (xs: PlanStep[]) => (xs.length > 1 ? { text: `${xs.filter((x) => x.completed_at).length} of ${xs.length} done`, label: 'none' as PaceLabel } : null);
   // The next two dates to hit that aren't done yet.
   const upcoming = view
     .milestonesOf(goal.id)
     .filter((m) => !m.completed_at && m.due_date >= today)
     .slice(0, 2);
-  const lines: { key: string; name: string; text: string; when: string; status: { text: string; label: PaceLabel } | null; current: boolean; onClick?: () => void; edit: boolean }[] = [
-    { key: 'week', name: 'This week', text: weekText, when: rangeLabel(week.node), status: weekStatus, current: true, onClick: () => onEdit('week'), edit: true },
+  // Thursday on, the week to plan is next week: offer it once this week's goals are in.
+  const nextMonday = weekToPlan(today);
+  const nextPlanned = nextMonday !== monday && targetsAt(data, goal.id, plan.id, 'week', ladderPeriods(view, goal, plan, nextMonday).week.start).length > 0;
+  const open = (step: string, m = monday) => () => navigate(planHref(goal.id, step as never, m));
+  const lines: { key: string; name: string; text: string; when: string; status: { text: string; label: PaceLabel } | null; current: boolean; onClick?: () => void; edit: boolean; empty?: string }[] = [
+    {
+      key: 'week',
+      name: 'This week',
+      text: weekText,
+      when: rangeLabel(week.node),
+      status: doneOf(ladder.week) ?? weekStatus,
+      current: true,
+      onClick: ladder.week.length > 1 || planned ? open('week') : () => onEdit('week'),
+      edit: true,
+      empty: '+ Set this week\u2019s goal',
+    },
+    ...(planned
+      ? [
+          { key: 'month', name: 'This month', text: ladder.month.map((x) => targetText(goal, x)).join(' · '), when: `by ${shortDate(periodEnd(p, p.month))}`, status: doneOf(ladder.month), current: false, onClick: open('month'), edit: true, empty: '+ Set this month' },
+          { key: 'quarter', name: '3 months', text: ladder.quarter.map((x) => targetText(goal, x)).join(' · '), when: `by ${shortDate(periodEnd(p, p.quarter))}`, status: doneOf(ladder.quarter), current: false, onClick: open('quarter'), edit: true, empty: '+ Set the checkpoint' },
+        ]
+      : []),
     ...upcoming.map((m) => {
       const t = tallyFor(view, m, today);
       return { key: m.id, name: t ? 'Running total' : 'Date to hit', text: m.title, when: `by ${shortDate(m.due_date)}`, status: t ? { text: tallyText(t), label: t.label } : null, current: false, edit: false };
@@ -685,7 +729,20 @@ function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain
   ];
   return (
     <section className="card plan-card" aria-label="The plan">
-      <b className="plan-card-title">The plan</b>
+      <div className="row-between" style={{ flexWrap: 'wrap' }}>
+        <b className="plan-card-title">The plan</b>
+        <span className="row-start" style={{ gap: 8 }}>
+          {planned && nextMonday !== monday && !nextPlanned && (
+            <a className="btn small" href={href(planHref(goal.id, 'week', nextMonday))}>
+              Plan next week
+            </a>
+          )}
+          <a className={`btn small${planned ? '' : ' primary'}`} href={href(planHref(goal.id, planned ? 'review' : 'start'))}>
+            {planned ? 'Open the plan' : 'Plan this goal'}
+          </a>
+        </span>
+      </div>
+      {!planned && <span className="xsmall muted">Work from the finish back to this week: 3 months, this month, this week and its tasks, each set from the one above it.</span>}
       {lines.map((l, i) => (
         <button key={l.key} type="button" className={`plan-line-row${l.current ? ' current' : ''}`} onClick={l.onClick} disabled={!l.onClick} style={l.onClick ? undefined : { cursor: 'default' }}>
           <span className="plan-rail" aria-hidden="true">
@@ -693,7 +750,7 @@ function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain
             {i < lines.length - 1 && <span className="plan-stem" />}
           </span>
           <span className="plan-text">
-            {l.text ? <span className="small" style={{ fontWeight: l.current ? 600 : 450 }}>{l.text}</span> : <span className="small" style={{ color: 'var(--accent-ink)' }}>+ Set this week’s goal</span>}
+            {l.text ? <span className="small" style={{ fontWeight: l.current ? 600 : 450 }}>{l.text}</span> : <span className="small" style={{ color: 'var(--accent-ink)' }}>{l.empty ?? '+ Set it'}</span>}
             <span className="xsmall muted">
               {l.name.toUpperCase()} · {l.when}
               {l.status ? <span style={{ color: l.status.label === 'behind' ? 'var(--amber-ink)' : undefined }}> · {l.status.text}</span> : null}

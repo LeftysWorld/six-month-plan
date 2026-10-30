@@ -26,6 +26,7 @@ import { Settings } from './screens/Settings.tsx';
 import { setAppBadge } from './push.ts';
 import { WelcomeBack } from './screens/WelcomeBack.tsx';
 import { Flow } from './screens/Flow.tsx';
+import { PlanGoal } from './screens/PlanGoal.tsx';
 import { Backlog } from './screens/Backlog.tsx';
 import { Completed } from './screens/Completed.tsx';
 import { Roadmap } from './screens/Roadmap.tsx';
@@ -197,6 +198,7 @@ function Shell(props: ShellProps) {
       else if (s0 === 'goals' && (s1 === 'roadmap' || s1 === 'timeline')) screen = <Roadmap />;
       else if (s0 === 'goals' && s1 === 'group' && s2) screen = <GroupPage id={s2} />;
       else if (s0 === 'goals' && s1 && s2 === 'photos') screen = <PhotoTimeline goalId={s1} />;
+      else if (s0 === 'goals' && s1 && s2 === 'plan') screen = <PlanGoal goalId={s1} step={route.query.get('step')} week={route.query.get('week')} from={route.query.get('from')} />;
       else if (s0 === 'goals' && s1) screen = <Flow goalId={s1} />;
       else screen = <Plans />;
       break;

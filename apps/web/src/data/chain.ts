@@ -25,7 +25,9 @@ export interface ChainLink {
 export type Chain = Record<ChainLevel, ChainLink>;
 
 function findStep(data: AppData, goal: Goal, plan: Plan, level: ChainLevel, node: CascadeNode): PlanStep | null {
-  return data.planSteps.find((s) => s.goal_id === goal.id && s.plan_id === plan.id && s.level === level && s.start_date === node.start) ?? null;
+  // A period can hold up to three targets (the plan ladder); the first one (slot 0) stands for the period here.
+  const rows = data.planSteps.filter((s) => s.goal_id === goal.id && s.plan_id === plan.id && s.level === level && s.start_date === node.start);
+  return rows.sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))[0] ?? null;
 }
 
 /** The chain for a goal on a date (today, or a later date when planning ahead). */
