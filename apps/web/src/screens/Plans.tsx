@@ -334,6 +334,8 @@ export function Plans() {
         </div>
       )}
 
+      {stripMode && season && <SeasonStrip season={season} members={inSeason} open={drawer} onShow={() => setDrawer(true)} />}
+
       {seasons.current ? (
         <SeasonHorizon seasons={seasons} selected={selected} onSelect={setSelected} placed={placed} dnd={dnd} onPlanNext={planNext} onMenu={setMenuFor} />
       ) : (
@@ -346,7 +348,6 @@ export function Plans() {
 
       <div className={stripMode ? 'season-full' : 'season-layout'}>
         <div className="season-main">
-          {stripMode && season && <SeasonStrip season={season} members={inSeason} open={drawer} onShow={() => setDrawer(true)} />}
           {sideTop && !stripMode && <div className="only-narrow season-side">{sideTop}</div>}
           {boardOn && <StageChips filter={stage} onChange={setStage} counts={board.counts} total={board.total} />}
           {boardOn && <NextWeekLine items={board.nextWeek} week={board.week} onShow={() => setStage('soon')} />}
