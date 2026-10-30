@@ -8,12 +8,14 @@ export interface GoalDrag {
   group: GoalGroup | null;
   /** Every goal that moves: just the goal, or all of the group's goals. */
   goals: Goal[];
+  /** Where a goal sits for reordering, when it isn't its group (a cell on the stage board: "cell:<row>:<stage>"). */
+  container?: string;
   x: number;
   y: number;
   target: string | null;
 }
 
-export type DragWhat = Pick<GoalDrag, 'goal' | 'group' | 'goals'>;
+export type DragWhat = Pick<GoalDrag, 'goal' | 'group' | 'goals' | 'container'>;
 
 /**
  * Drag goals like phone apps: grab the handle (or press and hold a card on a touch screen, or
@@ -49,7 +51,7 @@ export function useGoalDrag(onDrop: (d: GoalDrag, target: string) => void) {
     } else {
       const row = under?.closest('[data-row]') as HTMLElement | null;
       const rid = row?.dataset.row;
-      const mine = what.goal.group_id ?? 'loose';
+      const mine = what.container ?? what.goal.group_id ?? 'loose';
       if (row && rid && rid !== what.goal.id && row.dataset.container === mine) {
         const box = row.getBoundingClientRect();
         const frac = (y - box.top) / Math.max(1, box.height);

@@ -132,6 +132,18 @@ export function Plans() {
   const dnd = useGoalDrag((d, target) => {
     const goal = d.goal;
     const [kind, id, side] = target.split(':') as [string, string | undefined, string | undefined];
+    if (kind === 'order' && id && d.container?.startsWith('cell:')) {
+      // On the stage board: above or below another goal in the same cell (path or group × stage).
+      const cut = d.container.lastIndexOf(':');
+      const rowKey = d.container.slice(5, cut);
+      const stageId = d.container.slice(cut + 1);
+      const siblings = (board.rows.find((r) => r.key === rowKey)?.items ?? []).filter((x) => x.stage === stageId).map((x) => x.placed.card.goal);
+      const at = siblings.findIndex((g) => g.id === id);
+      const beforeId = side === 'before' ? id : siblings[at + 1]?.id ?? null;
+      const ops = placeAmong('goals', siblings, goal.id, beforeId);
+      if (ops.length) commit(ops);
+      return;
+    }
     if (kind === 'order' && id) {
       // Put the goal above or below a sibling in its own container.
       const siblings = (goal.group_id ? groups.find((g) => g.group.id === goal.group_id)?.members ?? [] : loose).map((p) => p.card.goal);
@@ -339,7 +351,7 @@ export function Plans() {
           {boardOn && <StageChips filter={stage} onChange={setStage} counts={board.counts} total={board.total} />}
           {boardOn && <NextWeekLine items={board.nextWeek} week={board.week} onShow={() => setStage('soon')} />}
           {paths.length > 0 && (placed.length > 0 || plannedIdeas.length > 0) && (
-            <div className="row-between" style={{ gap: 8, justifyContent: boardOn ? 'flex-end' : 'space-between' }}>
+            <div className="row-between" style={{ gap: 8, justifyContent: boardOn ? 'flex-start' : 'space-between' }}>
               <span className="xsmall muted">Group by</span>
               <div className="seg" role="radiogroup" aria-label="Group goals by">
                 <button role="radio" aria-checked={by === 'path'} onClick={() => setBy('path')}>

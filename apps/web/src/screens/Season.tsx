@@ -698,7 +698,7 @@ export function SeasonHorizon({
           Next season settings
         </button>
       )}
-      {dnd?.drag && <span className="xsmall" style={{ color: 'var(--accent-ink)' }}>Drop on the chapters for this season{next ? ', or on the next-season line,' : ''} to move {dnd.drag.group ? dnd.drag.group.name : dnd.drag.goal.title}</span>}
+      {dnd?.drag && !dnd.drag.container && <span className="drag-tip">Drop on the chapters for this season{next ? ', or on the next-season line,' : ''} to move {dnd.drag.group ? dnd.drag.group.name : dnd.drag.goal.title}</span>}
     </section>
   );
 }

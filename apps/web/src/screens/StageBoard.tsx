@@ -102,7 +102,11 @@ export function useBoard(placed: Placed[], by: 'path' | 'group') {
     const loose = items.filter((x) => !x.placed.card.goal.group_id || !data.groups.some((g) => g.id === x.placed.card.goal.group_id));
     if (loose.length) rows.push({ key: 'loose', name: 'Not in a group', headline: '', to: null, gradient: groupGradient('loose', colors(loose), 100), drop: 'loose', items: loose });
   }
-  for (const r of rows) r.items.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  // Within a cell: your own order first (drag to set it), then by start date.
+  for (const r of rows) {
+    r.items.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+    r.items = byOrder(r.items.map((x) => ({ id: x.placed.card.goal.id, sort_order: x.placed.card.goal.sort_order, x }))).map((y) => y.x);
+  }
   const counts = { later: 0, soon: 0, now: 0 } as Record<Stage, number>;
   for (const x of items) counts[x.stage]++;
   const week = nextWeekOf(today);
@@ -168,7 +172,7 @@ function Tally({ items }: { items: Item[] }) {
   );
 }
 
-function MiniCard({ item, dnd, showPath }: { item: Item; dnd?: DragApi; showPath: boolean }) {
+function MiniCard({ item, dnd, showPath, cell }: { item: Item; dnd?: DragApi; showPath: boolean; cell?: string }) {
   const view = useView();
   const { today } = useStore();
   const goal: Goal = item.placed.card.goal;
@@ -184,11 +188,11 @@ function MiniCard({ item, dnd, showPath }: { item: Item; dnd?: DragApi; showPath
   return (
     <a
       href={href(`/goals/${goal.id}`)}
-      className="stage-card"
+      className={`stage-card${dnd?.drag && !dnd.drag.group && dnd.drag.goal.id === goal.id ? ' lifted' : ''}${dnd?.drag?.target === `order:${goal.id}:before` ? ' insert-before' : dnd?.drag?.target === `order:${goal.id}:after` ? ' insert-after' : ''}`}
       draggable={false}
       data-row={goal.id}
-      data-container={goal.group_id ?? 'loose'}
-      onPointerDown={(e) => dnd?.start(e, { goal, group: null, goals: [goal] })}
+      data-container={cell ?? goal.group_id ?? 'loose'}
+      onPointerDown={(e) => dnd?.start(e, { goal, group: null, goals: [goal], container: cell })}
       onClick={(e) => dnd?.consumeClick() && e.preventDefault()}
     >
       <span className="stage-dot" style={{ background: goal.color, width: 9, height: 9, marginTop: 5 }} />
@@ -345,7 +349,7 @@ export function StageBoard({ placed, by, filter, onChange, dnd }: { placed: Plac
                   const mine = r.items.filter((x) => x.stage === s.id);
                   return (
                     <div key={s.id} className={`sb-cell sb-${s.id}`}>
-                      {mine.length ? mine.map((x) => <MiniCard key={x.placed.card.goal.id} item={x} dnd={dnd} showPath={showPath} />) : <span className="sb-dash">—</span>}
+                      {mine.length ? mine.map((x) => <MiniCard key={x.placed.card.goal.id} item={x} dnd={dnd} showPath={showPath} cell={`cell:${r.key}:${s.id}`} />) : <span className="sb-dash">—</span>}
                     </div>
                   );
                 })}
@@ -386,7 +390,7 @@ export function StageBoard({ placed, by, filter, onChange, dnd }: { placed: Plac
                         {s.label} · {mine.length}
                       </span>
                       {mine.map((x) => (
-                        <MiniCard key={x.placed.card.goal.id} item={x} dnd={dnd} showPath={showPath} />
+                        <MiniCard key={x.placed.card.goal.id} item={x} dnd={dnd} showPath={showPath} cell={`cell:${r.key}:${s.id}`} />
                       ))}
                       {mine.length === 0 && <span className="sb-dash">Nothing here</span>}
                     </div>
