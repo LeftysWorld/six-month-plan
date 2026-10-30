@@ -22,6 +22,8 @@ export interface StretchHold {
   part: 'daily' | 'focus';
   /** Rest between sets, as written ("15 s", "30 s"). Defaults to 15 s. */
   rest?: string;
+  /** What it looks like, when you chose one (a library exercise, a video link, your own photo or video). */
+  demo?: import('./demo.ts').ExerciseDemo | null;
 }
 
 /** One set of a hold: timed (seconds) or counted (reps). */

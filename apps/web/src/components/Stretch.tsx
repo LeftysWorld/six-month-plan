@@ -4,6 +4,7 @@ import { useStore } from '../data/store.tsx';
 import { opsLogSession, opsRestoreSession, opsSaveStretch, type StretchSetInput } from '../data/ops.ts';
 import type { AppData, Op } from '../data/model.ts';
 import { Icon, Sheet, useToast } from './ui.tsx';
+import { DemoButton } from './ExerciseDemo.tsx';
 import { LinkToGoal, needsGoalLink } from './LinkToGoal.tsx';
 import { MoveDayPicker, moveDatesFor } from './MoveDayPicker.tsx';
 import { SessionFiles } from './Attachments.tsx';
@@ -560,6 +561,7 @@ export function StretchSheet({ session, plan, onClose, onGeneral }: { session: S
                 </button>
                 {isOpen && (
                   <div className="workout-ex-body">
+                    <DemoButton name={h.name} kind="stretch" demo={h.demo} />
                     <details className="stretch-how">
                       <summary className="small">How to do it</summary>
                       <div className="small stack-sm" style={{ gap: 6, marginTop: 6, color: 'var(--ink-2)', lineHeight: 1.45 }}>
@@ -805,6 +807,7 @@ export function StretchPlanEditor({ plan, onChange }: { plan: StretchPlan; onCha
         <div key={i} className="card tight stack-sm">
           <div className="row-between" style={{ gap: 6 }}>
             <input value={h.name} onChange={(e) => edit(i, { name: e.target.value })} placeholder="Side Split" aria-label={`Hold ${i + 1} name`} style={{ flex: 1 }} />
+            <DemoButton compact name={h.name} kind="stretch" demo={h.demo} onSave={(demo) => edit(i, { demo })} />
             <span className="row-start" style={{ gap: 2, flex: 'none' }}>
               <button type="button" className="link-btn xsmall" onClick={() => move(i, -1)} aria-label="Move up">↑</button>
               <button type="button" className="link-btn xsmall" onClick={() => move(i, 1)} aria-label="Move down">↓</button>

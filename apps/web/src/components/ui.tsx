@@ -215,6 +215,9 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         (x) => x.offsetParent !== null,
       );
     const onKey = (e: KeyboardEvent) => {
+      // With a sheet opened over another (See how over a workout), only the top one answers keys.
+      const sheets = document.querySelectorAll('.sheet');
+      if (el && sheets.length > 1 && sheets[sheets.length - 1] !== el) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         close.current();

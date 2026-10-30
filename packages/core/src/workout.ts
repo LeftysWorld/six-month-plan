@@ -17,6 +17,8 @@ export interface PlannedExercise {
   weight_note: string;
   rest: string;
   note: string;
+  /** What it looks like, when you chose one (a library exercise, a video link, your own photo or video). */
+  demo?: import('./demo.ts').ExerciseDemo | null;
 }
 
 /** One set as logged. */

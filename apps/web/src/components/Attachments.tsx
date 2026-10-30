@@ -27,7 +27,7 @@ function extension(name: string): string {
  * Shrink a phone photo (often 3–8 MB) to a JPEG of at most 2048 px so storage lasts.
  * GIFs, SVGs and anything the browser can't decode are kept as they are.
  */
-async function shrinkImage(file: File): Promise<{ blob: Blob; name: string; type: string }> {
+export async function shrinkImage(file: File): Promise<{ blob: Blob; name: string; type: string }> {
   const keep = { blob: file as Blob, name: file.name, type: file.type || 'application/octet-stream' };
   if (!isImage(file.type) || /gif|svg/.test(file.type)) return keep;
   try {

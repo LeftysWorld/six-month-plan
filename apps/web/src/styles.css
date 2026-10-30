@@ -2117,3 +2117,28 @@ button.hw-name:hover b { color: var(--accent-ink); }
 .plan-pips { display: inline-flex; gap: 3px; }
 .plan-pips i { width: 10px; height: 4px; border-radius: 2px; background: var(--track); }
 .plan-pips i.on { background: currentColor; }
+
+/* ---------- See how: what an exercise or a stretch looks like ---------- */
+.demo-btn { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 36px; padding: 0 14px 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--accent-soft); color: var(--accent-ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.demo-btn:hover { border-color: var(--accent-ink); }
+.demo-btn-compact { color: var(--accent-ink); flex: none; }
+.demo-sheet { gap: 16px; }
+.demo-frame { position: relative; display: block; width: 100%; aspect-ratio: 4 / 3; border: 0; padding: 0; border-radius: 16px; overflow: hidden; background: #fff; cursor: pointer; }
+.demo-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transition: opacity 0.35s ease; }
+.demo-frame-tag { position: absolute; left: 10px; top: 10px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: rgba(11, 13, 24, 0.6); color: #fff; }
+.demo-frame-tag:empty { display: none; }
+.demo-frame-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(11, 13, 24, 0.18); color: #fff; }
+.demo-loading { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; cursor: default; background: var(--fill); }
+.demo-video { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: #000; }
+.demo-video.vertical { aspect-ratio: 9 / 16; max-height: 70vh; max-width: 420px; margin: 0 auto; }
+.demo-video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.demo-media { display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 16px; background: #000; }
+img.demo-media { background: var(--fill); }
+.demo-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px; border-radius: 16px; background: var(--fill); }
+.demo-confirm { flex-wrap: wrap; }
+.demo-actions { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
+.demo-steps { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); line-height: 1.45; }
+.demo-results { display: flex; flex-direction: column; gap: 6px; }
+.demo-result { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.demo-result:hover { border-color: var(--border-strong); }
+.demo-result img { flex: none; width: 64px; height: 48px; object-fit: contain; border-radius: 8px; background: #fff; }

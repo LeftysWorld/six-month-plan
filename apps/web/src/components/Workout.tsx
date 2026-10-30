@@ -8,6 +8,7 @@ import { cleanPlan } from '../data/breakdown.ts';
 import { SessionFiles, useAddFiles } from './Attachments.tsx';
 import type { AppData, Op } from '../data/model.ts';
 import { Icon, Sheet, useToast } from './ui.tsx';
+import { DemoButton } from './ExerciseDemo.tsx';
 import { LinkToGoal, needsGoalLink } from './LinkToGoal.tsx';
 import { MoveDayPicker, moveDatesFor } from './MoveDayPicker.tsx';
 
@@ -70,6 +71,7 @@ export function WorkoutPlanEditor({ plan, details, unit, onChange }: { plan: Pla
           <div className="row-start" style={{ flexWrap: 'nowrap', gap: 6 }}>
             <span className="plan-ex-no">{i + 1}</span>
             <input className="input" aria-label={`Exercise ${i + 1} name`} value={e.name} placeholder="Exercise" onChange={(x) => edit(i, { name: x.target.value })} />
+            <DemoButton compact name={e.name} kind="strength" demo={e.demo} onSave={(demo) => edit(i, { demo })} />
             <button type="button" className="link-btn xsmall" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
               ↑
             </button>
@@ -478,6 +480,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
               </button>
               {isOpen && (
                 <div className="workout-ex-body">
+                  <DemoButton name={e.name} kind="strength" demo={e.demo} />
                   {sug.why === 'up' && !future && (
                     <span className="workout-up">
                       ↑ Up to {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time

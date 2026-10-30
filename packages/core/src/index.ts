@@ -15,3 +15,4 @@ export * from './projection.ts';
 export * from './tally.ts';
 export * from './stretch.ts';
 export * from './ladder.ts';
+export * from './demo.ts';
