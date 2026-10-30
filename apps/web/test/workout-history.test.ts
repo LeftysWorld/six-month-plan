@@ -5,17 +5,20 @@ import {
   buildSnapshot,
   describePlanChange,
   e1rm,
+  e1rmAdjusted,
   estimateMinutes,
+  repsLeft,
   renderReport,
   type HistoryInput,
   type WHExercise,
+  type WHExerciseLog,
   type WHSession,
   type WHSet,
 } from '../../../supabase/functions/_shared/workout_history.ts';
 
 // Six weeks of a Mon/Wed/Fri plan ending Fri Oct 30 2026. Bench goes up every week; lat pulldown
 // stalls at 100 lb from week 2; lateral raises sit at the top of the range for the last 2 sessions;
-// one missed workout; a knee note and a pain flag on crunches.
+// one missed workout; a knee note and a pain flag on crunches. Efforts are 1–10 per exercise.
 const AS_OF = '2026-10-30';
 const FIRST_MONDAY = '2026-09-21';
 
@@ -27,18 +30,22 @@ const crunch: WHExercise = { name: 'Sit-Up Bench Crunch', sets: 2, reps_min: 12,
 function input(): HistoryInput {
   const sessions: WHSession[] = [];
   const sets: WHSet[] = [];
+  const exerciseLogs: WHExerciseLog[] = [];
   const add = (id: string, date: string, title: string, actionId: string, status: string, rows: [WHExercise, number | null, number[], number | null, boolean?][], note = '') => {
-    sessions.push({ id, action_id: actionId, date, week_start: date, title, status, planned_minutes: 45, actual_minutes: status === 'done' ? 42 : null, note });
-    for (const [ex, w, reps, rir, pain] of rows) reps.forEach((r, i) => sets.push({ session_id: id, exercise: ex.name, set_no: i + 1, weight: w, reps: r, done: true, rir, pain: !!pain }));
+    sessions.push({ id, action_id: actionId, date, week_start: date, title, status, planned_minutes: 45, actual_minutes: status === 'done' ? 42 : null, note, effort: 7 });
+    for (const [ex, w, reps, effort, pain] of rows) {
+      reps.forEach((r, i) => sets.push({ session_id: id, exercise: ex.name, set_no: i + 1, weight: w, reps: r, done: true }));
+      if (effort != null || pain) exerciseLogs.push({ session_id: id, exercise: ex.name, effort, pain: !!pain, pain_where: pain ? 'Knee' : '', note: pain ? 'pulled on the knee' : '' });
+    }
   };
   for (let wk = 0; wk < 6; wk++) {
     const mon = addDays(FIRST_MONDAY, wk * 7);
-    add(`mon${wk}`, mon, 'Upper A', 'a', 'done', [[bench, 40 + wk * 2.5, [10, 10, 9], 2], [lat, wk === 0 ? 95 : 100, [10, 10, 9], 1]]);
+    add(`mon${wk}`, mon, 'Upper A', 'a', 'done', [[bench, 40 + wk * 2.5, [10, 10, 9], 8], [lat, wk === 0 ? 95 : 100, [10, 10, 9], 9]]);
     const wed = addDays(mon, 2);
     if (wk === 4) sessions.push({ id: `wed${wk}`, action_id: 'b', date: wed, week_start: mon, title: 'Upper B', status: 'planned', planned_minutes: 45, actual_minutes: null, note: '' });
-    else add(`wed${wk}`, wed, 'Upper B', 'b', 'done', [[raise, 12.5, wk >= 4 ? [15, 15, 15] : [13, 12, 12], 3], [crunch, null, [15, 14], null, wk === 5]], wk === 5 ? 'knee felt off on the crunches' : '');
+    else add(`wed${wk}`, wed, 'Upper B', 'b', 'done', [[raise, 12.5, wk >= 4 ? [15, 15, 15] : [13, 12, 12], 7], [crunch, null, [15, 14], null, wk === 5]], wk === 5 ? 'knee felt off on the crunches' : '');
     const fri = addDays(mon, 4);
-    if (fri <= AS_OF) add(`fri${wk}`, fri, 'Upper C', 'c', 'done', [[bench, 40 + wk * 2.5, [8, 8, 8], 2]]);
+    if (fri <= AS_OF) add(`fri${wk}`, fri, 'Upper C', 'c', 'done', [[bench, 40 + wk * 2.5, [8, 8, 8], 8]]);
   }
   return {
     profile: { units: 'lb', timezone: 'America/New_York', coach_share_bodyweight: true },
@@ -62,8 +69,14 @@ function input(): HistoryInput {
       { action_id: 'b', plan: [raise, { ...crunch }], effective_on: '2026-09-21', source: 'backfill' },
       { action_id: 'c', plan: [bench], effective_on: '2026-09-21', source: 'backfill' },
     ],
-    measurementTypes: [{ id: 'w', name: 'Weight', unit: 'lb' }, { id: 's', name: 'Splits gap', unit: 'in' }],
-    measurements: Array.from({ length: 28 }, (_, i) => ({ type_id: 'w', value: 195 - i * 0.2, measured_on: addDays(AS_OF, -27 + i) })),
+    measurementTypes: [{ id: 'w', name: 'Weight', unit: 'lb' }, { id: 's', name: 'Front split (left): front hip to floor', unit: 'in' }, { id: 'wa', name: 'Waist', unit: 'in' }, { id: 'ar', name: 'Right arm', unit: 'in' }],
+    measurements: [
+      ...Array.from({ length: 28 }, (_, i) => ({ type_id: 'w', value: 195 - i * 0.2, measured_on: addDays(AS_OF, -27 + i) })),
+      ...Array.from({ length: 6 }, (_, i) => ({ type_id: 'wa', value: 38 - i * 0.25, measured_on: addDays('2026-09-27', i * 7) })),
+      ...Array.from({ length: 6 }, (_, i) => ({ type_id: 'ar', value: 14.5, measured_on: addDays('2026-09-27', i * 7) })),
+      { type_id: 's', value: 9, measured_on: '2026-10-25' },
+    ],
+    exerciseLogs,
     reports: [
       {
         id: 'r1',
@@ -78,21 +91,26 @@ function input(): HistoryInput {
   };
 }
 
-test('only workouts are in the snapshot, with missed sessions marked', () => {
+test('only workouts you logged are in the snapshot: no missed or planned days', () => {
   const s = buildSnapshot(input(), { asOf: AS_OF });
   assert.ok(s.sessions.every((x) => x.workout !== 'Read'));
-  assert.equal(s.sessions.find((x) => x.date === '2026-10-21')?.status, 'missed');
+  assert.equal(s.sessions.find((x) => x.date === '2026-10-21'), undefined);
+  assert.equal(s.sessions.at(-1)!.effort, 7);
   assert.equal(s.program.workouts.length, 3);
   assert.equal(s.program.workouts_per_week, 3);
   assert.deepEqual(s.program.workouts[0]!.days, [1]);
 });
 
-test('attendance over 4 weeks counts the missed Wednesday', () => {
+test('what you did, week by week, with nothing compared to the plan', () => {
   const s = buildSnapshot(input(), { asOf: AS_OF });
-  // 4 weeks back from Fri Oct 30 = Oct 3 .. Oct 30: Mondays 5,12,19,26; Wednesdays 7,14,21(missed),28; Fridays 9,16,23,30.
-  assert.equal(s.metrics.workouts_planned_4w, 12);
+  // 4 weeks back from Fri Oct 30 = Oct 3 .. Oct 30: 12 workouts on the calendar, the Wednesday of Oct 21 not done.
   assert.equal(s.metrics.workouts_done_4w, 11);
-  assert.equal(s.metrics.attendance_4w, 0.92);
+  assert.equal(s.metrics.days_since_last_workout, 0);
+  assert.equal(s.metrics.weeks.length, 8);
+  assert.deepEqual(s.metrics.weeks.at(-2), { week_start: '2026-10-19', workouts: 2, sets: 9, avg_effort: 7 });
+  assert.equal(s.metrics.weeks[0]!.workouts, 0);
+  const json = JSON.stringify(s.metrics);
+  for (const gone of ['attendance', 'planned', 'top_of_range', 'set_completion']) assert.ok(!json.includes(gone), gone);
 });
 
 test('per-exercise metrics: progressing, stalled, ready to move up, pain', () => {
@@ -101,10 +119,36 @@ test('per-exercise metrics: progressing, stalled, ready to move up, pain', () =>
   assert.ok((by('Flat DB Bench Press').e1rm_trend_pct ?? 0) > 0);
   assert.equal(by('Lat Pulldown').stalled, true);
   assert.ok((by('Lat Pulldown').weeks_since_gain ?? 0) >= 3);
-  assert.equal(by('Seated Lateral Raise').top_of_range_streak, 1); // the missed week breaks nothing; only week 5 reached 15s
   assert.equal(by('Seated Lateral Raise').next_step_pct, 0.4);
   assert.equal(by('Sit-Up Bench Crunch').pain_flags_4w, 1);
   assert.equal(by('Sit-Up Bench Crunch').e1rm_now, null);
+  // As done: the last workouts of an exercise, with effort.
+  const r = by('Seated Lateral Raise');
+  assert.deepEqual(r.recent.at(-1), { date: '2026-10-28', weight: 12.5, reps: [15, 15, 15], weights: [12.5, 12.5, 12.5], effort: 7, pain: false, e1rm: 18.8, e1rm_adj: 20 });
+  assert.equal(r.sessions_at_weight, 5);
+  assert.equal(r.effort_last, 7);
+  assert.equal(by('Lat Pulldown').avg_effort_2w, 9);
+  assert.equal(by('Lat Pulldown').sessions_at_weight, 5);
+  assert.equal(by('Flat DB Bench Press').sessions_at_weight, 2);
+});
+
+test('body measurements: shared with body weight, flexibility tests left out', () => {
+  const s = buildSnapshot(input(), { asOf: AS_OF });
+  assert.deepEqual(s.body_measurements.map((b) => b.name), ['Right arm', 'Waist']);
+  const waist = s.body_measurements.find((b) => b.name === 'Waist')!;
+  assert.deepEqual(waist.latest, { date: '2026-10-25', value: 37 });
+  assert.equal(waist.change_4w, -1);
+  assert.equal(s.body_measurements.find((b) => b.name === 'Right arm')!.change_4w, 0);
+  const off = input();
+  off.profile.coach_share_bodyweight = false;
+  assert.deepEqual(buildSnapshot(off, { asOf: AS_OF }).body_measurements, []);
+});
+
+test('exercise notes and hurt flags come through per workout', () => {
+  const s = buildSnapshot(input(), { asOf: AS_OF });
+  const wed = s.sessions.find((x) => x.date === '2026-10-28')!;
+  assert.deepEqual(wed.exercises.find((l) => l.exercise === 'Sit-Up Bench Crunch'), { exercise: 'Sit-Up Bench Crunch', effort: null, pain: true, pain_where: 'Knee', note: 'pulled on the knee' });
+  assert.ok(s.comments.some((c) => c.source === 'exercise_note' && c.text.includes('(hurt: knee) pulled on the knee')));
 });
 
 test('plan history: program age, last change, describe the change', () => {
@@ -162,9 +206,11 @@ test('older weeks are summarised; the last 8 weeks are set by set', () => {
 test('the report reads like a report', () => {
   const md = renderReport(buildSnapshot(input(), { asOf: AS_OF }));
   for (const heading of ['# Workout history', '## At a glance', '## New since the last coach report', '## The program now', '## Exercise by exercise', '## Plan changes', '## Your notes', '## Coach decisions so far']) assert.ok(md.includes(heading), heading);
-  assert.match(md, /Lat Pulldown \| 100 \|/);
+  assert.match(md, /Lat Pulldown \| 100 × 10, 10, 9 @9 \|/);
   assert.match(md, /stalled \d+ wks/);
-  assert.match(md, /⚠ pain/);
+  assert.match(md, /⚠ hurt/);
+  assert.match(md, /effort 8/);
+  assert.match(md, /Waist \| 37 in on Oct 25 · -1 in over 4 weeks/);
   assert.match(md, /knee felt off/);
   assert.match(md, /Body weight \| 189\.6 lb/);
 });
@@ -173,5 +219,9 @@ test('helpers', () => {
   assert.equal(e1rm(100, 10), 133.3);
   assert.equal(e1rm(null, 10), null);
   assert.equal(e1rm(100, 20), null);
+  assert.deepEqual([10, 9, 8, 5, 4, 1].map(repsLeft), [0, 1, 2, 5, 6, 6]);
+  assert.equal(e1rmAdjusted(100, 10, 8), 140);
+  assert.equal(e1rmAdjusted(100, 10, null), null);
+  assert.equal(e1rmAdjusted(100, 18, 5), null);
   assert.equal(estimateMinutes([bench, lat]), 5 + Math.round((6 * (45 + 120)) / 60));
 });

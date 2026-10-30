@@ -360,7 +360,7 @@ export function Settings({ demo, email, onExitDemo, onEnterDemo, onSignOut }: Sh
         </a>
         <label className="check-row small">
           <input type="checkbox" checked={p.coach_share_bodyweight ?? true} onChange={(e) => commit(opsProfile({ coach_share_bodyweight: e.target.checked }))} />
-          <span>Include my weekly body weight (it changes how strength progress reads while losing weight). Nothing else from your goals is ever shared.</span>
+          <span>Include my body weight and body measurements (waist, chest, arms, shoulders…). They change how strength progress reads while losing weight. Nothing else you track is shared.</span>
         </label>
       </div>
 

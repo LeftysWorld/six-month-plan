@@ -19,6 +19,7 @@ export function historyInput(data: AppData): HistoryInput {
     planVersions: data.planVersions ?? [],
     measurementTypes: data.measurementTypes,
     measurements: data.measurements,
+    exerciseLogs: data.workoutExercises.map((w) => ({ session_id: w.session_id, exercise: w.exercise, effort: w.effort, pain: w.pain, pain_where: w.pain_where, note: w.note })),
     reports: (data.workoutReports ?? []).map((r) => ({ id: r.id, as_of: r.as_of, created_at: r.created_at, recommendation: r.recommendation, change_level: r.change_level, decision: r.decision, user_status: r.user_status, user_note: r.user_note })),
   };
 }

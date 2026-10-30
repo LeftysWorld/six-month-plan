@@ -12,9 +12,14 @@
  *
  * Contract: SCHEMA_VERSION. The agent repo (workout-coach) validates against the same shape; bump
  * the version for any breaking change and update coach/snapshot.py there.
+ *
+ * Schema 2: what you actually did, not what was planned. Per-exercise metrics carry no plan targets
+ * (the plan is in `program`, for writing changes against); each exercise has its recent sessions as
+ * done (weight, reps, effort 1–10, pain); workouts per week replace attendance against the plan; and
+ * body measurements (waist, chest, arms…) come with body weight when you share them.
  */
 
-export const SCHEMA_VERSION = '1';
+export const SCHEMA_VERSION = '2';
 
 // ---------- Input rows (the subset of each table this needs) ----------
 
@@ -60,6 +65,19 @@ export interface WHSession {
   actual_minutes: number | null;
   note: string;
   origin?: string;
+  /** The whole workout's effort, 1–10 (optional). */
+  effort?: number | null;
+}
+
+/** How one exercise went in one workout (workout_exercises). */
+export interface WHExerciseLog {
+  session_id: string;
+  exercise: string;
+  /** 1–10 by reps left on the last set: 10 = none, 9 = one, 8 = two… */
+  effort: number | null;
+  pain: boolean;
+  pain_where?: string;
+  note?: string;
 }
 
 export interface WHSet {
@@ -69,8 +87,6 @@ export interface WHSet {
   weight: number | null;
   reps: number | null;
   done: boolean;
-  rir?: number | null;
-  pain?: boolean | null;
 }
 
 export interface WHPlanVersion {
@@ -126,6 +142,8 @@ export interface HistoryInput {
   measurementTypes: WHMeasurementType[];
   measurements: WHMeasurement[];
   reports: WHReport[];
+  /** Effort, pain and notes per exercise per workout. */
+  exerciseLogs?: WHExerciseLog[];
 }
 
 // ---------- The coach's decision (what the agent writes, what the report reads back) ----------
@@ -163,8 +181,14 @@ export interface SnapshotSet {
   weight: number | null;
   reps: number | null;
   done: boolean;
-  rir: number | null;
+}
+
+export interface SnapshotExerciseLog {
+  exercise: string;
+  effort: number | null;
   pain: boolean;
+  pain_where: string;
+  note: string;
 }
 
 export interface SnapshotSession {
@@ -172,11 +196,15 @@ export interface SnapshotSession {
   week_start: string;
   action_id: string | null;
   workout: string;
-  /** done · partial · minimum · skipped · missed (planned and the day has passed) · planned (today or later) */
+  /** done · partial · minimum · skipped (only workouts you logged) */
   status: string;
   minutes: number | null;
   note: string;
+  /** The whole workout's effort, 1–10, when you gave one. */
+  effort: number | null;
   sets: SnapshotSet[];
+  /** Effort, pain and notes per exercise, when you gave them. */
+  exercises: SnapshotExerciseLog[];
 }
 
 export interface ExerciseWeek {
@@ -187,14 +215,29 @@ export interface ExerciseWeek {
   best_reps: number | null;
   e1rm: number | null;
   volume: number;
-  avg_rir: number | null;
+  avg_effort: number | null;
   pain: boolean;
+}
+
+/** One workout's worth of an exercise, as done. */
+export interface ExerciseSession {
+  date: string;
+  /** The heaviest weight used (null: bodyweight). */
+  weight: number | null;
+  /** Reps of every set done, in order. */
+  reps: number[];
+  /** Weights of every set done, in order (null: bodyweight). */
+  weights: (number | null)[];
+  effort: number | null;
+  pain: boolean;
+  /** Best estimated max that day: from weight × reps, and with the reps left added (only when rated). */
+  e1rm: number | null;
+  e1rm_adj: number | null;
 }
 
 export interface ExerciseMetrics {
   exercise: string;
   workouts: string[];
-  planned: { sets: number; reps_min: number; reps_max: number; weight: number | null } | null;
   sessions: number;
   first_seen: string | null;
   last_seen: string | null;
@@ -206,9 +249,12 @@ export interface ExerciseMetrics {
   /** Whole weeks since the estimated max last went up (null with too little data). */
   weeks_since_gain: number | null;
   stalled: boolean;
-  /** Sessions in a row (most recent first) where every planned set reached the top of the range at the same weight. */
-  top_of_range_streak: number;
-  avg_rir_2w: number | null;
+  /** The last few workouts of this exercise as done, oldest first (up to 6). */
+  recent: ExerciseSession[];
+  /** Workouts in a row (most recent back) at the current top weight. */
+  sessions_at_weight: number;
+  effort_last: number | null;
+  avg_effort_2w: number | null;
   pain_flags_4w: number;
   /** The next 5 lb (or 2.5 kg) step as a share of the current weight: 0.4 means a 40% jump. */
   next_step_pct: number | null;
@@ -247,16 +293,16 @@ export interface Snapshot {
   history: ExerciseWeek[];
   metrics: {
     exercises: ExerciseMetrics[];
-    attendance_4w: number | null;
-    attendance_8w: number | null;
     workouts_done_4w: number;
-    workouts_planned_4w: number;
-    set_completion_4w: number | null;
+    days_since_last_workout: number | null;
     avg_session_minutes_4w: number | null;
-    weekly_sets: { week_start: string; sets: number }[];
+    /** Every week of the last 8 (empty weeks too): workouts done, sets done, average whole-workout effort. */
+    weeks: { week_start: string; workouts: number; sets: number; avg_effort: number | null }[];
   };
-  comments: { date: string | null; source: 'plan_note' | 'details' | 'session_note'; workout: string; exercise: string | null; text: string }[];
+  comments: { date: string | null; source: 'plan_note' | 'details' | 'session_note' | 'exercise_note'; workout: string; exercise: string | null; text: string }[];
   bodyweight: { shared: false } | { shared: true; unit: string; latest: { date: string; value: number } | null; weekly: { week_start: string; avg: number }[]; trend_per_week: number | null };
+  /** Body measurements (waist, chest, arms…), when you share your body numbers. Empty otherwise. */
+  body_measurements: BodyMeasurement[];
   decisions: {
     id: string;
     as_of: string;
@@ -270,6 +316,20 @@ export interface Snapshot {
   }[];
   since_last: { last_report_as_of: string | null; sessions: string[]; sets: number; plan_changes: string[]; comments: number } | null;
 }
+
+export interface BodyMeasurement {
+  name: string;
+  unit: string;
+  latest: { date: string; value: number } | null;
+  weekly: { week_start: string; avg: number }[];
+  /** Latest weekly average minus the one 4 weeks before (null without both). */
+  change_4w: number | null;
+}
+
+/** Measurement types that are body measurements (not flexibility tests or other goals). */
+export const BODY_PART = /waist|chest|arm|bicep|shoulder|neck|thigh|hip|calf|calves|forearm|body\s*fat|glute|belly|stomach|abdom/i;
+const NOT_BODY = /split|fold|bridge|reach|hang|plank|pace|time/i;
+export const isBodyMeasurement = (t: { name: string; unit: string }) => BODY_PART.test(t.name) && !NOT_BODY.test(t.name) && /^(in|inch|inches|cm|mm|%)$/i.test(t.unit.trim());
 
 // ---------- Dates (ISO strings, UTC arithmetic) ----------
 
@@ -303,6 +363,18 @@ const DONE = new Set(['done', 'partial', 'minimum']);
 export function e1rm(weight: number | null, reps: number | null): number | null {
   if (weight == null || reps == null || weight <= 0 || reps <= 0 || reps > 15) return null;
   return round(weight * (1 + reps / 30), 1);
+}
+
+/** Reps left on the last set, from a 1–10 effort (10 = none, 9 = one…; 4 or less counts as 6). */
+export const repsLeft = (effort: number | null | undefined): number | null => (effort == null ? null : effort >= 10 ? 0 : effort <= 4 ? 6 : 10 - effort);
+
+/** The estimated max with the reps you had left added in: what the set says you could have done. Null without a rating. */
+export function e1rmAdjusted(weight: number | null, reps: number | null, effort: number | null | undefined): number | null {
+  const left = repsLeft(effort);
+  if (left == null || reps == null) return null;
+  const could = reps + left;
+  if (weight == null || weight <= 0 || reps <= 0 || could > 20) return null;
+  return round(weight * (1 + could / 30), 1);
 }
 
 /** Minutes a workout takes: each set about 45 seconds of work plus its rest, plus 5 minutes to warm up. */
@@ -422,8 +494,9 @@ export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snaps
   const programStart = lastShape ?? workouts.map((w) => w.versions[0]?.effective_on).filter((d): d is string => !!d).sort()[0] ?? null;
 
   // ----- Sessions -----
+  // Only what happened: a scheduled day you didn't log (planned or missed) isn't in the history.
   const workoutSessions = input.sessions.filter(
-    (s) => s.date && s.date >= from && s.date <= asOf && s.status !== 'moved' && (isWorkoutAction(actionById.get(s.action_id ?? '')) || input.sets.some((x) => x.session_id === s.id)),
+    (s) => s.date && s.date >= from && s.date <= asOf && s.status !== 'moved' && s.status !== 'planned' && (isWorkoutAction(actionById.get(s.action_id ?? '')) || input.sets.some((x) => x.session_id === s.id)),
   );
   const setsBySession = new Map<string, WHSet[]>();
   for (const x of input.sets) {
@@ -431,6 +504,12 @@ export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snaps
     list.push(x);
     setsBySession.set(x.session_id, list);
   }
+  const logsBySession = new Map<string, WHExerciseLog[]>();
+  for (const l of input.exerciseLogs ?? []) logsBySession.set(l.session_id, [...(logsBySession.get(l.session_id) ?? []), l]);
+  const cleanEffort = (n: unknown) => {
+    const v = Math.round(Number(n));
+    return n != null && Number.isFinite(v) && v >= 1 && v <= 10 ? v : null;
+  };
   const statusOf = (s: WHSession) => (s.status === 'planned' ? (s.date! < asOf ? 'missed' : 'planned') : s.status);
   const allSessions: SnapshotSession[] = workoutSessions
     .map((s) => ({
@@ -441,24 +520,40 @@ export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snaps
       status: statusOf(s),
       minutes: s.actual_minutes,
       note: (s.note ?? '').trim(),
+      effort: cleanEffort(s.effort),
       sets: (setsBySession.get(s.id) ?? [])
         .slice()
         .sort((x, y) => x.exercise.localeCompare(y.exercise) || x.set_no - y.set_no)
-        .map((x) => ({ exercise: x.exercise, set_no: x.set_no, weight: x.weight == null ? null : Number(x.weight), reps: x.reps, done: x.done, rir: x.rir ?? null, pain: !!x.pain })),
+        .map((x) => ({ exercise: x.exercise, set_no: x.set_no, weight: x.weight == null ? null : Number(x.weight), reps: x.reps, done: x.done })),
+      exercises: (logsBySession.get(s.id) ?? [])
+        .map((l) => ({ exercise: l.exercise, effort: cleanEffort(l.effort), pain: !!l.pain, pain_where: l.pain ? (l.pain_where ?? '').trim() : '', note: (l.note ?? '').trim() }))
+        .sort((x, y) => x.exercise.localeCompare(y.exercise)),
     }))
     .sort((x, y) => (x.date === y.date ? x.workout.localeCompare(y.workout) : x.date < y.date ? -1 : 1));
   const sessions = allSessions.filter((s) => s.date >= detailFrom);
 
   // ----- Weekly history per exercise (every week in range; the recent ones repeat the detail in summary) -----
-  const weekly = new Map<string, ExerciseWeek & { rirs: number[]; name: string }>();
+  const logOf = (s: SnapshotSession, k: string) => s.exercises.find((l) => key(l.exercise) === k) ?? null;
+  const weekly = new Map<string, ExerciseWeek & { efforts: number[]; name: string }>();
   for (const s of allSessions) {
+    for (const l of s.exercises) {
+      const w = weekly.get(`${s.week_start}|${key(l.exercise)}`);
+      if (w && l.pain) w.pain = true;
+    }
     for (const x of s.sets) {
       if (!x.done) continue;
       const k = `${s.week_start}|${key(x.exercise)}`;
       let w = weekly.get(k);
       if (!w) {
-        w = { week_start: s.week_start, exercise: x.exercise, name: x.exercise, sets_done: 0, best_weight: null, best_reps: null, e1rm: null, volume: 0, avg_rir: null, pain: false, rirs: [] };
+        const log = logOf(s, key(x.exercise));
+        w = { week_start: s.week_start, exercise: x.exercise, name: x.exercise, sets_done: 0, best_weight: null, best_reps: null, e1rm: null, volume: 0, avg_effort: null, pain: false, efforts: [] };
         weekly.set(k, w);
+        if (log?.pain) w.pain = true;
+      }
+      if (x.set_no === Math.max(...s.sets.filter((y) => key(y.exercise) === key(x.exercise) && y.done).map((y) => y.set_no))) {
+        const log = logOf(s, key(x.exercise));
+        if (log?.effort != null) w.efforts.push(log.effort);
+        if (log?.pain) w.pain = true;
       }
       w.sets_done += 1;
       w.volume += (x.weight ?? 0) * (x.reps ?? 0);
@@ -470,12 +565,10 @@ export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snaps
       } else if (w.best_weight == null && x.weight == null && (x.reps ?? 0) > (w.best_reps ?? 0)) {
         w.best_reps = x.reps;
       }
-      if (x.rir != null) w.rirs.push(x.rir);
-      if (x.pain) w.pain = true;
     }
   }
   const history: ExerciseWeek[] = [...weekly.values()]
-    .map(({ rirs, name: _n, ...w }) => ({ ...w, volume: round(w.volume, 0), avg_rir: rirs.length ? round(rirs.reduce((a, b) => a + b, 0) / rirs.length, 1) : null }))
+    .map(({ efforts, name: _n, ...w }) => ({ ...w, volume: round(w.volume, 0), avg_effort: efforts.length ? round(efforts.reduce((a, b) => a + b, 0) / efforts.length, 1) : null }))
     .sort((x, y) => (x.week_start === y.week_start ? x.exercise.localeCompare(y.exercise) : x.week_start < y.week_start ? -1 : 1));
 
   // ----- Metrics per exercise -----
@@ -487,7 +580,6 @@ export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snaps
   const step = input.profile.units === 'kg' ? 2.5 : 5;
   const exercises: ExerciseMetrics[] = [...names.entries()]
     .map(([k, name]) => {
-      const planned = plannedByName.get(k)?.[0]?.ex ?? null;
       const mine = allSessions.filter((s) => s.sets.some((x) => key(x.exercise) === k && x.done));
       const best = (lo: string, hi: string) => {
         let top: number | null = null;
@@ -517,28 +609,36 @@ export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snaps
         }
         weeksSinceGain = Math.floor(daysBetween(peakWeek, mondayOf(asOf)) / 7);
       }
-      // Sessions in a row at the top of the range on every planned set, at one weight.
-      let streak = 0;
-      if (planned) {
-        for (const s of [...mine].reverse()) {
-          const done = s.sets.filter((x) => key(x.exercise) === k && x.done);
-          const weightsUsed = new Set(done.map((x) => x.weight));
-          if (done.length >= planned.sets && weightsUsed.size === 1 && done.every((x) => (x.reps ?? 0) >= planned.reps_max)) streak += 1;
-          else break;
+      // Each workout of this exercise as done: weights, reps, the effort and pain you gave it.
+      const asDone: ExerciseSession[] = mine.map((s) => {
+        const done = s.sets.filter((x) => key(x.exercise) === k && x.done).sort((a, b) => a.set_no - b.set_no);
+        const log = logOf(s, k);
+        const ws = done.map((x) => x.weight).filter((w): w is number => w != null);
+        const top = ws.length ? Math.max(...ws) : null;
+        let raw: number | null = null;
+        let adj: number | null = null;
+        for (const [i, x] of done.entries()) {
+          const est = e1rm(x.weight, x.reps);
+          if (est != null && (raw == null || est > raw)) raw = est;
+          // The rating is for the last set: it says what that set could have been.
+          if (i === done.length - 1) adj = e1rmAdjusted(x.weight, x.reps, log?.effort);
         }
+        return { date: s.date, weight: top, reps: done.map((x) => x.reps ?? 0), weights: done.map((x) => x.weight), effort: log?.effort ?? null, pain: !!log?.pain, e1rm: raw, e1rm_adj: adj };
+      });
+      let atWeight = 0;
+      const lastTop = asDone.at(-1)?.weight ?? null;
+      for (const d of [...asDone].reverse()) {
+        if (d.weight === lastTop) atWeight += 1;
+        else break;
       }
-      const recentRir = mine
-        .filter((s) => s.date >= addDays(asOf, -13))
-        .flatMap((s) => s.sets.filter((x) => key(x.exercise) === k && x.done && x.rir != null).map((x) => x.rir!));
-      const pain = mine.filter((s) => s.date >= addDays(asOf, -27) && s.sets.some((x) => key(x.exercise) === k && x.pain)).length;
+      const recentEffort = asDone.filter((d) => d.date >= addDays(asOf, -13) && d.effort != null).map((d) => d.effort!);
+      const pain = asDone.filter((d) => d.date >= addDays(asOf, -27) && d.pain).length;
       const lastSession = mine.at(-1);
-      const lastWeights = lastSession?.sets.filter((x) => key(x.exercise) === k && x.done && x.weight != null).map((x) => x.weight!) ?? [];
-      const lastWeight = lastWeights.length ? Math.max(...lastWeights) : planned?.weight ?? null;
+      const lastWeight = lastTop ?? null;
       const exposures = mine.length;
       return {
         exercise: name,
         workouts: (plannedByName.get(k) ?? []).map((p) => p.workout),
-        planned: planned ? { sets: planned.sets, reps_min: planned.reps_min, reps_max: planned.reps_max, weight: planned.weight } : null,
         sessions: exposures,
         first_seen: mine[0]?.date ?? null,
         last_seen: lastSession?.date ?? null,
@@ -548,31 +648,29 @@ export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snaps
         e1rm_trend_pct: now != null && before != null && before > 0 ? round(((now - before) / before) * 100, 1) : null,
         weeks_since_gain: weeksSinceGain,
         stalled: weeksSinceGain != null && weeksSinceGain >= 3 && exposures >= 3,
-        top_of_range_streak: streak,
-        avg_rir_2w: recentRir.length ? round(recentRir.reduce((a, b) => a + b, 0) / recentRir.length, 1) : null,
+        recent: asDone.slice(-6),
+        sessions_at_weight: atWeight,
+        effort_last: asDone.at(-1)?.effort ?? null,
+        avg_effort_2w: recentEffort.length ? round(recentEffort.reduce((a, b) => a + b, 0) / recentEffort.length, 1) : null,
         pain_flags_4w: pain,
         next_step_pct: lastWeight && lastWeight > 0 ? round(step / lastWeight, 3) : null,
       };
     })
-    .sort((x, y) => (y.planned ? 1 : 0) - (x.planned ? 1 : 0) || x.exercise.localeCompare(y.exercise));
+    // Exercises in the current program first (you're doing them now), then the rest.
+    .sort((x, y) => (y.workouts.length ? 1 : 0) - (x.workouts.length ? 1 : 0) || x.exercise.localeCompare(y.exercise));
 
-  // ----- Attendance -----
-  const counted = (s: SnapshotSession) => s.action_id && s.status !== 'planned';
-  const windowStats = (days: number) => {
-    const lo = addDays(asOf, -(days - 1));
-    // Today's workout counts once it's logged; an open one today isn't a miss yet.
-    const list = allSessions.filter((s) => s.date >= lo && counted(s));
-    const done = list.filter((s) => DONE.has(s.status)).length;
-    return { planned: list.length, done, rate: list.length ? round(done / list.length, 2) : null };
-  };
-  const w4 = windowStats(28);
-  const w8 = windowStats(56);
-  const recentDone = allSessions.filter((s) => s.date >= addDays(asOf, -27) && DONE.has(s.status));
-  const plannedSets = recentDone.reduce((n, s) => n + s.sets.length, 0);
-  const doneSets = recentDone.reduce((n, s) => n + s.sets.filter((x) => x.done).length, 0);
+  // ----- What you did, week by week (no comparison with the plan) -----
+  const doneSessions = allSessions.filter((s) => DONE.has(s.status));
+  const recentDone = doneSessions.filter((s) => s.date >= addDays(asOf, -27));
   const minutes = recentDone.map((s) => s.minutes).filter((m): m is number => m != null && m > 0);
-  const weeklySets = new Map<string, number>();
-  for (const s of allSessions) weeklySets.set(s.week_start, (weeklySets.get(s.week_start) ?? 0) + s.sets.filter((x) => x.done).length);
+  const lastDone = doneSessions.at(-1)?.date ?? null;
+  const weeks: Snapshot['metrics']['weeks'] = [];
+  for (let i = 7; i >= 0; i--) {
+    const ws = addDays(mondayOf(asOf), -7 * i);
+    const these = doneSessions.filter((s) => s.week_start === ws);
+    const eff = these.map((s) => s.effort).filter((e): e is number => e != null);
+    weeks.push({ week_start: ws, workouts: these.length, sets: these.reduce((n, s) => n + s.sets.filter((x) => x.done).length, 0), avg_effort: eff.length ? round(eff.reduce((a, b) => a + b, 0) / eff.length, 1) : null });
+  }
 
   // ----- Comments -----
   const comments: Snapshot['comments'] = [];
@@ -580,7 +678,10 @@ export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snaps
     if (w.details) comments.push({ date: w.current_since, source: 'details', workout: w.title, exercise: null, text: w.details });
     for (const ex of w.exercises) if (ex.note?.trim()) comments.push({ date: w.current_since, source: 'plan_note', workout: w.title, exercise: ex.name, text: ex.note.trim() });
   }
-  for (const s of allSessions) if (s.note) comments.push({ date: s.date, source: 'session_note', workout: s.workout, exercise: null, text: s.note });
+  for (const s of allSessions) {
+    if (s.note) comments.push({ date: s.date, source: 'session_note', workout: s.workout, exercise: null, text: s.note });
+    for (const l of s.exercises) if (l.note) comments.push({ date: s.date, source: 'exercise_note', workout: s.workout, exercise: l.exercise, text: l.pain && l.pain_where ? `(hurt: ${l.pain_where.toLowerCase()}) ${l.note}` : l.note });
+  }
 
   // ----- Body weight -----
   let bodyweight: Snapshot['bodyweight'] = { shared: false };
@@ -606,6 +707,22 @@ export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snaps
       }
       const last = readings.at(-1);
       bodyweight = { shared: true, unit: type.unit, latest: last ? { date: last.measured_on, value: Number(last.value) } : null, weekly, trend_per_week: trend };
+    }
+  }
+
+  // ----- Body measurements (waist, chest, arms…) -----
+  const body_measurements: BodyMeasurement[] = [];
+  if (input.profile.coach_share_bodyweight !== false) {
+    for (const t of input.measurementTypes.filter((t) => !t.archived_at && isBodyMeasurement(t)).sort((a, b) => a.name.localeCompare(b.name))) {
+      const readings = input.measurements.filter((m) => m.type_id === t.id && m.measured_on >= from && m.measured_on <= asOf).sort((x, y) => (x.measured_on < y.measured_on ? -1 : 1));
+      if (!readings.length) continue;
+      const byWeek = new Map<string, number[]>();
+      for (const r of readings) byWeek.set(mondayOf(r.measured_on), [...(byWeek.get(mondayOf(r.measured_on)) ?? []), Number(r.value)]);
+      const weeklyAvg = [...byWeek.entries()].map(([week_start, v]) => ({ week_start, avg: round(v.reduce((a, b) => a + b, 0) / v.length, 2) }));
+      const lastW = weeklyAvg.at(-1)!;
+      const before = [...weeklyAvg].reverse().find((w) => daysBetween(w.week_start, lastW.week_start) >= 28);
+      const last = readings.at(-1)!;
+      body_measurements.push({ name: t.name, unit: t.unit, latest: { date: last.measured_on, value: Number(last.value) }, weekly: weeklyAvg.slice(-12), change_4w: before ? round(lastW.avg - before.avg, 2) : null });
     }
   }
 
@@ -651,16 +768,14 @@ export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snaps
     history,
     metrics: {
       exercises,
-      attendance_4w: w4.rate,
-      attendance_8w: w8.rate,
-      workouts_done_4w: w4.done,
-      workouts_planned_4w: w4.planned,
-      set_completion_4w: plannedSets ? round(doneSets / plannedSets, 2) : null,
+      workouts_done_4w: recentDone.length,
+      days_since_last_workout: lastDone ? daysBetween(lastDone, asOf) : null,
       avg_session_minutes_4w: minutes.length ? Math.round(minutes.reduce((a, b) => a + b, 0) / minutes.length) : null,
-      weekly_sets: [...weeklySets.entries()].sort().map(([week_start, sets]) => ({ week_start, sets })),
+      weeks,
     },
     comments,
     bodyweight,
+    body_measurements,
     decisions,
     since_last,
   };
@@ -708,31 +823,38 @@ function inferStatus(changes: DecisionChange[], reportAsOf: string, asOf: string
 // ---------- The report you read ----------
 
 const num = (n: number | null | undefined, digits = 1) => (n == null ? '–' : Number.isInteger(round(n, digits)) ? String(round(n, digits)) : round(n, digits).toFixed(digits));
-const pct = (n: number | null | undefined) => (n == null ? '–' : `${Math.round(n * 100)}%`);
 const signed = (n: number | null | undefined, unit = '') => (n == null ? '–' : `${n > 0 ? '+' : ''}${num(n)}${unit}`);
 const cell = (s: string) => s.replace(/\|/g, '\\|').replace(/\n+/g, ' ');
 const weightText = (w: number | null, units: string, note?: string) => (w == null ? (note && note.trim() ? note.trim() : 'bodyweight') : `${num(w)} ${units}`);
 const repsText = (e: { reps_min: number; reps_max: number; per_side?: boolean }) => `${e.reps_min === e.reps_max ? e.reps_min : `${e.reps_min}–${e.reps_max}`}${e.per_side ? '/side' : ''}`;
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-function setsLine(sets: SnapshotSet[]): string {
+function setsLine(sets: SnapshotSet[], log: SnapshotExerciseLog | null): string {
   const done = sets.filter((x) => x.done);
   if (!done.length) return 'not done';
   const weights = new Set(done.map((x) => x.weight));
-  const reps = done.map((x) => `${x.reps ?? '?'}${x.rir != null ? ` @${x.rir}` : ''}`);
+  const reps = done.map((x) => `${x.reps ?? '?'}`);
   const base = weights.size === 1 ? `${done[0]!.weight == null ? 'BW' : num(done[0]!.weight)} × ${reps.join(', ')}` : done.map((x, i) => `${x.weight == null ? 'BW' : num(x.weight)}×${reps[i]}`).join(', ');
   const skipped = sets.length - done.length;
-  return `${base}${skipped ? ` (${skipped} not done)` : ''}${sets.some((x) => x.pain) ? ' · ⚠ pain' : ''}`;
+  const effort = log?.effort != null ? ` · effort ${log.effort}` : '';
+  const hurt = log?.pain ? ` · ⚠ hurt${log.pain_where ? ` (${log.pain_where.toLowerCase()})` : ''}` : '';
+  const note = log?.note ? ` · “${log.note}”` : '';
+  return `${base}${skipped ? ` (${skipped} not done)` : ''}${effort}${hurt}${note}`;
 }
 
 function statusWord(m: ExerciseMetrics): string {
-  if (m.pain_flags_4w > 0) return `⚠ pain (${m.pain_flags_4w}× in 4 wks)`;
+  if (m.pain_flags_4w > 0) return `⚠ hurt (${m.pain_flags_4w}× in 4 wks)`;
   if (m.sessions < 3) return 'new · too early to tell';
-  if (m.top_of_range_streak >= 2) return 'ready to move up';
   if (m.stalled) return `stalled ${m.weeks_since_gain} wks`;
   if ((m.e1rm_trend_pct ?? 0) > 0) return 'progressing';
   return 'holding';
 }
+
+const lastLine = (m: ExerciseMetrics) => {
+  const d = m.recent.at(-1);
+  if (!d) return '–';
+  return `${d.weight == null ? 'BW' : num(d.weight)} × ${d.reps.join(', ')}${d.effort != null ? ` @${d.effort}` : ''}`;
+};
 
 /** The snapshot as a report a person reads (Markdown). */
 export function renderReport(s: Snapshot): string {
@@ -747,15 +869,17 @@ export function renderReport(s: Snapshot): string {
   out.push('## At a glance');
   out.push('| | |');
   out.push('|---|---|');
-  out.push(`| Workouts, last 4 weeks | ${m.workouts_done_4w} of ${m.workouts_planned_4w} (${pct(m.attendance_4w)}) |`);
-  out.push(`| Workouts, last 8 weeks | ${pct(m.attendance_8w)} |`);
-  out.push(`| Sets completed, last 4 weeks | ${pct(m.set_completion_4w)} |`);
+  out.push(`| Workouts done, last 4 weeks | ${m.workouts_done_4w}${m.days_since_last_workout != null ? ` · last one ${m.days_since_last_workout === 0 ? 'today' : `${m.days_since_last_workout} day${m.days_since_last_workout === 1 ? '' : 's'} ago`}` : ''} |`);
+  out.push(`| Week by week (workouts · sets · effort) | ${m.weeks.map((w) => `${shortDate(w.week_start)}: ${w.workouts} · ${w.sets}${w.avg_effort != null ? ` · @${num(w.avg_effort)}` : ''}`).join(' — ')} |`);
   out.push(`| Average workout | ${m.avg_session_minutes_4w == null ? '–' : `${m.avg_session_minutes_4w} min`} |`);
   out.push(`| Program | ${s.program.workouts.length} workouts, ${s.program.workouts_per_week} a week · ${s.program.program_age_weeks == null ? 'age unknown' : `${s.program.program_age_weeks} weeks old`} |`);
   out.push(`| Last change to the program | ${s.program.last_structural_change_on ? shortDate(s.program.last_structural_change_on) : 'none on record'} (exercises) · ${s.program.last_target_change_on ? shortDate(s.program.last_target_change_on) : 'none on record'} (weights, sets or reps) |`);
   if (s.bodyweight.shared) {
     const b = s.bodyweight;
     out.push(`| Body weight | ${b.latest ? `${num(b.latest.value)} ${b.unit} on ${shortDate(b.latest.date)}` : 'no readings'} · ${b.trend_per_week == null ? 'trend –' : `${signed(b.trend_per_week)} ${b.unit}/week over 4 weeks`} |`);
+  }
+  for (const b of s.body_measurements) {
+    out.push(`| ${cell(b.name)} | ${b.latest ? `${num(b.latest.value, 2)} ${b.unit} on ${shortDate(b.latest.date)}` : '–'} · ${b.change_4w == null ? '4-week change –' : `${signed(b.change_4w)} ${b.unit} over 4 weeks`} |`);
   }
   out.push('');
 
@@ -785,13 +909,13 @@ export function renderReport(s: Snapshot): string {
 
   // Exercise by exercise
   out.push('## Exercise by exercise');
-  out.push(`Estimated max is the Epley estimate from weight × reps; "@2" means 2 reps left in the tank.`);
+  out.push(`Estimated max is the Epley estimate from weight × reps. "@8" is the effort you gave it (1–10; 10 = no reps left).`);
   out.push('');
-  out.push('| Exercise | Last weight | Est. max now | 3 wks ago | Change | Wks since gain | Top of range | Effort (2 wks) | Next step | Status |');
+  out.push('| Exercise | Last time | Est. max now | 3 wks ago | Change | Wks since gain | Workouts at this weight | Effort (2 wks) | Next step | Status |');
   out.push('|---|---|---|---|---|---|---|---|---|---|');
   for (const e of m.exercises) {
     out.push(
-      `| ${cell(e.exercise)} | ${e.last_weight == null ? 'BW' : num(e.last_weight)} | ${num(e.e1rm_now)} | ${num(e.e1rm_3w_ago)} | ${e.e1rm_trend_pct == null ? '–' : signed(e.e1rm_trend_pct, '%')} | ${e.weeks_since_gain ?? '–'} | ${e.top_of_range_streak ? `${e.top_of_range_streak} in a row` : '–'} | ${e.avg_rir_2w == null ? '–' : `@${num(e.avg_rir_2w)}`} | ${e.next_step_pct == null ? '–' : `+${Math.round(e.next_step_pct * 100)}%`} | ${statusWord(e)} |`,
+      `| ${cell(e.exercise)} | ${lastLine(e)} | ${num(e.e1rm_now)} | ${num(e.e1rm_3w_ago)} | ${e.e1rm_trend_pct == null ? '–' : signed(e.e1rm_trend_pct, '%')} | ${e.weeks_since_gain ?? '–'} | ${e.sessions_at_weight || '–'} | ${e.avg_effort_2w == null ? '–' : `@${num(e.avg_effort_2w)}`} | ${e.next_step_pct == null ? '–' : `+${Math.round(e.next_step_pct * 100)}%`} | ${statusWord(e)} |`,
     );
   }
   out.push('');
@@ -807,10 +931,10 @@ export function renderReport(s: Snapshot): string {
       out.push(`**Week of ${shortDate(week)}**`);
       out.push('');
     }
-    out.push(`- **${dayName(sess.date)} ${shortDate(sess.date)} · ${sess.workout}** · ${sess.status}${sess.minutes ? ` · ${sess.minutes} min` : ''}`);
+    out.push(`- **${dayName(sess.date)} ${shortDate(sess.date)} · ${sess.workout}** · ${sess.status}${sess.minutes ? ` · ${sess.minutes} min` : ''}${sess.effort != null ? ` · workout effort ${sess.effort}` : ''}`);
     const byEx = new Map<string, SnapshotSet[]>();
     for (const x of sess.sets) byEx.set(x.exercise, [...(byEx.get(x.exercise) ?? []), x]);
-    for (const [ex, sets] of byEx) out.push(`  - ${ex}: ${setsLine(sets)}`);
+    for (const [ex, sets] of byEx) out.push(`  - ${ex}: ${setsLine(sets, sess.exercises.find((l) => key(l.exercise) === key(ex)) ?? null)}`);
     if (sess.note) out.push(`  - Note: “${sess.note}”`);
   }
   out.push('');
@@ -838,7 +962,7 @@ export function renderReport(s: Snapshot): string {
   if (s.comments.length) {
     out.push('## Your notes');
     for (const c of s.comments) {
-      const where = c.source === 'session_note' ? 'after the workout' : c.source === 'plan_note' ? `plan note on ${c.exercise}` : 'warm-up and notes';
+      const where = c.source === 'session_note' ? 'after the workout' : c.source === 'exercise_note' ? `on ${c.exercise}` : c.source === 'plan_note' ? `plan note on ${c.exercise}` : 'warm-up and notes';
       out.push(`- ${c.date ? shortDate(c.date) : ''} · ${c.workout} · ${where}: “${c.text.replace(/\s+/g, ' ').slice(0, 400)}”`);
     }
     out.push('');

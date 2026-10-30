@@ -17,7 +17,7 @@
 // here: every query below is filtered to one user, and the agent never sees the key.)
 
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
-import { buildSnapshot, renderReport, SCHEMA_VERSION, type Decision, type HistoryInput } from '../_shared/workout_history.ts';
+import { buildSnapshot, isBodyMeasurement, renderReport, SCHEMA_VERSION, type Decision, type HistoryInput } from '../_shared/workout_history.ts';
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_REPORT_CHARS = 200_000;
@@ -88,18 +88,21 @@ async function loadInput(sb: SupabaseClient, userId: string, from: string, asOf:
   const schedules = await all((a, b) => sb.from('action_schedules').select('action_id, rule, days, per_week, effective_from, effective_to').eq('user_id', userId).range(a, b));
   const sessions = (
     await all((a, b) =>
-      sb.from('sessions').select('id, action_id, date, week_start, title, status, planned_minutes, actual_minutes, note, origin').eq('user_id', userId).gte('date', from).lte('date', asOf).range(a, b),
+      sb.from('sessions').select('id, action_id, date, week_start, title, status, planned_minutes, actual_minutes, note, origin, effort').eq('user_id', userId).gte('date', from).lte('date', asOf).range(a, b),
     )
   ).filter((s: { action_id: string | null }) => s.action_id && workoutIds.has(s.action_id));
   const ids = sessions.map((s: { id: string }) => s.id);
   const sets: HistoryInput['sets'] = [];
+  const exerciseLogs: NonNullable<HistoryInput['exerciseLogs']> = [];
   for (let i = 0; i < ids.length; i += 200) {
-    sets.push(...(await all((a, b) => sb.from('workout_sets').select('session_id, exercise, set_no, weight, reps, done, rir, pain').eq('user_id', userId).in('session_id', ids.slice(i, i + 200)).range(a, b))));
+    sets.push(...(await all((a, b) => sb.from('workout_sets').select('session_id, exercise, set_no, weight, reps, done').eq('user_id', userId).in('session_id', ids.slice(i, i + 200)).range(a, b))));
+    exerciseLogs.push(...(await all((a, b) => sb.from('workout_exercises').select('session_id, exercise, effort, pain, pain_where, note').eq('user_id', userId).in('session_id', ids.slice(i, i + 200)).range(a, b))));
   }
   const planVersions = await all((a, b) => sb.from('workout_plan_versions').select('action_id, plan, details, effective_on, source, reason, created_at').eq('user_id', userId).lte('effective_on', asOf).range(a, b));
   const share = profile?.coach_share_bodyweight !== false;
   const measurementTypes = share ? await all((a, b) => sb.from('measurement_types').select('id, name, unit, archived_at').eq('user_id', userId).range(a, b)) : [];
-  const weightTypes = measurementTypes.filter((t: { name: string }) => /weight/i.test(t.name)).map((t: { id: string }) => t.id);
+  // Body weight and body measurements (waist, chest, arms…): nothing else you track is read.
+  const weightTypes = measurementTypes.filter((t: { name: string; unit: string }) => /weight/i.test(t.name) || isBodyMeasurement(t)).map((t: { id: string }) => t.id);
   const measurements = share && weightTypes.length
     ? await all((a, b) => sb.from('measurements').select('type_id, value, measured_on').eq('user_id', userId).in('type_id', weightTypes).gte('measured_on', from).lte('measured_on', asOf).range(a, b))
     : [];
@@ -112,6 +115,7 @@ async function loadInput(sb: SupabaseClient, userId: string, from: string, asOf:
     schedules: (schedules as HistoryInput['schedules']).filter((s) => workoutIds.has(s.action_id)),
     sessions: sessions as HistoryInput['sessions'],
     sets: sets.map((s) => ({ ...s, weight: s.weight == null ? null : Number(s.weight) })),
+    exerciseLogs,
     planVersions: planVersions as HistoryInput['planVersions'],
     measurementTypes: measurementTypes as HistoryInput['measurementTypes'],
     measurements: (measurements as { type_id: string; value: number; measured_on: string }[]).map((m) => ({ ...m, value: Number(m.value) })),
