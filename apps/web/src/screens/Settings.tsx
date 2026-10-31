@@ -370,6 +370,49 @@ function Attention({ issues, working, onExport }: { issues: Issue[]; working: st
   );
 }
 
+/**
+ * The section list for the app's left sidebar on a computer, shown in place of Today, Goals, Habits,
+ * Calendar and Review while you're in Settings. Phones keep the bottom bar and use the home list.
+ */
+export function SettingsDockNav({ section, signedIn }: { section?: string; signedIn: boolean }) {
+  const ov = useOverview(signedIn);
+  const current = (Object.keys(TITLES) as SectionId[]).includes(section as SectionId) ? (section as SectionId) : null;
+  return (
+    <div className="settings-dock-nav">
+      <a href={href('/today')} className="settings-dock-back" aria-label="Back to Today" title="Back to Today">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" />
+        </svg>
+        <span className="nav-label">Back to Today</span>
+      </a>
+      <span className="settings-dock-title">Settings</span>
+      <a href={href('/settings')} aria-current={!current ? 'page' : undefined} aria-label="Overview" title="Overview">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />
+        </svg>
+        <span className="nav-label">Overview</span>
+      </a>
+      {GROUPS.map((g) => (
+        <div key={g.label} className="settings-dock-group" role="group" aria-label={g.label}>
+          <span className="settings-dock-label">{g.label}</span>
+          {g.ids.map((id) => {
+            const warn = ov.pills[id]?.tone === 'warn';
+            return (
+              <a key={id} href={href(`/settings/${id}`)} aria-current={current === id ? 'page' : undefined} aria-label={warn ? `${TITLES[id]}, needs attention` : TITLES[id]} title={TITLES[id]}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d={ICONS[id]} />
+                </svg>
+                <span className="nav-label">{TITLES[id]}</span>
+                {warn && <span className="set-dot" aria-hidden="true" />}
+              </a>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Settings(props: ShellProps & { section?: string }) {
   const { data, today } = useStore();
   const toast = useToast();
@@ -384,32 +427,8 @@ export function Settings(props: ShellProps & { section?: string }) {
     toast('Everything exported: keep the file somewhere safe');
   };
 
-  const nav = (
-    <nav className="set-nav" aria-label="Settings sections">
-      <a className={`set-nav-item${!section ? ' on' : ''}`} href={href('/settings')} aria-current={!section ? 'page' : undefined}>
-        Overview
-      </a>
-      {GROUPS.map((g) => (
-        <div key={g.label} className="set-nav-group">
-          <span className="mono">{g.label}</span>
-          {g.ids.map((id) => (
-            <a key={id} className={`set-nav-item${section === id ? ' on' : ''}`} href={href(`/settings/${id}`)} aria-current={section === id ? 'page' : undefined}>
-              <span>{TITLES[id]}</span>
-              {ov.pills[id]?.tone === 'warn' && <span className="set-dot" aria-label="Needs attention" />}
-            </a>
-          ))}
-        </div>
-      ))}
-    </nav>
-  );
-
   return (
     <div className={`set-layout${section ? ' in-section' : ''}`}>
-      <aside className="set-aside">
-        <BackLink label="Today" fallback="/today" />
-        <h1 className="set-aside-title">Settings</h1>
-        {nav}
-      </aside>
       <div className="set-main">
         {section ? (
           <>

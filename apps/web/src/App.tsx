@@ -21,7 +21,7 @@ import { ReviewDetail, ReviewList } from './screens/ReviewPast.tsx';
 import { ThenNow } from './screens/ThenNow.tsx';
 import { PhotoTimeline } from './screens/PhotoTimeline.tsx';
 import { Progress } from './screens/Progress.tsx';
-import { Settings } from './screens/Settings.tsx';
+import { Settings, SettingsDockNav } from './screens/Settings.tsx';
 import { setAppBadge } from './push.ts';
 import { WelcomeBack } from './screens/WelcomeBack.tsx';
 import { Flow } from './screens/Flow.tsx';
@@ -243,7 +243,7 @@ function Shell(props: ShellProps) {
     <div className="shell">
       {nav.floating && <div className="dock-spacer" aria-hidden="true" />}
       {nav.floating && <button type="button" className="dock-scrim" aria-label="Close the menu" onClick={nav.close} />}
-      <div className={`dock${nav.open ? '' : ' rail'}${nav.floating ? ' floating' : ''}`} onClick={(e) => nav.floating && (e.target as HTMLElement).closest('a') && nav.close()}>
+      <div className={`dock${nav.open ? '' : ' rail'}${nav.floating ? ' floating' : ''}${s0 === 'settings' ? ' in-settings' : ''}`} onClick={(e) => nav.floating && (e.target as HTMLElement).closest('a') && nav.close()}>
         <nav className="nav" aria-label="Main">
           <span className="brand">Six Months</span>
           <NavLink to="/today" icon="today" label="Today" current={tab === 'today'} />
@@ -251,6 +251,7 @@ function Shell(props: ShellProps) {
           <NavLink to="/habits" icon="habit" label="Habits" current={tab === 'habits'} />
           <NavLink to="/calendar" icon="calendar" label="Calendar" current={tab === 'calendar'} />
           <NavLink to="/review" icon="review" label="Review" current={tab === 'review'} />
+          {s0 === 'settings' && <SettingsDockNav section={s1} signedIn={!props.demo} />}
         </nav>
         <button type="button" className="dock-add" aria-label="Add a task, log something or save a goal idea" onClick={() => setAdding(true)}>
           <Icon name="plus" size={24} stroke={2.4} />
@@ -305,7 +306,7 @@ function Shell(props: ShellProps) {
 
 function NavLink({ to, icon, label, current }: { to: string; icon: string; label: string; current: boolean }) {
   return (
-    <a href={href(to)} aria-current={current ? 'page' : undefined} aria-label={label} title={label}>
+    <a className="nav-main" href={href(to)} aria-current={current ? 'page' : undefined} aria-label={label} title={label}>
       <Icon name={icon} size={current ? 20 : 22} stroke={current ? 2 : 1.9} />
       <span className="nav-label">{label}</span>
     </a>

@@ -2270,7 +2270,6 @@ img.demo-media { background: var(--fill); }
 
 /* ---------- Settings ---------- */
 .set-layout { display: block; }
-.set-aside { display: none; }
 .set-main { min-width: 0; }
 .set-stack { display: flex; flex-direction: column; gap: 14px; }
 .set-home-head { display: flex; flex-direction: column; gap: 4px; }
@@ -2360,20 +2359,27 @@ img.demo-media { background: var(--fill); }
 
 @media (min-width: 900px) {
   .main.main-wide { max-width: 1080px; }
-  .set-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 32px; align-items: start; }
-  .set-aside { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 14px; }
-  .set-aside-title { font-size: 22px; margin: 4px 0 8px; letter-spacing: -0.02em; }
-  .set-nav { display: flex; flex-direction: column; gap: 14px; }
-  .set-nav-group { display: flex; flex-direction: column; gap: 2px; }
-  .set-nav-group > .mono { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 0 10px 4px; }
-  .set-nav-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; color: var(--ink-2); text-decoration: none; font-size: 14px; font-weight: 500; }
-  .set-nav-item:hover { background: var(--fill); color: var(--ink); }
-  .set-nav-item.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
-  .set-main { max-width: 680px; }
+  .set-main { max-width: 760px; margin: 0 auto; }
   .set-back, .set-home-head .back { display: none; }
-  .set-home-head .set-title { display: none; }
   .set-main .set-stack > .set-group .set-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: none; border: 0; overflow: visible; }
   .set-main .set-stack > .set-group .set-list-row { border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); align-items: flex-start; }
   .set-main .set-stack > .set-group .set-list-summary { white-space: normal; }
   .set-main .set-stack > .set-group .set-chevron { display: none; }
+}
+
+/* Settings: on a computer the app's sidebar lists the Settings sections instead of the main tabs. */
+.settings-dock-nav { display: none; }
+@media (min-width: 900px) {
+  .dock.in-settings .nav-main, .dock.in-settings .dock-add { display: none; }
+  .settings-dock-nav { display: flex; flex-direction: column; gap: 2px; }
+  .settings-dock-nav a { position: relative; }
+  .settings-dock-nav .settings-dock-back { color: var(--accent-ink); }
+  .settings-dock-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); padding: 10px 14px 8px; }
+  .settings-dock-group { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
+  .settings-dock-label { font-family: var(--mono, ui-monospace, monospace); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 0 14px 4px; }
+  .settings-dock-nav a .set-dot { margin-left: auto; }
+  .dock.in-settings .nav { overflow-y: auto; min-height: 0; }
+  .dock.rail .settings-dock-title, .dock.rail .settings-dock-label { display: none; }
+  .dock.rail .settings-dock-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-2); }
+  .dock.rail .settings-dock-nav a .set-dot { position: absolute; top: 9px; right: 9px; margin: 0; }
 }
