@@ -33,6 +33,12 @@ export interface Profile {
   coach_share_bodyweight?: boolean;
   /** SHA-256 of the workout coach's key (made in Settings → Workout coach). The key itself is never stored. */
   coach_key_hash?: string | null;
+  /** Your training rules (limits, equipment, weight steps, training week). Unset: the defaults in settings.ts. */
+  training_rules?: Partial<import('./settings.ts').TrainingRules> | null;
+  /** How you log a workout (effort rating, whole-workout rating, rest vibration). */
+  workout_prefs?: Partial<import('./settings.ts').WorkoutPrefs> | null;
+  /** Tape-measuring day and photo reminder. */
+  body_prefs?: Partial<import('./settings.ts').BodyPrefs> | null;
 }
 
 /**

@@ -115,6 +115,7 @@ export function ExerciseFeedback({
   hint,
   last,
   next,
+  askEffort = true,
 }: {
   name: string;
   value: ExerciseFeedbackValue;
@@ -122,6 +123,8 @@ export function ExerciseFeedback({
   hint: string | null;
   last: number | null;
   next?: { label: string; go: () => void } | null;
+  /** Off in Settings → Training → effort rating: only "hurt" and the note are offered. */
+  askEffort?: boolean;
 }) {
   const [noteOpen, setNoteOpen] = useState(value.note.trim() !== '');
   const [guide, setGuide] = useState(false);
@@ -129,6 +132,8 @@ export function ExerciseFeedback({
   const e = value.effort;
   return (
     <div className="ex-feedback">
+      {askEffort && (
+        <>
       <div className="row-between" style={{ alignItems: 'flex-end', gap: 12 }}>
         <span className="stack-sm" style={{ gap: 2 }}>
           <span className="mono">Effort</span>
@@ -147,6 +152,8 @@ export function ExerciseFeedback({
           </b>
           {hint && <span>{hint}</span>}
         </div>
+      )}
+        </>
       )}
       <div className="ex-feedback-btns">
         <button type="button" className={`ex-fb-btn${value.pain ? ' hurt' : ''}`} aria-pressed={value.pain} onClick={() => onChange({ pain: !value.pain, where: value.pain ? '' : value.where })}>
@@ -177,7 +184,7 @@ export function ExerciseFeedback({
           <textarea rows={2} value={value.note} onChange={(x) => onChange({ note: x.target.value })} placeholder="e.g. left shoulder pinched on the last rep" />
         </label>
       )}
-      {next && e != null && (
+      {next && (e != null || !askEffort) && (
         <button type="button" className="btn small" style={{ alignSelf: 'flex-start' }} onClick={next.go}>
           Next: {next.label} <Icon name="chevron" size={14} stroke={2.4} />
         </button>
@@ -232,6 +239,7 @@ export function EffortGuide({ onClose }: { onClose: () => void }) {
 export function FinishWorkout({
   summary,
   unrated,
+  askWorkout = true,
   effort,
   onEffort,
   onRate,
@@ -241,6 +249,8 @@ export function FinishWorkout({
 }: {
   summary: string;
   unrated: { name: string; index: number }[];
+  /** Off in Settings → Training: no whole-workout rating. */
+  askWorkout?: boolean;
   effort: number | null;
   onEffort: (v: number | null) => void;
   onRate: (index: number) => void;
@@ -266,6 +276,7 @@ export function FinishWorkout({
           ))}
         </div>
       )}
+      {askWorkout && (
       <div className="stack-sm" style={{ gap: 10 }}>
         <div className="row-between" style={{ alignItems: 'baseline' }}>
           <b>How hard was today overall?</b>
@@ -280,6 +291,7 @@ export function FinishWorkout({
         </div>
         <span className="xsmall muted">{effort != null ? `${effort} · ${EFFORT_WORDS[effort]}` : 'Skip it if you like. Each exercise has its own rating.'}</span>
       </div>
+      )}
       <button type="button" className="btn primary" onClick={onSave}>
         {saveLabel}
       </button>

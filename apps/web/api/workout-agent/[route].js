@@ -355,6 +355,7 @@ function buildSnapshot(input, opts) {
       program_age_weeks: programStart ? Math.floor(daysBetween(programStart, asOf) / 7) : null,
       last_target_change_on: lastTargets
     },
+    training_rules: input.profile.training_rules && typeof input.profile.training_rules === "object" ? input.profile.training_rules : null,
     sessions,
     history,
     metrics: {
@@ -625,7 +626,8 @@ async function all(make) {
   }
 }
 async function loadInput(sb, userId, from, asOf) {
-  const { data: profile, error: pe } = await sb.from("profiles").select("units, timezone, coach_share_bodyweight").eq("user_id", userId).maybeSingle();
+  let { data: profile, error: pe } = await sb.from("profiles").select("units, timezone, coach_share_bodyweight, training_rules").eq("user_id", userId).maybeSingle();
+  if (pe && /training_rules/.test(pe.message)) ({ data: profile, error: pe } = await sb.from("profiles").select("units, timezone, coach_share_bodyweight").eq("user_id", userId).maybeSingle());
   if (pe) throw new Error(`profiles: ${pe.message}`);
   const actions = await all((a, b) => sb.from("actions").select("id, title, kind, planned_minutes, archived_at, workout_plan, details").eq("user_id", userId).range(a, b));
   const workoutIds = new Set(actions.filter((x) => x.kind === "workout" || Array.isArray(x.workout_plan) && x.workout_plan.length > 0).map((x) => x.id));
@@ -649,7 +651,7 @@ async function loadInput(sb, userId, from, asOf) {
     (a, b) => sb.from("workout_reports").select("id, as_of, created_at, recommendation, change_level, decision, user_status, user_note").eq("user_id", userId).eq("kind", "coach").lte("as_of", asOf).order("as_of").range(a, b)
   );
   return {
-    profile: { units: profile?.units ?? "lb", timezone: profile?.timezone ?? "America/New_York", coach_share_bodyweight: share },
+    profile: { units: profile?.units ?? "lb", timezone: profile?.timezone ?? "America/New_York", coach_share_bodyweight: share, training_rules: profile?.training_rules ?? null },
     actions: actions.filter((x) => workoutIds.has(x.id)),
     schedules: schedules.filter((s) => workoutIds.has(s.action_id)),
     sessions,
@@ -679,6 +681,24 @@ function checkReport(body) {
   for (const f of ["model", "prompt_version", "snapshot_hash", "schema_version"]) if (body[f] != null && typeof body[f] !== "string") problems.push(`${f} must be text`);
   return problems;
 }
+async function functionLive(base, name) {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4e3);
+    const res = await fetch(`${base}/functions/v1/${name}`, { method: "GET", signal: ctrl.signal });
+    clearTimeout(t);
+    const text = await res.text().catch(() => "");
+    if (res.status === 404 && /requested function was not found|NOT_FOUND/i.test(text)) return false;
+    return true;
+  } catch {
+    return null;
+  }
+}
+async function systemStatus(env2) {
+  const base = (env2("SUPABASE_URL") ?? env2("VITE_SUPABASE_URL") ?? "").replace(/\/+$/, "");
+  const [reminders, calendar, digests] = base ? await Promise.all(["send-reminders", "calendar", "send-digests"].map((n) => functionLive(base, n))) : [null, null, null];
+  return { push_key: !!(env2("VITE_VAPID_PUBLIC_KEY") ?? "").trim(), reminders: reminders ?? null, calendar: calendar ?? null, digests: digests ?? null };
+}
 async function handleWorkoutAgent(req, sb, env2) {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   const url = new URL(req.url);
@@ -688,6 +708,10 @@ async function handleWorkoutAgent(req, sb, env2) {
   try {
     const { data: prof } = await sb.from("profiles").select("timezone").eq("user_id", who.userId).maybeSingle();
     const today = todayIn(prof?.timezone ?? "America/New_York");
+    if (req.method === "GET" && route === "status") {
+      if (who.who !== "user") return json({ error: "Not allowed" }, 403);
+      return json(await systemStatus(env2));
+    }
     if (req.method === "GET" && route === "whoami") return json({ user_id: who.userId, via: who.who });
     if (req.method === "GET" && route === "history") {
       const asOf = url.searchParams.get("as_of") ?? today;

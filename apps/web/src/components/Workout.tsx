@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { cleanEffort, effortHint, effortZone as effortZoneOf, parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, EFFORT_WORDS, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
+import { stepFor, trainingRules, workoutPrefs, cleanEffort, effortHint, effortZone as effortZoneOf, parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, EFFORT_WORDS, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
@@ -267,7 +267,10 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   // Exercises added for this workout only (or to keep in the plan from now on).
   const [extras, setExtras] = useState<Extra[]>(() => draft?.extras ?? savedExtras(basePlan, saved));
   const plan: Extra[] = [...basePlan, ...extras];
-  const suggestions = plan.map((e) => suggestWeight(e, last.get(e.name.toLowerCase()) ?? null, undefined, lastEffort.get(e.name.toLowerCase()) ?? null));
+  // Your settings: weight steps by equipment, the biggest jump allowed, and how you log.
+  const rules = trainingRules(data.profile.training_rules);
+  const prefs = workoutPrefs(data.profile.workout_prefs);
+  const suggestions = plan.map((e) => suggestWeight(e, last.get(e.name.toLowerCase()) ?? null, stepFor(e.name, rules, e.weight_note), lastEffort.get(e.name.toLowerCase()) ?? null, rules.max_jump_pct));
   const planWeight = (i: number) => suggestions[i]!.weight;
 
   const [rows, setRows] = useState<Row[][]>(() => {
@@ -323,7 +326,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
       setNow(t);
       if (t >= restEnd) {
         setRestEnd(null);
-        navigator.vibrate?.([200, 100, 200]);
+        if (prefs.rest_vibrate) navigator.vibrate?.([200, 100, 200]);
       }
     }, 250);
     return () => window.clearInterval(id);
@@ -349,7 +352,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     setRows(next);
     const secs = restSeconds(plan[i]!.rest);
     const exerciseDone = next[i]!.every((y) => y.done);
-    if (exerciseDone && feedback[i]?.effort != null) {
+    if (exerciseDone && (prefs.effort !== 'each' || feedback[i]?.effort != null)) {
       // Fold the finished exercise to what you did, and open the next one with sets left. One not
       // rated yet stays open: the effort slider is right under its last set.
       setOpen(firstOpen(next));
@@ -422,7 +425,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
       el?.scrollIntoView({ block: part ? 'center' : 'start', behavior: 'smooth' });
     }, 80);
   };
-  const unrated = plan.map((e, i) => ({ name: e.name, index: i })).filter((u) => rows[u.index]!.some((r) => r.done) && feedback[u.index]?.effort == null);
+  const unrated = prefs.effort === 'off' ? [] : plan.map((e, i) => ({ name: e.name, index: i })).filter((u) => rows[u.index]!.some((r) => r.done) && feedback[u.index]?.effort == null);
 
   function finish() {
     const before = session;
@@ -561,6 +564,11 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
                       ↑ Up to {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time
                     </span>
                   )}
+                  {sug.why === 'bigjump' && !future && (
+                    <span className="workout-up">
+                      You hit {e.reps_max} on every set last time, but the next weight is a bigger jump than your settings allow. Add a rep or a set first.
+                    </span>
+                  )}
                   {sug.why === 'allout' && !future && (
                     <span className="workout-up">
                       Staying at {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time, but rated it 10 (nothing left). Earn it once more.
@@ -654,6 +662,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
                       onChange={(patch) => setFeedbackAt(i, patch)}
                       hint={hintFor(i)}
                       last={lastEffort.get(e.name.toLowerCase()) ?? null}
+                      askEffort={prefs.effort !== 'off'}
                       next={
                         finished && firstOpen(rows) >= 0 && firstOpen(rows) !== i
                           ? { label: plan[firstOpen(rows)]!.name, go: () => openAndShow(firstOpen(rows)) }
@@ -773,6 +782,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
         <FinishWorkout
           summary={`${doneCount} of ${total} sets${doneCount >= total ? ': all done' : ''}`}
           unrated={unrated}
+          askWorkout={prefs.workout_rating}
           effort={sessionEffort}
           onEffort={setSessionEffort}
           onRate={(i) => {

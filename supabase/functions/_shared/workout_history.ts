@@ -130,6 +130,8 @@ export interface WHProfile {
   units: string;
   timezone: string;
   coach_share_bodyweight?: boolean | null;
+  /** Settings → Training, as saved (missing fields fall back to the coach's own defaults). */
+  training_rules?: Record<string, unknown> | null;
 }
 
 export interface HistoryInput {
@@ -289,6 +291,8 @@ export interface Snapshot {
     /** When any weight, set or rep target last changed. */
     last_target_change_on: string | null;
   };
+  /** The athlete's own training rules from Settings → Training: limits, equipment, steps, week. Null when never saved. */
+  training_rules: Record<string, unknown> | null;
   sessions: SnapshotSession[];
   history: ExerciseWeek[];
   metrics: {
@@ -764,6 +768,7 @@ export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snaps
       program_age_weeks: programStart ? Math.floor(daysBetween(programStart, asOf) / 7) : null,
       last_target_change_on: lastTargets,
     },
+    training_rules: input.profile.training_rules && typeof input.profile.training_rules === 'object' ? input.profile.training_rules : null,
     sessions,
     history,
     metrics: {

@@ -10,6 +10,8 @@
 //        and past coach decisions. Nothing else.
 //   POST …/workout-agent/reports
 //        Save one coach report. That's the only thing it can write.
+//   GET  …/workout-agent/status
+//        For Settings (your sign-in only): which background services are live.
 //   GET  …/workout-agent/whoami
 //        Whose data the caller opens ({ user_id, via: agent | user }).
 //
@@ -104,7 +106,9 @@ async function all<T>(make: (from: number, to: number) => PromiseLike<{ data: T[
 
 /** Load one user's workout data, and only that. */
 async function loadInput(sb: Sb, userId: string, from: string, asOf: string): Promise<HistoryInput> {
-  const { data: profile, error: pe } = await sb.from('profiles').select('units, timezone, coach_share_bodyweight').eq('user_id', userId).maybeSingle();
+  // training_rules arrives with the settings migration; until it's run, read the profile without it.
+  let { data: profile, error: pe } = await sb.from('profiles').select('units, timezone, coach_share_bodyweight, training_rules').eq('user_id', userId).maybeSingle();
+  if (pe && /training_rules/.test(pe.message)) ({ data: profile, error: pe } = await sb.from('profiles').select('units, timezone, coach_share_bodyweight').eq('user_id', userId).maybeSingle());
   if (pe) throw new Error(`profiles: ${pe.message}`);
   const actions = await all<Row>((a, b) => sb.from('actions').select('id, title, kind, planned_minutes, archived_at, workout_plan, details').eq('user_id', userId).range(a, b));
   const workoutIds = new Set(actions.filter((x: { kind: string; workout_plan: unknown }) => x.kind === 'workout' || (Array.isArray(x.workout_plan) && x.workout_plan.length > 0)).map((x: { id: string }) => x.id));
@@ -133,7 +137,7 @@ async function loadInput(sb: Sb, userId: string, from: string, asOf: string): Pr
     sb.from('workout_reports').select('id, as_of, created_at, recommendation, change_level, decision, user_status, user_note').eq('user_id', userId).eq('kind', 'coach').lte('as_of', asOf).order('as_of').range(a, b),
   );
   return {
-    profile: { units: profile?.units ?? 'lb', timezone: profile?.timezone ?? 'America/New_York', coach_share_bodyweight: share },
+    profile: { units: profile?.units ?? 'lb', timezone: profile?.timezone ?? 'America/New_York', coach_share_bodyweight: share, training_rules: (profile as { training_rules?: Record<string, unknown> | null } | null)?.training_rules ?? null },
     actions: actions.filter((x: { id: string }) => workoutIds.has(x.id)) as HistoryInput['actions'],
     schedules: (schedules as HistoryInput['schedules']).filter((s) => workoutIds.has(s.action_id)),
     sessions: sessions as HistoryInput['sessions'],
@@ -166,6 +170,28 @@ function checkReport(body: Record<string, unknown>): string[] {
   return problems;
 }
 
+/** Is a Supabase Edge Function deployed? An undeployed one answers 404 "Requested function was not found". */
+async function functionLive(base: string, name: string): Promise<boolean | null> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4000);
+    const res = await fetch(`${base}/functions/v1/${name}`, { method: 'GET', signal: ctrl.signal });
+    clearTimeout(t);
+    const text = await res.text().catch(() => '');
+    if (res.status === 404 && /requested function was not found|NOT_FOUND/i.test(text)) return false;
+    return true;
+  } catch {
+    return null;
+  }
+}
+
+/** The pieces behind reminders, the calendar feed and partner emails: true live, false missing, null couldn't tell. */
+export async function systemStatus(env: Env): Promise<{ push_key: boolean; reminders: boolean | null; calendar: boolean | null; digests: boolean | null }> {
+  const base = (env('SUPABASE_URL') ?? env('VITE_SUPABASE_URL') ?? '').replace(/\/+$/, '');
+  const [reminders, calendar, digests] = base ? await Promise.all(['send-reminders', 'calendar', 'send-digests'].map((n) => functionLive(base, n))) : [null, null, null];
+  return { push_key: !!(env('VITE_VAPID_PUBLIC_KEY') ?? '').trim(), reminders: reminders ?? null, calendar: calendar ?? null, digests: digests ?? null };
+}
+
 /** Answer one request to the coach's door. `sb` must be a service-role Supabase client. */
 export async function handleWorkoutAgent(req: Request, sb: Sb, env: Env): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -177,6 +203,13 @@ export async function handleWorkoutAgent(req: Request, sb: Sb, env: Env): Promis
   try {
     const { data: prof } = await sb.from('profiles').select('timezone').eq('user_id', who.userId).maybeSingle();
     const today = todayIn(prof?.timezone ?? 'America/New_York');
+
+    // What's actually running behind the app, for Settings: the Supabase functions that send
+    // reminders, serve the calendar feed and email your partner, and the push key. Your sign-in only.
+    if (req.method === 'GET' && route === 'status') {
+      if (who.who !== 'user') return json({ error: 'Not allowed' }, 403);
+      return json(await systemStatus(env));
+    }
 
     // Whose data this caller opens: the coach compares its own key with your sign-in before a
     // run you start from the app (it runs only for the account its key belongs to).

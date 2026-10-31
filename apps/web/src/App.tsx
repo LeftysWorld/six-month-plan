@@ -231,7 +231,7 @@ function Shell(props: ShellProps) {
       screen = s1 ? <PathDetail id={s1} /> : <Paths />;
       break;
     case 'settings':
-      screen = <Settings {...props} />;
+      screen = <Settings {...props} section={s1} />;
       break;
     default:
       screen = <Today />;
@@ -263,7 +263,7 @@ function Shell(props: ShellProps) {
           <span className="nav-toggle-label">Collapse</span>
         </button>
       </div>
-      <main className={`main${tab === 'today' ? ' main-roomy' : ''}`}>
+      <main className={`main${tab === 'today' ? ' main-roomy' : ''}${s0 === 'settings' ? ' main-wide' : ''}`}>
         <div className="stack">
           {props.demo && (
             <div className="banner info">

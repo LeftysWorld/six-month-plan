@@ -98,7 +98,6 @@ export function ReminderSettings() {
 
   return (
     <>
-      <div className="section-label">Reminders</div>
       <div className="card stack-sm">
         <div className="row-between">
           <div>

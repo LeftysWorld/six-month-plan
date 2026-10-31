@@ -16,3 +16,4 @@ export * from './tally.ts';
 export * from './stretch.ts';
 export * from './ladder.ts';
 export * from './demo.ts';
+export * from './settings.ts';

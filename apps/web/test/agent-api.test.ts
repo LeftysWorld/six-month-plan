@@ -103,6 +103,20 @@ test('whoami says whose data a key or a sign-in opens', async () => {
   assert.equal((await handleWorkoutAgent(get('whoami', {}), sb, env)).status, 401);
 });
 
+test('status: only your sign-in, and it says which services are live', async () => {
+  const sb = await db();
+  assert.equal((await handleWorkoutAgent(get('status', { 'x-agent-key': KEY }), sb, env)).status, 403);
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string) =>
+    String(url).includes('calendar') ? new Response('BEGIN:VCALENDAR', { status: 200 }) : new Response('{"code":"NOT_FOUND","message":"Requested function was not found"}', { status: 404 })) as typeof fetch;
+  try {
+    const res = await handleWorkoutAgent(get('status', { authorization: 'Bearer my-session' }), sb, (k) => (k === 'VITE_SUPABASE_URL' ? 'https://x.supabase.co' : undefined));
+    assert.deepEqual(await res.json(), { push_key: false, reminders: false, calendar: true, digests: false });
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
 test('the coach can save a report, checked first', async () => {
   const sb = await db();
   const post = (body: unknown) => new Request('https://app.example/api/workout-agent/reports', { method: 'POST', headers: { 'x-agent-key': KEY, 'content-type': 'application/json' }, body: JSON.stringify(body) });

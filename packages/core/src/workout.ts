@@ -108,16 +108,17 @@ export interface WeightSuggestion {
   weight: number | null;
   /**
    * plan: from the plan; last: what you used last time; up: you hit the top of the range on every
-   * set; allout: you hit it, but rated it 10 (nothing left), so the weight stays.
+   * set; allout: you hit it, but rated it 10 (nothing left), so the weight stays; bigjump: you hit it,
+   * but the next weight is a bigger jump than your settings allow, so add reps or a set first.
    */
-  why: 'plan' | 'last' | 'up' | 'allout';
+  why: 'plan' | 'last' | 'up' | 'allout' | 'bigjump';
 }
 
 /**
  * The weight to start with: the plan's on the first time, then last time's weight, plus `step`
  * once every planned set reached the top of the rep range (double progression).
  */
-export function suggestWeight(ex: PlannedExercise, last: DoneSet[] | null, step = 5, lastEffort: number | null = null): WeightSuggestion {
+export function suggestWeight(ex: PlannedExercise, last: DoneSet[] | null, step = 5, lastEffort: number | null = null, maxJumpPct: number | null = null): WeightSuggestion {
   const used = (last ?? []).filter((s) => s.done && s.weight != null);
   if (!used.length) return { weight: ex.weight, why: 'plan' };
   const top = Math.max(...used.map((s) => s.weight!));
@@ -125,6 +126,8 @@ export function suggestWeight(ex: PlannedExercise, last: DoneSet[] | null, step 
   if (atTop.length >= ex.sets && atTop.every((s) => (s.reps ?? 0) >= ex.reps_max)) {
     // Every rep, but nothing left: earn it once more before the weight goes up.
     if (lastEffort != null && lastEffort >= 10) return { weight: top, why: 'allout' };
+    if (step <= 0) return { weight: top, why: 'last' };
+    if (maxJumpPct != null && top > 0 && step / top > maxJumpPct + 1e-9) return { weight: top, why: 'bigjump' };
     return { weight: top + step, why: 'up' };
   }
   return { weight: top, why: 'last' };
