@@ -5,6 +5,7 @@ import { workoutReportMarkdown, workoutSnapshot, type Decision, type Snapshot } 
 import type { Op } from '../data/model.ts';
 import { BackLink, useToast } from '../components/ui.tsx';
 import { Markdown } from '../components/Markdown.tsx';
+import { RunCoachButton } from '../components/CoachSetup.tsx';
 
 const LEVELS = ['Hold', 'Add reps', 'Add weight', 'Change sets', 'Swap one exercise', 'Lighter week', 'New program'];
 const STATUS_WORDS: Record<string, string> = {
@@ -108,6 +109,10 @@ export function WorkoutReport() {
       )}
 
       <div className="section-label">Coach reports</div>
+      <div className="card stack-sm">
+        <span className="small muted">The coach runs every Friday night on its own. Run it now to test it, or after a change you've made:</span>
+        <RunCoachButton />
+      </div>
       {reports.length === 0 ? (
         <div className="card small muted">
           None yet. Once the workout coach is running, its weekly report lands here: what's going on, what to change (or not) and why. Nothing in your plan changes until you decide.

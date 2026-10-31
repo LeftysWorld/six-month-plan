@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../data/store.tsx';
 import { opsProfile } from '../data/ops.ts';
 import { getSupabase } from '../data/supabase.ts';
@@ -42,6 +42,119 @@ function CopyRow({ label, value, secret }: { label: string; value: string; secre
         Copy
       </button>
     </div>
+  );
+}
+
+// ---------- Run the coach now ----------
+
+const COACH_URL_KEY = 'six.coachUrl';
+/** The coach's own Vercel project (the address Vercel shows for it). */
+const DEFAULT_COACH_URL = 'https://workout-coach-peach.vercel.app';
+
+export function coachUrl(): string {
+  try {
+    return (localStorage.getItem(COACH_URL_KEY) || DEFAULT_COACH_URL).replace(/\/+$/, '');
+  } catch {
+    return DEFAULT_COACH_URL;
+  }
+}
+
+interface RunResult {
+  as_of?: string;
+  recommendation?: string;
+  change_level?: number;
+  summary?: string;
+  changes?: number;
+  published?: boolean;
+  failed?: boolean;
+  error?: string | null;
+}
+
+/**
+ * "Run the coach now": starts one review on the coach's Vercel project with your sign-in (the coach
+ * checks it's the account its key belongs to), waits for it (a minute or two), shows what it said and
+ * brings the new report in. The Friday schedule is separate and unchanged.
+ */
+export function RunCoachButton() {
+  const { db, reload } = useStore();
+  const toast = useToast();
+  const [state, setState] = useState<{ phase: 'idle' } | { phase: 'running'; since: number } | { phase: 'done'; result: RunResult } | { phase: 'error'; message: string }>({ phase: 'idle' });
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (state.phase !== 'running') return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [state.phase]);
+
+  if (db.mode !== 'supabase') return <span className="small muted">Sign in to run the coach.</span>;
+
+  async function run() {
+    setState({ phase: 'running', since: Date.now() });
+    setNow(Date.now());
+    try {
+      const { data: s } = (await getSupabase()?.auth.getSession()) ?? { data: { session: null } };
+      const token = s.session?.access_token;
+      if (!token) return setState({ phase: 'error', message: "You're not signed in. Sign in and try again." });
+      const res = await fetch(`${coachUrl()}/api/run`, { method: 'POST', headers: { authorization: `Bearer ${token}` } });
+      const body = (await res.json().catch(() => ({}))) as RunResult;
+      if (!res.ok) return setState({ phase: 'error', message: body.error ?? `The coach answered ${res.status}.` });
+      setState({ phase: 'done', result: body });
+      await reload();
+      toast(body.published ? 'Coach report saved' : 'The coach ran (report not saved: publishing is off)');
+    } catch (e) {
+      setState({ phase: 'error', message: `Couldn't reach the coach at ${coachUrl()}: ${(e as Error).message}. Check its address in Settings → Workout coach → Set up the weekly coach.` });
+    }
+  }
+
+  const secs = state.phase === 'running' ? Math.max(0, Math.round((now - state.since) / 1000)) : 0;
+  return (
+    <div className="stack-sm" style={{ gap: 8 }}>
+      <button type="button" className="btn primary" style={{ alignSelf: 'flex-start' }} onClick={() => void run()} disabled={state.phase === 'running'}>
+        {state.phase === 'running' ? `Running… ${secs}s` : 'Run the coach now'}
+      </button>
+      {state.phase === 'running' && <span className="xsmall muted">It reads your history, thinks it through and writes the report: usually a minute or two. Keep this page open.</span>}
+      {state.phase === 'done' && (
+        <div className={`banner ${state.result.failed ? 'warn' : 'info'} small`} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+          <b>
+            {state.result.failed ? 'The coach ran into a problem' : state.result.recommendation === 'change' ? `Change, level ${state.result.change_level}` : state.result.recommendation === 'hold' ? 'Hold: no change' : 'No recommendation this week'}
+            {state.result.as_of ? ` · as of ${state.result.as_of}` : ''}
+          </b>
+          {state.result.summary && <span>{state.result.summary}</span>}
+          {state.result.failed && state.result.error && <span>{state.result.error}</span>}
+          <span>{state.result.published ? 'The full report is in Review → Workout report.' : 'Publishing is off (COACH_PUBLISH=false), so it was not saved here.'}</span>
+        </div>
+      )}
+      {state.phase === 'error' && (
+        <div className="banner warn small" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+          <b>It didn't run</b>
+          <span>{state.message}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CoachAddress() {
+  const [value, setValue] = useState(coachUrl());
+  return (
+    <label className="field small">
+      The coach's address (from its Vercel project)
+      <input
+        value={value}
+        inputMode="url"
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          const v = value.trim().replace(/\/+$/, '');
+          try {
+            if (!v || v === DEFAULT_COACH_URL) localStorage.removeItem(COACH_URL_KEY);
+            else localStorage.setItem(COACH_URL_KEY, v);
+          } catch {
+            // storage blocked: the default stays
+          }
+          setValue(v || DEFAULT_COACH_URL);
+        }}
+      />
+    </label>
   );
 }
 
@@ -189,9 +302,9 @@ export function CoachSetup() {
 
       <div className="coach-step">
         <b>4. Run it</b>
-        <span className="small">
-          In the coach's Vercel project → <b>Settings → Cron Jobs</b>, click <b>Run</b>. The report shows up here (Review → Workout report) a minute or two later. After that it runs itself every Friday at 11 pm.
-        </span>
+        <span className="small">It runs itself every Friday at 11 pm. To test it now:</span>
+        <CoachAddress />
+        <RunCoachButton />
         <span className="small muted">
           {reports.length ? `Last report: ${reports[0]!.as_of} (${reports[0]!.recommendation}).` : 'No coach reports here yet.'}{' '}
           <a href="#/workouts/report">Open the workout report</a>

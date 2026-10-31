@@ -94,6 +94,15 @@ test('you, signed in, can test the connection on your own data', async () => {
   assert.equal(res.status, 200);
 });
 
+test('whoami says whose data a key or a sign-in opens', async () => {
+  const sb = await db();
+  const viaKey = await (await handleWorkoutAgent(get('whoami', { 'x-agent-key': KEY }), sb, env)).json();
+  const viaMe = await (await handleWorkoutAgent(get('whoami', { authorization: 'Bearer my-session' }), sb, env)).json();
+  assert.deepEqual(viaKey, { user_id: 'me', via: 'agent' });
+  assert.deepEqual(viaMe, { user_id: 'me', via: 'user' });
+  assert.equal((await handleWorkoutAgent(get('whoami', {}), sb, env)).status, 401);
+});
+
 test('the coach can save a report, checked first', async () => {
   const sb = await db();
   const post = (body: unknown) => new Request('https://app.example/api/workout-agent/reports', { method: 'POST', headers: { 'x-agent-key': KEY, 'content-type': 'application/json' }, body: JSON.stringify(body) });

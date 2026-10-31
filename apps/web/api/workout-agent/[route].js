@@ -688,6 +688,7 @@ async function handleWorkoutAgent(req, sb, env2) {
   try {
     const { data: prof } = await sb.from("profiles").select("timezone").eq("user_id", who.userId).maybeSingle();
     const today = todayIn(prof?.timezone ?? "America/New_York");
+    if (req.method === "GET" && route === "whoami") return json({ user_id: who.userId, via: who.who });
     if (req.method === "GET" && route === "history") {
       const asOf = url.searchParams.get("as_of") ?? today;
       if (!ISO.test(asOf) || asOf > today) return json({ error: "as_of must be YYYY-MM-DD and not after today" }, 400);

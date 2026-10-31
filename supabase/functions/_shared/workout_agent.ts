@@ -10,6 +10,8 @@
 //        and past coach decisions. Nothing else.
 //   POST …/workout-agent/reports
 //        Save one coach report. That's the only thing it can write.
+//   GET  …/workout-agent/whoami
+//        Whose data the caller opens ({ user_id, via: agent | user }).
 //
 // Who can call it:
 //   - the coach, with header `x-agent-key: <the key from Settings → Workout coach>`
@@ -175,6 +177,10 @@ export async function handleWorkoutAgent(req: Request, sb: Sb, env: Env): Promis
   try {
     const { data: prof } = await sb.from('profiles').select('timezone').eq('user_id', who.userId).maybeSingle();
     const today = todayIn(prof?.timezone ?? 'America/New_York');
+
+    // Whose data this caller opens: the coach compares its own key with your sign-in before a
+    // run you start from the app (it runs only for the account its key belongs to).
+    if (req.method === 'GET' && route === 'whoami') return json({ user_id: who.userId, via: who.who });
 
     if (req.method === 'GET' && route === 'history') {
       const asOf = url.searchParams.get('as_of') ?? today;
