@@ -387,6 +387,7 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
           today={today}
           unit={goal.unit ?? ''}
           color={goal.color}
+          initial={7}
         />
         {readings.length > 0 && (
           <div>
