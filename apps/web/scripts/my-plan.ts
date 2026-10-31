@@ -287,7 +287,8 @@ const WORKOUTS: [number, string, PlannedExercise[]][] = [
     ex('Incline DB Press', 3, '8–12', '35', '2 min'),
     ex('Flat DB Bench Press', 2, '8–12', '50', '2 min', 'Same weight as Monday; when Monday goes up, this goes up too.'),
     ex('Single-Arm Cable Pulldown', 3, '10–12', 'find it', '60 sec', 'Seated, one handle. Elbow down to your side, then let the arm stretch all the way up.', true),
-    ex('Arm Superset: Cable Curl + Overhead Cable Triceps Extension', 2, '12–15', 'find it', '90 sec after each round', 'One set of curls, then right away one set of extensions (sit on a bench, back to the stack). Rest, repeat.'),
+    { ...ex('Cable Curl', 2, '12–15', 'find it', '90 sec after each round', 'One set of curls, then right away one set of extensions (sit on a bench, back to the stack). Rest, repeat.'), superset: 'Arm superset' },
+    { ...ex('Overhead Cable Triceps Extension', 2, '12–15', 'find it', '90 sec after each round'), superset: 'Arm superset' },
     ex('Hammer Strength Glute/Ham Hip Extension (knee test)', 3, '10–12', 'bodyweight', '90 sec', 'Hips on the pad, legs straight. Bend at the hips, squeeze glutes and hamstrings to come up. Not the knee-bending glute-ham raise.'),
   ]],
 ];

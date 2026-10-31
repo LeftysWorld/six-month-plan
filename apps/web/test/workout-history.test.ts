@@ -225,3 +225,16 @@ test('helpers', () => {
   assert.equal(e1rmAdjusted(100, 18, 5), null);
   assert.equal(estimateMinutes([bench, lat]), 5 + Math.round((6 * (45 + 120)) / 60));
 });
+
+test('a superset saved as one exercise is split in the plan and its history, the same as the app does', async () => {
+  const { splitSupersets } = await import('@six/core');
+  const { splitSupersetsWH, estimateMinutes } = await import('../../../supabase/functions/_shared/workout_history.ts');
+  const combined = { name: 'Arm Superset: Cable Curl + Overhead Cable Triceps Extension', sets: 2, reps_min: 12, reps_max: 15, weight: null, weight_note: 'find it', rest: '90 sec after each round', note: 'Curls, then extensions.' };
+  const other = { name: 'Lat Pulldown', sets: 4, reps_min: 8, reps_max: 12, weight: 100, weight_note: '', rest: '2 min', note: '' };
+  const app = splitSupersets([other, combined]);
+  const coach = splitSupersetsWH([other, combined]);
+  assert.deepEqual(coach, app);
+  assert.deepEqual(app.map((e) => [e.name, e.superset ?? null]), [['Lat Pulldown', null], ['Cable Curl', 'Arm superset'], ['Overhead Cable Triceps Extension', 'Arm superset']]);
+  // Rest comes after the round, not between the curl and the extension.
+  assert.equal(estimateMinutes(app.slice(1)), 11);
+});

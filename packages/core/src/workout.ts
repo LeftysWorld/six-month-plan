@@ -19,6 +19,11 @@ export interface PlannedExercise {
   note: string;
   /** What it looks like, when you chose one (a library exercise, a video link, your own photo or video). */
   demo?: import('./demo.ts').ExerciseDemo | null;
+  /**
+   * Back-to-back exercises share a superset label ("Arm superset"): one set of each, then rest.
+   * Each keeps its own sets, weight and reps. `sets` is the number of rounds.
+   */
+  superset?: string;
 }
 
 /** One set as logged. */
@@ -56,8 +61,7 @@ function parseLine(line: string): PlannedExercise[] {
       const r = /(\d+)(?:\s*[–-]\s*(\d+))?\s*$/.exec(p);
       const lo = r ? Number(r[1]) : 10;
       const hi = r?.[2] ? Number(r[2]) : lo;
-      const other = names.filter((_, j) => j !== i).join(' + ');
-      return { name: names[i] || p, sets: rounds, reps_min: lo, reps_max: hi, weight: null, weight_note: '', rest: (ss[4] ?? '').trim(), note: `Superset with ${other}` };
+      return { name: names[i] || p, sets: rounds, reps_min: lo, reps_max: hi, weight: null, weight_note: '', rest: (ss[4] ?? '').trim(), note: '', superset: supersetLabel(ss[1] ?? '') };
     });
   }
   const m = LINE.exec(text);
@@ -75,6 +79,96 @@ function parseLine(line: string): PlannedExercise[] {
       note: (m[8] ?? '').trim(),
     },
   ];
+}
+
+/** "Arm Superset" → "Arm superset"; a bare "Superset" stays. */
+function supersetLabel(raw: string): string {
+  const t = raw.trim().replace(/\s+/g, ' ');
+  if (!t) return 'Superset';
+  return t.replace(/\bsuperset\b/i, (w) => (t.toLowerCase().startsWith('superset') ? 'Superset' : w.toLowerCase()));
+}
+
+/** A superset kept as one exercise: "Arm Superset: Cable Curl + Overhead Cable Triceps Extension". */
+const COMBINED_SUPERSET = /^(.*?\bsuperset\b[^:]*?):\s*(.+?\+.+)$/i;
+
+/**
+ * Supersets as separate exercises. One saved as a single exercise ("Arm Superset: Cable Curl +
+ * Overhead Cable Triceps Extension") becomes one exercise per move, linked by a superset label, each
+ * with the rounds, reps, rest and weight note it had; the note goes on the first. A pair from an
+ * older text import ("Superset with …" notes) gets linked the same way. Returns the same array when
+ * there's nothing to change.
+ */
+export function splitSupersets(plan: PlannedExercise[]): PlannedExercise[] {
+  let changed = false;
+  const out: PlannedExercise[] = [];
+  for (const e of plan) {
+    const m = COMBINED_SUPERSET.exec(e.name.trim());
+    if (!m) {
+      out.push(e);
+      continue;
+    }
+    const names = m[2]!.split(/\s*\+\s*/).map((x) => x.trim()).filter(Boolean);
+    if (names.length < 2) {
+      out.push(e);
+      continue;
+    }
+    changed = true;
+    const label = supersetLabel(m[1]!);
+    const { demo: _demo, ...base } = e;
+    names.forEach((name, i) => out.push({ ...base, name, weight: null, note: i === 0 ? e.note : '', superset: label }));
+  }
+  for (let i = 0; i + 1 < out.length; i++) {
+    const a = out[i]!;
+    const b = out[i + 1]!;
+    if (!a.superset && !b.superset && a.note.trim().toLowerCase() === `superset with ${b.name.trim().toLowerCase()}` && b.note.trim().toLowerCase() === `superset with ${a.name.trim().toLowerCase()}`) {
+      out[i] = { ...a, note: '', superset: 'Superset' };
+      out[i + 1] = { ...b, note: '', superset: 'Superset' };
+      changed = true;
+    }
+  }
+  return changed ? out : plan;
+}
+
+/** Runs of exercises: a superset's members together, everything else on its own. Indexes into the plan. */
+export function planGroups(plan: PlannedExercise[]): { superset: string | null; members: number[] }[] {
+  const groups: { superset: string | null; members: number[] }[] = [];
+  plan.forEach((e, i) => {
+    const prev = groups.at(-1);
+    if (e.superset && prev?.superset === e.superset && plan[i - 1]?.superset === e.superset) prev.members.push(i);
+    else groups.push({ superset: e.superset || null, members: [i] });
+  });
+  // A superset of one is just an exercise.
+  return groups.map((g) => (g.members.length < 2 ? { ...g, superset: null } : g));
+}
+
+/** Link exercise i with the next one as a superset (or unlink it). Unlinking leaves no superset of one. */
+export function linkWithNext(plan: PlannedExercise[], i: number, on: boolean): PlannedExercise[] {
+  const a = plan[i];
+  const b = plan[i + 1];
+  if (!a || !b) return plan;
+  const next = [...plan];
+  if (on) {
+    const label = a.superset || b.superset || 'Superset';
+    next[i] = { ...a, superset: label };
+    next[i + 1] = { ...b, superset: label };
+    return next;
+  }
+  const strip = ({ superset: _s, ...e }: PlannedExercise): PlannedExercise => e;
+  // Split the run between i and i+1; whatever is left alone loses its label.
+  const run = (from: number, dir: 1 | -1) => {
+    let k = from;
+    while (next[k + dir] && next[k + dir]!.superset === a.superset) k += dir;
+    return k;
+  };
+  const start = run(i, -1);
+  const end = run(i + 1, 1);
+  if (start === i) next[i] = strip(next[i]!);
+  if (end === i + 1) next[i + 1] = strip(next[i + 1]!);
+  else if (start !== i) {
+    // Both sides still have two or more: give the second half its own label.
+    for (let k = i + 1; k <= end; k++) next[k] = { ...next[k]!, superset: `${a.superset} 2` };
+  }
+  return next;
 }
 
 /**

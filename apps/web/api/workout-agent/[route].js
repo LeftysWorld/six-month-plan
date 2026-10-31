@@ -44,8 +44,30 @@ function e1rmAdjusted(weight, reps, effort) {
 }
 function estimateMinutes(plan) {
   let seconds = 5 * 60;
-  for (const ex of plan) seconds += ex.sets * (45 + restSeconds(ex.rest ?? "", 90));
+  plan.forEach((ex, i) => {
+    const restsAfter = !ex.superset || plan[i + 1]?.superset !== ex.superset;
+    seconds += ex.sets * (45 + (restsAfter ? restSeconds(ex.rest ?? "", 90) : 0));
+  });
   return Math.round(seconds / 60);
+}
+function splitSupersetsWH(plan) {
+  const combined = /^(.*?\bsuperset\b[^:]*?):\s*(.+?\+.+)$/i;
+  let changed = false;
+  const out = [];
+  for (const e of plan) {
+    const m = combined.exec((e.name ?? "").trim());
+    const names = m ? m[2].split(/\s*\+\s*/).map((x) => x.trim()).filter(Boolean) : [];
+    if (!m || names.length < 2) {
+      out.push(e);
+      continue;
+    }
+    changed = true;
+    const raw = m[1].trim().replace(/\s+/g, " ");
+    const label = raw.toLowerCase().startsWith("superset") ? "Superset" : raw.replace(/\bsuperset\b/i, "superset");
+    const { demo: _demo, ...base } = e;
+    names.forEach((name, i) => out.push({ ...base, name, weight: null, note: i === 0 ? e.note : "", superset: label }));
+  }
+  return changed ? out : plan;
 }
 function restSeconds(rest, fallback) {
   const m = /(\d+(?:\.\d+)?)(?:\s*[–-]\s*(\d+(?:\.\d+)?))?\s*(min|m\b|minutes?|s\b|sec|seconds?)?/i.exec(rest);
@@ -85,7 +107,12 @@ function versionsOf(input, action, asOf) {
   }
   return dedup;
 }
-function buildSnapshot(input, opts) {
+function buildSnapshot(raw, opts) {
+  const input = {
+    ...raw,
+    actions: raw.actions.map((a) => Array.isArray(a.workout_plan) && a.workout_plan.length ? { ...a, workout_plan: splitSupersetsWH(a.workout_plan) } : a),
+    planVersions: raw.planVersions.map((v) => Array.isArray(v.plan) ? { ...v, plan: splitSupersetsWH(v.plan) } : v)
+  };
   const asOf = opts.asOf;
   const months = Math.min(24, Math.max(1, Math.round(opts.months ?? 6)));
   const from = addMonths(asOf, -months);
@@ -227,14 +254,14 @@ function buildSnapshot(input, opts) {
       const log = logOf(s, k);
       const ws = done.map((x) => x.weight).filter((w) => w != null);
       const top = ws.length ? Math.max(...ws) : null;
-      let raw = null;
+      let raw2 = null;
       let adj = null;
       for (const [i, x] of done.entries()) {
         const est = e1rm(x.weight, x.reps);
-        if (est != null && (raw == null || est > raw)) raw = est;
+        if (est != null && (raw2 == null || est > raw2)) raw2 = est;
         if (i === done.length - 1) adj = e1rmAdjusted(x.weight, x.reps, log?.effort);
       }
-      return { date: s.date, weight: top, reps: done.map((x) => x.reps ?? 0), weights: done.map((x) => x.weight), effort: log?.effort ?? null, pain: !!log?.pain, e1rm: raw, e1rm_adj: adj };
+      return { date: s.date, weight: top, reps: done.map((x) => x.reps ?? 0), weights: done.map((x) => x.weight), effort: log?.effort ?? null, pain: !!log?.pain, e1rm: raw2, e1rm_adj: adj };
     });
     let atWeight = 0;
     const lastTop = asDone.at(-1)?.weight ?? null;

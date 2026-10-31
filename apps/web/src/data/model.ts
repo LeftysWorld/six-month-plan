@@ -1,4 +1,4 @@
-import { todayIn } from '@six/core';
+import { splitSupersets, todayIn } from '@six/core';
 import type {
   Action,
   ActionGoal,
@@ -102,10 +102,21 @@ export const COLLECTIONS = Object.keys(TABLES) as CollectionKey[];
 /** Colours retired from the palette, shown as their replacement (the olive-yellow became teal). */
 const RETIRED_COLORS: Record<string, string> = { '#c9a227': '#3FB6C9' };
 
-/** Tidy loaded data for display: retired goal colours are swapped for their replacement. */
+/**
+ * Tidy loaded data for display: retired goal colours are swapped for their replacement, and a
+ * superset saved as one exercise ("Arm Superset: Cable Curl + …") becomes one exercise per move,
+ * linked as a superset. The split is saved with the plan's next edit; the coach's snapshot splits
+ * old plan versions the same way, so it doesn't read as a program change.
+ */
 export function normalizeData(data: AppData): AppData {
-  if (!data.goals.some((g) => RETIRED_COLORS[g.color?.toLowerCase()])) return data;
-  return { ...data, goals: data.goals.map((g) => (RETIRED_COLORS[g.color?.toLowerCase()] ? { ...g, color: RETIRED_COLORS[g.color.toLowerCase()]! } : g)) };
+  let out = data;
+  if (data.goals.some((g) => RETIRED_COLORS[g.color?.toLowerCase()])) {
+    out = { ...out, goals: out.goals.map((g) => (RETIRED_COLORS[g.color?.toLowerCase()] ? { ...g, color: RETIRED_COLORS[g.color.toLowerCase()]! } : g)) };
+  }
+  if (data.actions.some((a) => a.workout_plan?.length && splitSupersets(a.workout_plan) !== a.workout_plan)) {
+    out = { ...out, actions: out.actions.map((a) => (a.workout_plan?.length ? { ...a, workout_plan: splitSupersets(a.workout_plan) } : a)) };
+  }
+  return out;
 }
 
 export function defaultProfile(): Profile {

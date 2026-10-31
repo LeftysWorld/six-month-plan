@@ -2383,3 +2383,12 @@ img.demo-media { background: var(--fill); }
   .dock.rail .settings-dock-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-2); }
   .dock.rail .settings-dock-nav a .set-dot { position: absolute; top: 9px; right: 9px; margin: 0; }
 }
+
+/* Supersets: their exercises together, one set of each, then rest */
+.workout-superset { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 18px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); }
+.workout-superset-head { display: flex; flex-direction: column; gap: 2px; padding: 2px 4px 4px; }
+.workout-superset-head b { font-size: 14px; color: var(--accent-ink); }
+.workout-superset .workout-ex { background: var(--surface); }
+.workout-card-superset { display: flex; flex-direction: column; gap: 2px; padding-left: 8px; border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+.workout-card-ss-head .workout-card-name { font-weight: 600; color: var(--accent-ink); }
+.workout-card-ex.in-superset { padding-left: 8px; }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { stepFor, trainingRules, workoutPrefs, cleanEffort, effortHint, effortZone as effortZoneOf, parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, EFFORT_WORDS, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
+import { linkWithNext, planGroups, stepFor, trainingRules, workoutPrefs, cleanEffort, effortHint, effortZone as effortZoneOf, parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, EFFORT_WORDS, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
@@ -111,10 +111,32 @@ export function WorkoutPlanEditor({ plan, details, unit, onChange }: { plan: Pla
               <input value={e.note} placeholder="e.g. full stretch" onChange={(x) => edit(i, { note: x.target.value })} />
             </label>
           </div>
-          <label className="row-start xsmall muted" style={{ gap: 6 }}>
-            <input type="checkbox" checked={!!e.per_side} onChange={(x) => edit(i, { per_side: x.target.checked })} />
-            Reps are per side
-          </label>
+          <div className="row-start" style={{ gap: 14, flexWrap: 'wrap' }}>
+            <label className="row-start xsmall muted" style={{ gap: 6 }}>
+              <input type="checkbox" checked={!!e.per_side} onChange={(x) => edit(i, { per_side: x.target.checked })} />
+              Reps are per side
+            </label>
+            {i < plan.length - 1 && (
+              <label className="row-start xsmall muted" style={{ gap: 6 }}>
+                <input type="checkbox" checked={!!e.superset && plan[i + 1]!.superset === e.superset} onChange={(x) => onChange(linkWithNext(plan, i, x.target.checked))} />
+                Superset with {plan[i + 1]!.name || 'the next exercise'}
+              </label>
+            )}
+          </div>
+          {e.superset && (i === 0 || plan[i - 1]!.superset !== e.superset) && i < plan.length - 1 && plan[i + 1]!.superset === e.superset && (
+            <label className="field">
+              Superset name
+              <input
+                value={e.superset}
+                onChange={(x) => {
+                  const label = x.target.value;
+                  const next = [...plan];
+                  for (let k = i; k < plan.length && plan[k]!.superset === e.superset; k++) next[k] = { ...next[k]!, superset: label || 'Superset' };
+                  onChange(next);
+                }}
+              />
+            </label>
+          )}
         </div>
       ))}
       <button type="button" className="btn small ghost" onClick={() => onChange([...plan, blankExercise()])}>
@@ -152,14 +174,29 @@ export function WorkoutCardPlan({ session, plan }: { session: Session; plan: Pla
     );
   }
   if (session.status !== 'planned') return null;
+  const row = (e: PlannedExercise, i: number, inSuperset = false) => (
+    <span key={i} className={`workout-card-ex${inSuperset ? ' in-superset' : ''}`}>
+      <span className="workout-card-name">{e.name}</span>
+      <span className="num">{(inSuperset ? targetText({ ...e, sets: 0 }, unit).replace(/^0 × /, '') : targetText(e, unit)).replace(' @ ', ' · ')}</span>
+    </span>
+  );
   return (
     <span className="workout-card-plan">
-      {plan.map((e, i) => (
-        <span key={i} className="workout-card-ex">
-          <span className="workout-card-name">{e.name}</span>
-          <span className="num">{targetText(e, unit).replace(' @ ', ' · ')}</span>
-        </span>
-      ))}
+      {planGroups(plan).map((g) =>
+        g.superset ? (
+          <span key={`ss-${g.members[0]}`} className="workout-card-superset">
+            <span className="workout-card-ex workout-card-ss-head">
+              <span className="workout-card-name">{g.superset}</span>
+              <span className="num">
+                {plan[g.members[0]!]!.sets} round{plan[g.members[0]!]!.sets === 1 ? '' : 's'}
+              </span>
+            </span>
+            {g.members.map((i) => row(plan[i]!, i, true))}
+          </span>
+        ) : (
+          row(plan[g.members[0]!]!, g.members[0]!)
+        ),
+      )}
     </span>
   );
 }
@@ -270,6 +307,15 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   // Your settings: weight steps by equipment, the biggest jump allowed, and how you log.
   const rules = trainingRules(data.profile.training_rules);
   const prefs = workoutPrefs(data.profile.workout_prefs);
+  // Supersets: their exercises are shown together and done one set of each, then rest.
+  const groups = planGroups(plan);
+  const groupOf = (i: number) => groups.find((g) => g.members.includes(i))!;
+  /** "3", or "2A" / "2B" inside a superset. */
+  const badge = (i: number) => {
+    const gi = groups.findIndex((g) => g.members.includes(i));
+    const g = groups[gi]!;
+    return g.superset ? `${gi + 1}${String.fromCharCode(65 + g.members.indexOf(i))}` : String(gi + 1);
+  };
   const suggestions = plan.map((e) => suggestWeight(e, last.get(e.name.toLowerCase()) ?? null, stepFor(e.name, rules, e.weight_note), lastEffort.get(e.name.toLowerCase()) ?? null, rules.max_jump_pct));
   const planWeight = (i: number) => suggestions[i]!.weight;
 
@@ -350,14 +396,29 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     const a = actual(i, k);
     const next = rows.map((sets, x) => (x === i ? sets.map((y, z) => (z === k ? { weight: a.weight == null ? '' : String(a.weight), reps: a.reps == null ? '' : String(a.reps), done: true } : y)) : sets));
     setRows(next);
-    const secs = restSeconds(plan[i]!.rest);
-    const exerciseDone = next[i]!.every((y) => y.done);
-    if (exerciseDone && (prefs.effort !== 'each' || feedback[i]?.effort != null)) {
-      // Fold the finished exercise to what you did, and open the next one with sets left. One not
-      // rated yet stays open: the effort slider is right under its last set.
-      setOpen(firstOpen(next));
-    }
     const allDone = next.every((sets) => sets.every((y) => y.done));
+    const g = groupOf(i);
+    if (g.superset) {
+      // A superset: straight on to the next move's set of this round; rest only once the round is done.
+      const at = g.members.indexOf(i);
+      const after = [...g.members.slice(at + 1), ...g.members.slice(0, at)];
+      const partner = after.find((m) => next[m]![k] && !next[m]![k]!.done);
+      if (partner != null) {
+        setOpen(partner);
+        return;
+      }
+      const roundLeft = g.members.find((m) => next[m]!.some((y) => !y.done));
+      const unratedHere = prefs.effort === 'each' ? g.members.find((m) => next[m]!.every((y) => y.done) && feedback[m]?.effort == null) : undefined;
+      setOpen(roundLeft ?? unratedHere ?? firstOpen(next));
+    } else {
+      const exerciseDone = next[i]!.every((y) => y.done);
+      if (exerciseDone && (prefs.effort !== 'each' || feedback[i]?.effort != null)) {
+        // Fold the finished exercise to what you did, and open the next one with sets left. One not
+        // rated yet stays open: the effort slider is right under its last set.
+        setOpen(firstOpen(next));
+      }
+    }
+    const secs = restSeconds(plan[i]!.rest);
     if (secs && !allDone) {
       setNow(Date.now());
       setRestEnd(Date.now() + secs * 1000);
@@ -462,6 +523,174 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     onClose();
   }
 
+  /** One exercise: its head (target, or what you did) and, open, its sets and how it went. */
+  const exerciseCard = (e: Extra, i: number) => {
+    const prev = last.get(e.name.toLowerCase());
+    const sug = suggestions[i]!;
+    const mine = rows[i]!;
+    const done = mine.filter((r) => r.done).length;
+    const finished = done >= mine.length;
+    const isOpen = open === i;
+    const did = mine.map((r, k) => ({ ...actual(i, k), done: r.done })).filter((s) => s.done);
+    return (
+      <section key={i} className={`workout-ex${isOpen ? ' open' : ''}${feedback[i]?.pain ? ' pain' : ''}`} aria-label={e.name}>
+        <button type="button" className="workout-ex-head" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? -1 : i)}>
+          <span className={`workout-ex-badge${finished ? ' done' : ''}`}>{finished ? <Icon name="check" size={13} stroke={3} /> : badge(i)}</span>
+          <span className="grow" style={{ minWidth: 0 }}>
+            <b className="workout-ex-name">{e.name}</b>
+            {did.length > 0 && !isOpen ? (
+              <span className="workout-did">
+                {did.map((s, k) => (
+                  <span key={k} className={`workout-chip${(s.reps ?? 0) < e.reps_min ? ' short' : ''}`}>
+                    {s.weight == null ? 'BW' : fmt(s.weight)} × {s.reps ?? '?'}
+                  </span>
+                ))}
+                {done < mine.length && <span className="xsmall muted">{mine.length - done} not done</span>}
+                {feedback[i]?.effort != null && (
+                  <span className={`effort-chip z-${effortZoneOf(feedback[i]!.effort!)}`}>
+                    {feedback[i]!.effort} · {EFFORT_WORDS[feedback[i]!.effort!]}
+                  </span>
+                )}
+                {feedback[i]?.pain && <span className="effort-chip hurt">Hurt{feedback[i]!.where ? `: ${feedback[i]!.where.toLowerCase()}` : ''}</span>}
+              </span>
+            ) : (
+              <span className="xsmall muted num">
+                {targetText({ ...e, weight: sug.weight }, unit)}
+                {e.rest && !groupOf(i).superset ? ` · rest ${e.rest}` : ''}
+              </span>
+            )}
+          </span>
+          {!future && (
+            <span className="xsmall muted num" style={{ flex: 'none' }}>
+              {done}/{mine.length}
+            </span>
+          )}
+          <span style={{ transform: isOpen ? 'rotate(-90deg)' : 'rotate(90deg)', display: 'inline-flex', color: 'var(--muted)', flex: 'none' }}>
+            <Icon name="chevron" size={14} stroke={2.2} />
+          </span>
+        </button>
+        {isOpen && (
+          <div className="workout-ex-body">
+            <DemoButton name={e.name} kind="strength" demo={e.demo} />
+            {sug.why === 'up' && !future && (
+              <span className="workout-up">
+                ↑ Up to {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time
+              </span>
+            )}
+            {sug.why === 'bigjump' && !future && (
+              <span className="workout-up">
+                You hit {e.reps_max} on every set last time, but the next weight is a bigger jump than your settings allow. Add a rep or a set first.
+              </span>
+            )}
+            {sug.why === 'allout' && !future && (
+              <span className="workout-up">
+                Staying at {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time, but rated it 10 (nothing left). Earn it once more.
+              </span>
+            )}
+            {e.note && !groupOf(i).superset && <span className="xsmall muted">{e.note}</span>}
+            {i >= basePlan.length && !future && (
+              <span className="row-between xsmall muted">
+                <span>{(e as Extra).keep ? 'Added today · will be kept in the plan' : 'Added for today only'}</span>
+                {mine.every((r) => !r.done) && (
+                  <button type="button" className="link-btn xsmall" onClick={() => removeExtra(i)}>
+                    Remove exercise
+                  </button>
+                )}
+              </span>
+            )}
+            {future && <span className="xsmall muted">The plan for each set. You can enter what you actually did on {weekdayName(day)}.</span>}
+            {(
+              <div className={`workout-sets${future ? ' preview' : ''}`} role="table" aria-label={`${e.name} sets`}>
+                <span className="workout-set head xsmall muted" role="row">
+                  <span>Set</span>
+                  <span>Previous</span>
+                  <span>{unit}</span>
+                  <span>Reps</span>
+                  <span />
+                </span>
+                {mine.map((r, k) => {
+                  const p = prev?.[k];
+                  return (
+                    <div key={k} className={`workout-set${r.done ? ' done' : ''}`} role="row">
+                      <span className="num small">{k + 1}</span>
+                      <button type="button" className="workout-prev num" disabled={!p || future} onClick={() => copyPrevious(i, k)} aria-label={p ? `Copy last time: ${p.weight ?? 'bodyweight'} by ${p.reps}` : 'No previous set'}>
+                        {p ? `${p.weight == null ? 'BW' : fmt(p.weight)} × ${p.reps ?? '?'}` : '—'}
+                      </button>
+                      {future ? (
+                        <>
+                          <span className="workout-cell num">{r.weight || (/body/i.test(e.weight_note) ? 'BW' : '—')}</span>
+                          <span className="workout-cell num">{r.reps}</span>
+                        </>
+                      ) : (
+                        <>
+                          <input
+                            className="input"
+                            type="number"
+                            inputMode="decimal"
+                            step="any"
+                            aria-label={`${e.name} set ${k + 1} weight`}
+                            placeholder={/body/i.test(e.weight_note) ? 'BW' : '—'}
+                            value={r.weight}
+                            onFocus={(x) => x.target.select()}
+                            onChange={(x) => setRow(i, k, { weight: x.target.value })}
+                          />
+                          <input
+                            className="input"
+                            type="number"
+                            inputMode="numeric"
+                            aria-label={`${e.name} set ${k + 1} reps (${repsText(e)})`}
+                            value={r.reps}
+                            onFocus={(x) => x.target.select()}
+                            onChange={(x) => setRow(i, k, { reps: x.target.value })}
+                          />
+                        </>
+                      )}
+                      {!future && (
+                        <button type="button" className={`set-tick${r.done ? ' on' : ''}`} aria-pressed={r.done} aria-label={`Set ${k + 1} done`} onClick={() => tick(i, k)}>
+                        <Icon name="check" size={16} stroke={2.6} />
+                      </button>
+                      )}
+                      {!future && !r.done && rows[i]!.length > 1 && (
+                        <button type="button" className="set-remove" onClick={() => removeSet(i, k)} aria-label={`Remove set ${k + 1}${k >= e.sets ? ' (extra)' : ''}`} title={k >= e.sets ? 'Remove this extra set' : 'Remove this set (didn’t do it)'}>
+                          <Icon name="x" size={14} stroke={2.4} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {!future && (
+                  <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start' }} onClick={() => addSet(i)}>
+                    + Add set
+                  </button>
+                )}
+                {!future && i === firstOpen(rows) && doneCount === 0 && (
+                  <span className="xsmall muted">Each set starts at the plan ({repsText(e)} reps). Did it as planned? Tick it. Otherwise tap the weight or reps, type what you did, then tick.</span>
+                )}
+              </div>
+            )}
+            {!future && done > 0 && (
+              <ExerciseFeedback
+                name={e.name}
+                value={feedback[i] ?? blankFeedback()}
+                onChange={(patch) => setFeedbackAt(i, patch)}
+                hint={hintFor(i)}
+                last={lastEffort.get(e.name.toLowerCase()) ?? null}
+                askEffort={prefs.effort !== 'off'}
+                next={
+                  finished && firstOpen(rows) >= 0 && firstOpen(rows) !== i
+                    ? { label: plan[firstOpen(rows)]!.name, go: () => openAndShow(firstOpen(rows)) }
+                    : finished && firstOpen(rows) < 0
+                      ? { label: 'finish the workout', go: () => setFinishing(true) }
+                      : null
+                }
+              />
+            )}
+          </div>
+        )}
+      </section>
+    );
+  };
+
   return (
     <Sheet title={session.title} onClose={onClose}>
       {needsGoalLink(data, session) && <LinkToGoal session={session} />}
@@ -511,172 +740,23 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
         </details>
       )}
       <div className="stack-sm" style={{ gap: 8 }}>
-        {plan.map((e, i) => {
-          const prev = last.get(e.name.toLowerCase());
-          const sug = suggestions[i]!;
-          const mine = rows[i]!;
-          const done = mine.filter((r) => r.done).length;
-          const finished = done >= mine.length;
-          const isOpen = open === i;
-          const did = mine.map((r, k) => ({ ...actual(i, k), done: r.done })).filter((s) => s.done);
-          return (
-            <section key={i} className={`workout-ex${isOpen ? ' open' : ''}${feedback[i]?.pain ? ' pain' : ''}`} aria-label={e.name}>
-              <button type="button" className="workout-ex-head" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? -1 : i)}>
-                <span className={`workout-ex-badge${finished ? ' done' : ''}`}>{finished ? <Icon name="check" size={13} stroke={3} /> : i + 1}</span>
-                <span className="grow" style={{ minWidth: 0 }}>
-                  <b className="workout-ex-name">{e.name}</b>
-                  {did.length > 0 && !isOpen ? (
-                    <span className="workout-did">
-                      {did.map((s, k) => (
-                        <span key={k} className={`workout-chip${(s.reps ?? 0) < e.reps_min ? ' short' : ''}`}>
-                          {s.weight == null ? 'BW' : fmt(s.weight)} × {s.reps ?? '?'}
-                        </span>
-                      ))}
-                      {done < mine.length && <span className="xsmall muted">{mine.length - done} not done</span>}
-                      {feedback[i]?.effort != null && (
-                        <span className={`effort-chip z-${effortZoneOf(feedback[i]!.effort!)}`}>
-                          {feedback[i]!.effort} · {EFFORT_WORDS[feedback[i]!.effort!]}
-                        </span>
-                      )}
-                      {feedback[i]?.pain && <span className="effort-chip hurt">Hurt{feedback[i]!.where ? `: ${feedback[i]!.where.toLowerCase()}` : ''}</span>}
-                    </span>
-                  ) : (
-                    <span className="xsmall muted num">
-                      {targetText({ ...e, weight: sug.weight }, unit)}
-                      {e.rest ? ` · rest ${e.rest}` : ''}
-                    </span>
-                  )}
+        {groups.map((g) =>
+          g.superset ? (
+            <div key={`ss-${g.members[0]}`} className="workout-superset" role="group" aria-label={g.superset}>
+              <div className="workout-superset-head">
+                <b>{g.superset}</b>
+                <span className="xsmall muted num">
+                  {plan[g.members[0]!]!.sets} round{plan[g.members[0]!]!.sets === 1 ? '' : 's'}
+                  {plan[g.members.at(-1)!]!.rest ? ` · rest ${plan[g.members.at(-1)!]!.rest.replace(/\s*after each round\s*$/i, '')} after each round` : ''}
                 </span>
-                {!future && (
-                  <span className="xsmall muted num" style={{ flex: 'none' }}>
-                    {done}/{mine.length}
-                  </span>
-                )}
-                <span style={{ transform: isOpen ? 'rotate(-90deg)' : 'rotate(90deg)', display: 'inline-flex', color: 'var(--muted)', flex: 'none' }}>
-                  <Icon name="chevron" size={14} stroke={2.2} />
-                </span>
-              </button>
-              {isOpen && (
-                <div className="workout-ex-body">
-                  <DemoButton name={e.name} kind="strength" demo={e.demo} />
-                  {sug.why === 'up' && !future && (
-                    <span className="workout-up">
-                      ↑ Up to {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time
-                    </span>
-                  )}
-                  {sug.why === 'bigjump' && !future && (
-                    <span className="workout-up">
-                      You hit {e.reps_max} on every set last time, but the next weight is a bigger jump than your settings allow. Add a rep or a set first.
-                    </span>
-                  )}
-                  {sug.why === 'allout' && !future && (
-                    <span className="workout-up">
-                      Staying at {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time, but rated it 10 (nothing left). Earn it once more.
-                    </span>
-                  )}
-                  {e.note && <span className="xsmall muted">{e.note}</span>}
-                  {i >= basePlan.length && !future && (
-                    <span className="row-between xsmall muted">
-                      <span>{(e as Extra).keep ? 'Added today · will be kept in the plan' : 'Added for today only'}</span>
-                      {mine.every((r) => !r.done) && (
-                        <button type="button" className="link-btn xsmall" onClick={() => removeExtra(i)}>
-                          Remove exercise
-                        </button>
-                      )}
-                    </span>
-                  )}
-                  {future && <span className="xsmall muted">The plan for each set. You can enter what you actually did on {weekdayName(day)}.</span>}
-                  {(
-                    <div className={`workout-sets${future ? ' preview' : ''}`} role="table" aria-label={`${e.name} sets`}>
-                      <span className="workout-set head xsmall muted" role="row">
-                        <span>Set</span>
-                        <span>Previous</span>
-                        <span>{unit}</span>
-                        <span>Reps</span>
-                        <span />
-                      </span>
-                      {mine.map((r, k) => {
-                        const p = prev?.[k];
-                        return (
-                          <div key={k} className={`workout-set${r.done ? ' done' : ''}`} role="row">
-                            <span className="num small">{k + 1}</span>
-                            <button type="button" className="workout-prev num" disabled={!p || future} onClick={() => copyPrevious(i, k)} aria-label={p ? `Copy last time: ${p.weight ?? 'bodyweight'} by ${p.reps}` : 'No previous set'}>
-                              {p ? `${p.weight == null ? 'BW' : fmt(p.weight)} × ${p.reps ?? '?'}` : '—'}
-                            </button>
-                            {future ? (
-                              <>
-                                <span className="workout-cell num">{r.weight || (/body/i.test(e.weight_note) ? 'BW' : '—')}</span>
-                                <span className="workout-cell num">{r.reps}</span>
-                              </>
-                            ) : (
-                              <>
-                                <input
-                                  className="input"
-                                  type="number"
-                                  inputMode="decimal"
-                                  step="any"
-                                  aria-label={`${e.name} set ${k + 1} weight`}
-                                  placeholder={/body/i.test(e.weight_note) ? 'BW' : '—'}
-                                  value={r.weight}
-                                  onFocus={(x) => x.target.select()}
-                                  onChange={(x) => setRow(i, k, { weight: x.target.value })}
-                                />
-                                <input
-                                  className="input"
-                                  type="number"
-                                  inputMode="numeric"
-                                  aria-label={`${e.name} set ${k + 1} reps (${repsText(e)})`}
-                                  value={r.reps}
-                                  onFocus={(x) => x.target.select()}
-                                  onChange={(x) => setRow(i, k, { reps: x.target.value })}
-                                />
-                              </>
-                            )}
-                            {!future && (
-                              <button type="button" className={`set-tick${r.done ? ' on' : ''}`} aria-pressed={r.done} aria-label={`Set ${k + 1} done`} onClick={() => tick(i, k)}>
-                              <Icon name="check" size={16} stroke={2.6} />
-                            </button>
-                            )}
-                            {!future && !r.done && rows[i]!.length > 1 && (
-                              <button type="button" className="set-remove" onClick={() => removeSet(i, k)} aria-label={`Remove set ${k + 1}${k >= e.sets ? ' (extra)' : ''}`} title={k >= e.sets ? 'Remove this extra set' : 'Remove this set (didn’t do it)'}>
-                                <Icon name="x" size={14} stroke={2.4} />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                      {!future && (
-                        <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start' }} onClick={() => addSet(i)}>
-                          + Add set
-                        </button>
-                      )}
-                      {!future && i === firstOpen(rows) && doneCount === 0 && (
-                        <span className="xsmall muted">Each set starts at the plan ({repsText(e)} reps). Did it as planned? Tick it. Otherwise tap the weight or reps, type what you did, then tick.</span>
-                      )}
-                    </div>
-                  )}
-                  {!future && done > 0 && (
-                    <ExerciseFeedback
-                      name={e.name}
-                      value={feedback[i] ?? blankFeedback()}
-                      onChange={(patch) => setFeedbackAt(i, patch)}
-                      hint={hintFor(i)}
-                      last={lastEffort.get(e.name.toLowerCase()) ?? null}
-                      askEffort={prefs.effort !== 'off'}
-                      next={
-                        finished && firstOpen(rows) >= 0 && firstOpen(rows) !== i
-                          ? { label: plan[firstOpen(rows)]!.name, go: () => openAndShow(firstOpen(rows)) }
-                          : finished && firstOpen(rows) < 0
-                            ? { label: 'finish the workout', go: () => setFinishing(true) }
-                            : null
-                      }
-                    />
-                  )}
-                </div>
-              )}
-            </section>
-          );
-        })}
+                <span className="xsmall muted">One set of each, back to back, then rest.{plan[g.members[0]!]!.note ? ` ${plan[g.members[0]!]!.note}` : ''}</span>
+              </div>
+              {g.members.map((i) => exerciseCard(plan[i]!, i))}
+            </div>
+          ) : (
+            exerciseCard(plan[g.members[0]!]!, g.members[0]!)
+          ),
+        )}
       </div>
       {!future &&
         (adding ? (

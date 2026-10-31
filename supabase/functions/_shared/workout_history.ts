@@ -33,6 +33,8 @@ export interface WHExercise {
   weight_note?: string;
   rest?: string;
   note?: string;
+  /** Back-to-back exercises share a label ("Arm superset"): one set of each, then rest. */
+  superset?: string;
 }
 
 export interface WHAction {
@@ -384,8 +386,38 @@ export function e1rmAdjusted(weight: number | null, reps: number | null, effort:
 /** Minutes a workout takes: each set about 45 seconds of work plus its rest, plus 5 minutes to warm up. */
 export function estimateMinutes(plan: WHExercise[]): number {
   let seconds = 5 * 60;
-  for (const ex of plan) seconds += ex.sets * (45 + restSeconds(ex.rest ?? '', 90));
+  plan.forEach((ex, i) => {
+    // In a superset you rest after the round, not between its moves.
+    const restsAfter = !ex.superset || plan[i + 1]?.superset !== ex.superset;
+    seconds += ex.sets * (45 + (restsAfter ? restSeconds(ex.rest ?? '', 90) : 0));
+  });
   return Math.round(seconds / 60);
+}
+
+/**
+ * Supersets as separate exercises, as the app shows them: one saved as a single exercise
+ * ("Arm Superset: Cable Curl + Overhead Cable Triceps Extension") becomes one exercise per move,
+ * linked by a superset label. Applied to the plan and every past version alike, so the split never
+ * reads as a program change. The same rule as splitSupersets in @six/core (this file has no imports).
+ */
+export function splitSupersetsWH(plan: WHExercise[]): WHExercise[] {
+  const combined = /^(.*?\bsuperset\b[^:]*?):\s*(.+?\+.+)$/i;
+  let changed = false;
+  const out: WHExercise[] = [];
+  for (const e of plan) {
+    const m = combined.exec((e.name ?? '').trim());
+    const names = m ? m[2]!.split(/\s*\+\s*/).map((x) => x.trim()).filter(Boolean) : [];
+    if (!m || names.length < 2) {
+      out.push(e);
+      continue;
+    }
+    changed = true;
+    const raw = m[1]!.trim().replace(/\s+/g, ' ');
+    const label = raw.toLowerCase().startsWith('superset') ? 'Superset' : raw.replace(/\bsuperset\b/i, 'superset');
+    const { demo: _demo, ...base } = e as WHExercise & { demo?: unknown };
+    names.forEach((name, i) => out.push({ ...base, name, weight: null, note: i === 0 ? e.note : '', superset: label }));
+  }
+  return changed ? out : plan;
 }
 
 function restSeconds(rest: string, fallback: number): number {
@@ -453,7 +485,12 @@ export interface SnapshotOptions {
   detailWeeks?: number;
 }
 
-export function buildSnapshot(input: HistoryInput, opts: SnapshotOptions): Snapshot {
+export function buildSnapshot(raw: HistoryInput, opts: SnapshotOptions): Snapshot {
+  const input: HistoryInput = {
+    ...raw,
+    actions: raw.actions.map((a) => (Array.isArray(a.workout_plan) && a.workout_plan.length ? { ...a, workout_plan: splitSupersetsWH(a.workout_plan) } : a)),
+    planVersions: raw.planVersions.map((v) => (Array.isArray(v.plan) ? { ...v, plan: splitSupersetsWH(v.plan) } : v)),
+  };
   const asOf = opts.asOf;
   const months = Math.min(24, Math.max(1, Math.round(opts.months ?? 6)));
   const from = addMonths(asOf, -months);
