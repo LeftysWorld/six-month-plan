@@ -5,12 +5,12 @@ import { getSupabase } from '../data/supabase.ts';
 import { Icon, useToast } from './ui.tsx';
 
 /**
- * Setting up the workout coach from the app, no command line: the app serves the coach's door
- * itself (/api/workout-agent on Vercel), makes the coach's key here, tests the connection, and
- * shows exactly what to paste into GitHub, where the weekly run lives.
+ * Setting up the workout coach from the app, no command line and no GitHub: the app serves the
+ * coach's door itself (/api/workout-agent on Vercel), makes the coach's key here, tests the
+ * connection, and shows exactly what to paste into the coach's own Vercel project, which runs it
+ * every Friday (and on Run in Vercel → Cron Jobs).
  */
 
-const REPO = 'https://github.com/LeftysWorld/workout-coach';
 const VERCEL_ENV = 'https://vercel.com/dashboard';
 const SUPABASE_KEYS = 'https://supabase.com/dashboard/project/_/settings/api-keys';
 
@@ -51,6 +51,8 @@ export function CoachSetup() {
   const [key, setKey] = useState<string | null>(null);
   const [test, setTest] = useState<Test>({ state: 'idle' });
   const [replacing, setReplacing] = useState(false);
+  // Only Vercel's scheduler needs this one: made here so there's nothing to invent.
+  const [cron] = useState(newKey);
   const signedIn = db.mode === 'supabase';
   const door = `${window.location.origin}/api/workout-agent`;
   const hasKey = !!p.coach_key_hash;
@@ -127,7 +129,7 @@ export function CoachSetup() {
 
       <div className="coach-step">
         <b>2. Make the coach's key</b>
-        <span className="small muted">It opens your workout history to the coach, and nothing else. Only a fingerprint of it is stored, so it's shown once: copy it into GitHub straight away (step 3).</span>
+        <span className="small muted">Like a password the coach uses to read your workout history (and nothing else). The app keeps only a fingerprint of it, so it's shown once: you'll paste it into Vercel in step 3, so keep this open.</span>
         {key ? (
           <CopyRow label="WORKOUT_AGENT_KEY" value={key} secret />
         ) : hasKey && !replacing ? (
@@ -144,25 +146,34 @@ export function CoachSetup() {
             <button type="button" className="btn small primary" onClick={() => void makeKey()}>
               {hasKey ? 'Replace the key' : "Make the coach's key"}
             </button>
-            {replacing && <span className="xsmall muted">The old key stops working; paste the new one into GitHub.</span>}
+            {replacing && <span className="xsmall muted">The old key stops working: update WORKOUT_AGENT_KEY in the coach's Vercel project, then Redeploy it.</span>}
           </div>
         )}
       </div>
 
       <div className="coach-step">
-        <b>3. Paste into GitHub, where the weekly run lives</b>
-        <span className="small">
-          In <a href={`${REPO}/settings/secrets/actions`} target="_blank" rel="noreferrer">workout-coach → Settings → Secrets and variables → Actions</a>, add each as a <b>New repository secret</b>:
-        </span>
+        <b>3. Put the coach on Vercel</b>
+        <span className="small muted">The coach is its own small Vercel project. Once, about two minutes.</span>
+        <ol className="small coach-list">
+          <li>
+            In <a href="https://vercel.com/new" target="_blank" rel="noreferrer">Vercel → Add New → Project</a>, find <b>workout-coach</b> and click Import.
+          </li>
+          <li>Leave everything as it is, but open <b>Environment Variables</b> and add these five (name on the left, value on the right):</li>
+        </ol>
         <CopyRow label="WORKOUT_AGENT_URL" value={door} />
-        <div className="coach-copy">
-          <span className="mono">WORKOUT_AGENT_KEY</span>
-          <span className="small muted">{key ? 'the key from step 2' : hasKey ? 'the key you copied in step 2 (make a new one if you lost it)' : 'make it in step 2'}</span>
-        </div>
+        {key ? (
+          <CopyRow label="WORKOUT_AGENT_KEY" value={key} secret />
+        ) : (
+          <div className="coach-copy">
+            <span className="mono">WORKOUT_AGENT_KEY</span>
+            <span className="small muted">{hasKey ? 'the key you copied in step 2 (lost it? Make a new one there)' : 'make it in step 2 first'}</span>
+          </div>
+        )}
+        <CopyRow label="CRON_SECRET" value={cron} secret />
         <div className="coach-copy">
           <span className="mono">ANTHROPIC_API_KEY</span>
           <span className="small muted">
-            from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com → API Keys</a>
+            from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com → API Keys</a> (Create Key)
           </span>
         </div>
         <div className="coach-copy">
@@ -171,19 +182,15 @@ export function CoachSetup() {
             optional, from <a href="https://smith.langchain.com/settings" target="_blank" rel="noreferrer">LangSmith → Settings → API Keys</a>: every run traced step by step
           </span>
         </div>
-        <span className="small">
-          Then on the <b>Variables</b> tab, add <code>COACH_PUBLISH</code> = <code>false</code> for the first 2–3 weeks (reports show in GitHub only), then change it to <code>true</code> to get them here.
-        </span>
+        <ol className="small coach-list" start={3}>
+          <li>Click <b>Deploy</b>.</li>
+        </ol>
       </div>
 
       <div className="coach-step">
         <b>4. Run it</b>
         <span className="small">
-          It runs on its own every Friday at 11 pm. To run it now:{' '}
-          <a href={`${REPO}/actions/workflows/weekly.yml`} target="_blank" rel="noreferrer">
-            Actions → Weekly review → Run workflow
-          </a>
-          . The report shows in the run's summary, and here once publishing is on.
+          In the coach's Vercel project → <b>Settings → Cron Jobs</b>, click <b>Run</b>. The report shows up here (Review → Workout report) a minute or two later. After that it runs itself every Friday at 11 pm.
         </span>
         <span className="small muted">
           {reports.length ? `Last report: ${reports[0]!.as_of} (${reports[0]!.recommendation}).` : 'No coach reports here yet.'}{' '}

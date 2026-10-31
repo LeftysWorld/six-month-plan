@@ -25,8 +25,9 @@ changes until you decide.
    about "destructive operations": that's a `drop … if exists` that's immediately recreated; nothing is deleted.)
 2. **In the app: Settings → Workout coach → Set up the weekly coach.** It walks through the rest:
    the server's database key (one value pasted into Vercel's Environment Variables, then Redeploy), a
-   connection test, the coach's key (one button), and what to paste into the workout-coach repo's
-   GitHub secrets, each with a Copy button.
+   connection test, the coach's key (one button), then importing the workout-coach repo as its own
+   Vercel project with five environment variables (each with a Copy button). Vercel runs it every
+   Friday night; its Settings → Cron Jobs → Run runs it now.
 
 ## What the agent can and can't do
 
