@@ -17,7 +17,7 @@ import {
 import { navigate } from '../router.ts';
 import { Icon, useToast } from '../components/ui.tsx';
 import { MilestoneSheet } from '../components/MilestoneSheet.tsx';
-import { PrizeTag } from '../components/Prize.tsx';
+import { FinishPrizes, GoalPrizeSheet, PrizeTag } from '../components/Prize.tsx';
 import { goalPrizes } from '../data/prizes.ts';
 import { WeightChart } from '../components/WeightChart.tsx';
 import { GoalFiles } from '../components/Attachments.tsx';
@@ -245,6 +245,8 @@ export function GoalRecord({ goal, measurements = true, milestones: showMileston
   const actions = view.actionsForGoal(goal.id, true);
   const actionIds = new Set(actions.map((a) => a.id));
   const [editingMs, setEditingMs] = useState<string | null>(null);
+  const [finishSheet, setFinishSheet] = useState(false);
+  const finishBy = goal.target_date ?? plan?.end_date ?? null;
   const msEditing = editingMs ? data.milestones.find((x) => x.id === editingMs) : undefined;
   const milestones = data.milestones.filter((m) => m.goal_id === goal.id).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
   const types = data.measurementTypes.filter((t) => !t.archived_at && (t.goal_id === goal.id || t.id === goal.measurement_type_id));
@@ -258,7 +260,7 @@ export function GoalRecord({ goal, measurements = true, milestones: showMileston
       {showMilestones && (
         <div className="card stack-sm">
           <div className="row-between">
-            <span className="label">Milestones</span>
+            <span className="label">Milestones &amp; prizes</span>
             <button className="link-btn small" onClick={() => setSplitting(!splitting)}>
               {splitting ? 'Cancel' : '+ Split into steps'}
             </button>
@@ -313,8 +315,38 @@ export function GoalRecord({ goal, measurements = true, milestones: showMileston
                   {prizeOf(m.id) && <PrizeTag p={prizeOf(m.id)!} />}
                 </div>
               </button>
+              {(() => {
+                const p = prizeOf(m.id);
+                if (!p || !m.completed_at || p.claimedAt) return null;
+                return (
+                  <button
+                    type="button"
+                    className="btn small wg-claim"
+                    style={{ flex: 'none', alignSelf: 'center' }}
+                    onClick={() => {
+                      commit(p.claim);
+                      toast(`Enjoy it: ${p.title}`, () => commit(p.unclaim));
+                    }}
+                  >
+                    Claim
+                  </button>
+                );
+              })()}
             </div>
           ))}
+          {/* The finish line: the prize for finishing and the on-time bonus live here, not in a card of their own. */}
+          <div className={`list-row finish-row${goal.completed_at ? ' done' : ''}`}>
+            <span style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: -10, flex: 'none' }} aria-hidden>
+              <Icon name="flag" size={18} stroke={2.2} />
+            </span>
+            <span className="grow stack-sm" style={{ gap: 3, minWidth: 0 }}>
+              <button type="button" className="cal-row-btn" onClick={() => setFinishSheet(true)} aria-label="Prizes for finishing" style={{ textAlign: 'left' }}>
+                <div className="strong">Finish</div>
+                <div className="xsmall muted">{goal.completed_at ? `Finished ${shortDate(view.dayOf(goal.completed_at))}` : finishBy ? shortDate(finishBy) : 'No date yet'}</div>
+              </button>
+              <FinishPrizes goal={goal} plan={plan} reached={!!goal.completed_at} reachedOn={goal.completed_at ? view.dayOf(goal.completed_at) : null} onEdit={() => setFinishSheet(true)} />
+            </span>
+          </div>
           <form
             className="stack-sm"
             onSubmit={(e) => {
@@ -336,6 +368,7 @@ export function GoalRecord({ goal, measurements = true, milestones: showMileston
       )}
 
       {msEditing && <MilestoneSheet milestone={msEditing} onClose={() => setEditingMs(null)} />}
+      {finishSheet && <GoalPrizeSheet goal={goal} finishBy={finishBy} onClose={() => setFinishSheet(false)} />}
       <GoalFiles actionIds={actionIds} goalId={goal.id} />
     </>
   );

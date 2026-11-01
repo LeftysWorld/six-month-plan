@@ -2448,8 +2448,9 @@ button.wg-ring { cursor: pointer; }
 .wg-ms-name { display: flex; align-items: baseline; gap: 6px; border: 0; background: none; padding: 0; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
 span.wg-ms-name { cursor: default; }
 .wg-ms-name b { font-size: 15.5px; }
-.wg-prize { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--amber-ink); min-width: 0; }
-.wg-prize span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wg-prize { display: inline-flex; align-items: flex-start; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--amber-ink); min-width: 0; }
+.wg-prize span { overflow-wrap: anywhere; line-height: 1.35; }
+.wg-prize svg { flex: none; margin-top: 2px; }
 .wg-claim { align-self: flex-start; background: var(--amber-bar); color: #2a1404; border-color: transparent; min-height: 32px; }
 .wg-round { display: flex; flex-direction: column; gap: 10px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); border-radius: 16px; padding: 14px; }
 .wg-ms-form { display: flex; flex-direction: column; gap: 10px; background: var(--fill); border-radius: 16px; padding: 14px; }
@@ -2459,3 +2460,8 @@ span.wg-ms-name { cursor: default; }
 .wg-tip.left { left: -40px; }
 .wg-tip.right { right: 0; }
 .plan-stop { display: grid; grid-template-columns: 110px minmax(0, 1fr) 36px; gap: 10px; align-items: start; padding-top: 8px; border-top: 1px solid var(--line-2); }
+.plan-stop-goal { background: color-mix(in srgb, var(--accent) 7%, transparent); border-radius: 14px; border-top: 0; padding: 10px 0 10px; margin-top: 4px; }
+.finish-row { background: color-mix(in srgb, var(--accent) 6%, transparent); border-radius: 12px; padding-right: 10px; border-top: 0; margin-top: 4px; }
+.finish-row.done { background: var(--blue-soft); }
+.wg-ms4.goal-row:not(.reached) { background: color-mix(in srgb, var(--accent) 6%, transparent); border-radius: 10px; }
+.wg-prize.lost { color: var(--muted); text-decoration: line-through; }

@@ -36,6 +36,7 @@ import { opsDeleteMilestone, opsUpdateMilestone } from '../data/dated.ts';
 import type { Op } from '../data/model.ts';
 import { href } from '../router.ts';
 import { Icon, useToast } from './ui.tsx';
+import { FinishPrizes, GoalPrizeSheet } from './Prize.tsx';
 import { FileThumb } from './Attachments.tsx';
 import { photosOnGoal } from '../screens/PhotoTimeline.tsx';
 import { WeightGoalChart, type WeightRange } from './WeightGoalChart.tsx';
@@ -568,9 +569,10 @@ function InfoTip({ label, text, align = 'left' }: { label: string; text: string;
 const ROUND_KEY = (goalId: string) => `six.milestones.round.${goalId}`;
 
 /**
- * A weight goal's milestones: one list of weights on the way, each with its prize, when you get there
- * at your pace and where the path has you. These are the goal's milestones (the same ones the
- * roadmap, calendar and Prizes use): each ticks itself the morning a weigh-in reaches it. Adding one
+ * A weight goal's milestones and prizes: one list of weights on the way, each with its prize, when you
+ * get there at your pace and where the path has you, ending on the goal row, which carries the prize
+ * for finishing and the on-time bonus (there is no separate Prizes card). These are the goal's
+ * milestones (the same ones the roadmap and calendar use): each ticks itself the morning a weigh-in reaches it. Adding one
  * asks for a weight and a prize; its date is the path's. Milestones set off the app's stops (184.2)
  * get a one-time offer to round to them (185), prizes and all.
  */
@@ -582,6 +584,7 @@ function WeightMilestonesCard({ goal, plan }: { goal: Goal; plan: Plan }) {
   const [editing, setEditing] = useState<string | null>(null); // milestone id, or 'new'
   const [wInput, setWInput] = useState('');
   const [prizeInput, setPrizeInput] = useState('');
+  const [finishSheet, setFinishSheet] = useState(false);
   const [roundGone, setRoundGone] = useState(() => {
     try {
       return localStorage.getItem(ROUND_KEY(goal.id)) === '1';
@@ -693,12 +696,24 @@ function WeightMilestonesCard({ goal, plan }: { goal: Goal; plan: Plan }) {
   );
 
   const rows = [...weighted.map((m) => ({ m, value: Number(m.value) })), { m: null as Milestone | null, value: target }];
-  const nextOpen = rows.find((r) => (r.m ? !r.m.completed_at : !(latest && (direction < 0 ? Number(latest.value) <= target : Number(latest.value) >= target))));
+  const atOrPast = (v: number, x: number) => (direction < 0 ? v <= x : v >= x);
+  const goalReached = !!latest && atOrPast(Number(latest.value), target);
+  const goalReachedOn = goalReached ? w.readings.find((r) => atOrPast(Number(r.value), target))?.measured_on ?? latest!.measured_on : null;
+  const nextOpen = rows.find((r) => (r.m ? !r.m.completed_at : !goalReached));
+  // "3 prizes + a bonus · next: Canon RF 16mm lens, 5.8 lb away"
+  const prized = [...weighted.filter((m) => m.prize?.trim()).map((m) => ({ title: m.prize!.trim(), value: Number(m.value), done: !!m.completed_at })), ...(goal.prize?.trim() ? [{ title: goal.prize.trim(), value: target, done: goalReached }] : [])];
+  const nextPrize = prized.find((p) => !p.done);
+  const prizeSummary = prized.length === 0 && !goal.prize_on_time?.trim()
+    ? 'Put a prize on any stop, or on the goal'
+    : `${prized.length} prize${prized.length === 1 ? '' : 's'}${goal.prize_on_time?.trim() ? ' + a bonus' : ''}${nextPrize ? (latest ? ` · next: ${nextPrize.title}, ${fmt(Math.abs(Number(latest.value) - nextPrize.value))} ${unit} away` : ` · next: ${nextPrize.title}`) : ' · all reached'}`;
 
   return (
-    <section className="card stack-sm" aria-label="Milestones">
-      <div className="row-between">
-        <span className="label">Milestones</span>
+    <section className="card stack-sm" aria-label="Milestones and prizes">
+      <div className="row-between" style={{ alignItems: 'flex-start' }}>
+        <span className="stack-sm" style={{ gap: 2 }}>
+          <span className="label">Milestones &amp; prizes</span>
+          <span className="xsmall muted">{prizeSummary}</span>
+        </span>
         <button type="button" className="link-btn small" onClick={() => open(null)}>
           + Add a milestone
         </button>
@@ -740,14 +755,14 @@ function WeightMilestonesCard({ goal, plan }: { goal: Goal; plan: Plan }) {
       </div>
 
       {rows.map(({ m, value }) => {
-        const reached = m ? !!m.completed_at : !!latest && (direction < 0 ? Number(latest.value) <= value : Number(latest.value) >= value);
-        const reachedOn = m?.completed_at ? dateIn(tz, m.completed_at) : null;
+        const reached = m ? !!m.completed_at : goalReached;
+        const reachedOn = m?.completed_at ? dateIn(tz, m.completed_at) : m ? null : goalReachedOn;
         const pace = atPaceDate(latest, value, perDay);
         const onPath = onPathDate(start, path, value);
         const toGo = latest ? Math.max(0, (Number(latest.value) - value) * (direction < 0 ? 1 : -1)) : null;
         const isNext = nextOpen && (nextOpen.m ? nextOpen.m === m : !m);
         return (
-          <div key={m?.id ?? 'goal'} className={`wg-ms4${reached ? ' reached' : ''}`}>
+          <div key={m?.id ?? 'goal'} className={`wg-ms4${reached ? ' reached' : ''}${m ? '' : ' goal-row'}`}>
             <span className={`wg-ring${reached ? ' on' : ''}`} aria-label={reached ? 'Reached' : 'Not yet'}>
               {reached && <Icon name="check" size={12} stroke={3.4} />}
             </span>
@@ -758,11 +773,12 @@ function WeightMilestonesCard({ goal, plan }: { goal: Goal; plan: Plan }) {
                   <span className="xsmall muted">{downText(value)}</span>
                 </button>
               ) : (
-                <span className="wg-ms-name">
+                <button type="button" className="wg-ms-name" onClick={() => setFinishSheet(true)} aria-label={`Prizes for reaching ${fmt(value)}`}>
                   <b className="num">{fmt(value)}</b>
                   <span className="xsmall muted">The goal</span>
-                </span>
+                </button>
               )}
+              {!m && <FinishPrizes goal={goal} plan={plan} reached={reached} reachedOn={reachedOn} onEdit={() => setFinishSheet(true)} />}
               {m?.prize?.trim() ? (
                 <span className="wg-prize">
                   <Icon name="gift" size={13} stroke={2} />
@@ -817,8 +833,9 @@ function WeightMilestonesCard({ goal, plan }: { goal: Goal; plan: Plan }) {
       {editing && form}
 
       <span className="xsmall muted" style={{ lineHeight: 1.45 }}>
-        Each ticks itself the first morning you weigh in at or {direction < 0 ? 'under' : 'over'} it. They show on your calendar and roadmap on their path date, and their prizes in Prizes.
+        Each ticks itself the first morning you weigh in at or {direction < 0 ? 'under' : 'over'} it, and its prize is yours to claim. Tap {fmt(target)} for a prize for finishing and a bonus for finishing on time.
       </span>
+      {finishSheet && <GoalPrizeSheet goal={goal} finishBy={by} title={`Prizes for reaching ${fmt(target)}`} finishLabel={`Prize for reaching ${fmt(target)}`} onClose={() => setFinishSheet(false)} />}
     </section>
   );
 }

@@ -32,6 +32,7 @@ export function WhatStep(props: StepProps) {
   const [seasonName, setSeasonName] = useState(d.seasonName);
   const [totals, setTotals] = useState<string[]>(d.totals.length ? d.totals : ['']);
   const [more, setMore] = useState(false);
+  const [bonusOpen, setBonusOpen] = useState(false);
 
   const seasons = view.batches;
   const plan = seasons.find((p) => p.id === input.planId) ?? null;
@@ -267,7 +268,7 @@ export function WhatStep(props: StepProps) {
         <div className="stack-sm">
           <span className="label">Milestones and prizes</span>
           <span className="small muted" style={{ lineHeight: 1.5 }}>
-            Stops on the way, filled in for you. Each ticks itself the morning you weigh in at or {input.target! < input.baseline! ? 'under' : 'over'} it. Put a prize on the ones you want to work for.
+            Stops on the way, filled in for you. Each ticks itself the morning you weigh in at or {input.target! < input.baseline! ? 'under' : 'over'} it. Put a prize on any of them, and one on the goal itself.
           </span>
           <div className="chips" role="radiogroup" aria-label="Stops">
             {(kg ? [2.5, 5, 0] : [5, 10, 0]).map((n) => (
@@ -309,9 +310,21 @@ export function WhatStep(props: StepProps) {
               </button>
             </div>
           ))}
-          <div className="plan-stop" style={{ color: 'var(--muted)' }}>
-            <b className="num" style={{ paddingLeft: 12 }}>{fmt(input.target!)}</b>
-            <span className="small">The goal · prizes for finishing are below</span>
+          <div className="plan-stop plan-stop-goal">
+            <span className="stack-sm" style={{ gap: 3 }}>
+              <b className="num" style={{ paddingLeft: 12, minHeight: 44, display: 'flex', alignItems: 'center' }}>{fmt(input.target!)}</b>
+              <span className="xsmall muted" style={{ paddingLeft: 12 }}>The goal · {shortDate(end)}</span>
+            </span>
+            <span className="stack-sm" style={{ gap: 6 }}>
+              <input className="input" aria-label={`Prize for reaching ${fmt(input.target!)}`} placeholder="Prize for reaching it, e.g. a weekend away" value={input.prize ?? ''} onChange={(e) => set({ prize: e.target.value })} />
+              {bonusOpen || input.prizeOnTime ? (
+                <input className="input" aria-label={`Bonus for getting there by ${shortDate(end)}`} placeholder={`Bonus if by ${shortDate(end)}, e.g. …and the good hotel`} value={input.prizeOnTime ?? ''} onChange={(e) => set({ prizeOnTime: e.target.value })} />
+              ) : (
+                <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setBonusOpen(true)}>
+                  + Bonus for getting there by {shortDate(end)}
+                </button>
+              )}
+            </span>
             <span />
           </div>
           <button
@@ -334,7 +347,7 @@ export function WhatStep(props: StepProps) {
 
       <details open={more} onToggle={(e) => setMore((e.currentTarget as HTMLDetailsElement).open)}>
         <summary className="small" style={{ cursor: 'pointer', minHeight: 40, display: 'flex', alignItems: 'center' }}>
-          More: {isWeight ? "prizes for finishing, a group" : "dates to hit, prizes, a group"}
+          More: {isWeight ? 'a group' : 'dates to hit, prizes, a group'}
         </summary>
         <div className="stack" style={{ marginTop: 10 }}>
           {(input.type === 'finish' || input.type === 'number') && !isWeight && (
@@ -351,6 +364,7 @@ export function WhatStep(props: StepProps) {
               </button>
             </div>
           )}
+          {!isWeight && (
           <div className="grid-2">
             <label className="field">
               Prize when it's finished
@@ -361,6 +375,7 @@ export function WhatStep(props: StepProps) {
               <input value={input.prizeOnTime ?? ''} onChange={(e) => set({ prizeOnTime: e.target.value })} placeholder="e.g. …plus the good one" />
             </label>
           </div>
+          )}
           {idea?.group_id && data.groups.some((g) => g.id === idea.group_id) ? (
             <span className="small muted">Joins the {data.groups.find((g) => g.id === idea.group_id)!.name} group, like the rest of its ideas.</span>
           ) : (

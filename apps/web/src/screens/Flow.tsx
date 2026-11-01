@@ -27,7 +27,6 @@ import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { catchUpPlan, chainFor, isSet, opsAddExtra, opsEnsureStep, periodStatus, opsSetLevel, stepFor, type Chain, type ChainLevel } from '../data/chain.ts';
 import { GoalExtras, GoalManage, GoalMeasurements, GoalRecord, WhyLine } from './GoalDetail.tsx';
-import { GoalPrizes } from '../components/Prize.tsx';
 import { PaceLine } from '../components/PaceLine.tsx';
 import { GoalGroupCard } from '../components/Connections.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
@@ -134,7 +133,6 @@ export function Flow({ goalId }: { goalId: string }) {
           {weight && <GoalMeasurements goal={goal} />}
           {weight && <WeightSide goal={goal} plan={plan} />}
           <GoalRecord goal={goal} measurements={!weight} milestones={!weight} />
-          <GoalPrizes goal={goal} plan={plan} />
           <GoalGroupCard goal={goal} />
           <GoalManage goal={goal} />
         </aside>

@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { groupScoreText, shortDate, type Goal, type GoalGroup, type ISODate, type Plan } from '@six/core';
+import { bonusDate, groupScoreText, shortDate, type Goal, type GoalGroup, type ISODate, type Plan } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
-import { goalPrizes, groupPrize, opsSetGoalPrizes, opsSetGroupPrize, prizeWhen, unclaimedPrizes, type PrizeItem } from '../data/prizes.ts';
+import { groupPrize, opsSetGoalPrizes, opsSetGroupPrize, prizeWhen, unclaimedPrizes, type PrizeItem } from '../data/prizes.ts';
 import { href } from '../router.ts';
 import { Icon, Sheet, useToast } from './ui.tsx';
 
@@ -67,38 +67,70 @@ export function PrizeRow({ p, showGoal = false }: { p: PrizeItem; showGoal?: boo
   );
 }
 
-/** The goal page's prize card: every prize on the goal, and a way to set the finish prize and the on-time bonus. */
-export function GoalPrizes({ goal, plan }: { goal: Goal; plan: Plan | null }) {
-  const { today } = useStore();
-  const view = useView();
-  const [editing, setEditing] = useState(false);
-  const prizes = goalPrizes(view, goal, today, plan);
-  const finishBy = goal.target_date ?? plan?.end_date ?? null;
+/**
+ * The finish row's prizes, on a goal's Milestones & prizes card: the prize for finishing, the bonus
+ * for finishing by the date, and their Claim buttons once the goal is reached. `reached` is the
+ * goal's own test (a weigh-in at the target, or the goal marked complete); `reachedOn` judges the bonus.
+ */
+export function FinishPrizes({ goal, plan, reached, reachedOn, onEdit }: { goal: Goal; plan: Plan | null; reached: boolean; reachedOn: ISODate | null; onEdit: () => void }) {
+  const { commit, today } = useStore();
+  const toast = useToast();
+  const prize = goal.prize?.trim() ?? '';
+  const bonus = goal.prize_on_time?.trim() ?? '';
+  const judge = bonusDate(goal) ?? goal.target_date ?? plan?.end_date ?? null;
+  const bonusLost = !!bonus && !!judge && (reached ? !!reachedOn && reachedOn > judge : today > judge);
+  const claim = (field: 'prize_claimed_at' | 'prize_on_time_claimed_at', what: string) => {
+    commit([{ kind: 'update', collection: 'goals', id: goal.id, patch: { [field]: new Date().toISOString() } }]);
+    toast(`Enjoy it: ${what}`, () => commit([{ kind: 'update', collection: 'goals', id: goal.id, patch: { [field]: null } }]));
+  };
   return (
-    <div className="card stack-sm" aria-label="Prizes">
-      <div className="row-between">
-        <span className="label">Prizes</span>
-        <button className="link-btn small" onClick={() => setEditing(true)}>
-          {goal.prize?.trim() || goal.prize_on_time?.trim() ? 'Change' : '+ Set a prize'}
+    <>
+      {prize ? (
+        <span className="wg-prize">
+          <Icon name="gift" size={13} stroke={2} />
+          <span>{prize}</span>
+        </span>
+      ) : (
+        !reached && (
+          <button type="button" className="link-btn xsmall" style={{ alignSelf: 'flex-start', minHeight: 0 }} onClick={onEdit}>
+            + Prize for finishing
+          </button>
+        )
+      )}
+      {bonus && (
+        <span className={`wg-prize${bonusLost ? ' lost' : ''}`} title={bonusLost ? `Missed: ${judge ? shortDate(judge) : 'the date'} passed` : undefined}>
+          <Icon name="gift" size={13} stroke={2} />
+          <span>{bonusLost ? `Bonus missed: ${bonus}` : reached ? `Bonus: ${bonus}` : `Bonus if by ${judge ? shortDate(judge) : 'the date'}: ${bonus}`}</span>
+        </span>
+      )}
+      {reached && prize && !goal.prize_claimed_at && (
+        <button type="button" className="btn small wg-claim" onClick={() => claim('prize_claimed_at', prize)}>
+          Claim your prize
         </button>
-      </div>
-      {prizes.length === 0 && <span className="small muted">Nothing riding on this yet. A treat for finishing, a bigger one for finishing by {finishBy ? shortDate(finishBy) : 'the date'}, and smaller ones on the dates to hit (tap a date to add one).</span>}
-      {prizes.map((p) => (
-        <PrizeRow key={p.key} p={p} />
-      ))}
-      {editing && <GoalPrizeSheet goal={goal} finishBy={finishBy} onClose={() => setEditing(false)} />}
-    </div>
+      )}
+      {reached && prize && goal.prize_claimed_at && <span className="xsmall" style={{ color: 'var(--blue-ink)', fontWeight: 650 }}>Prize claimed</span>}
+      {reached && bonus && !bonusLost && !goal.prize_on_time_claimed_at && (
+        <button type="button" className="btn small wg-claim" onClick={() => claim('prize_on_time_claimed_at', bonus)}>
+          Claim your bonus
+        </button>
+      )}
+      {reached && bonus && !bonusLost && goal.prize_on_time_claimed_at && <span className="xsmall" style={{ color: 'var(--blue-ink)', fontWeight: 650 }}>Bonus claimed</span>}
+    </>
   );
 }
 
-export function GoalPrizeSheet({ goal, finishBy, onClose }: { goal: Goal; finishBy: ISODate | null; onClose: () => void }) {
+/**
+ * The prize for finishing a goal and the bonus for finishing on time. Opened from the Finish row of
+ * the goal's Milestones & prizes card (the 155 row on a weight goal), and from nowhere else.
+ */
+export function GoalPrizeSheet({ goal, finishBy, onClose, title = 'Prizes for finishing', finishLabel = 'When it’s finished' }: { goal: Goal; finishBy: ISODate | null; onClose: () => void; title?: string; finishLabel?: string }) {
   const { commit } = useStore();
   const toast = useToast();
   const [prize, setPrize] = useState(goal.prize ?? '');
   const [bonus, setBonus] = useState(goal.prize_on_time ?? '');
   const judge = goal.target_date_at_set ?? finishBy;
   return (
-    <Sheet title="Prizes" onClose={onClose}>
+    <Sheet title={title} onClose={onClose}>
       <form
         className="stack-sm"
         onSubmit={(e) => {
@@ -112,11 +144,11 @@ export function GoalPrizeSheet({ goal, finishBy, onClose }: { goal: Goal; finish
         }}
       >
         <label className="field">
-          When it’s finished
+          {finishLabel}
           <input autoFocus value={prize} onChange={(e) => setPrize(e.target.value)} placeholder="e.g. a weekend away" />
         </label>
         <label className="field">
-          And if it’s finished by {judge ? shortDate(judge) : 'the date'}
+          Bonus if it’s finished by {judge ? shortDate(judge) : 'the date'} (optional)
           <input value={bonus} onChange={(e) => setBonus(e.target.value)} placeholder="e.g. …plus the good one" />
         </label>
         <span className="xsmall muted">
