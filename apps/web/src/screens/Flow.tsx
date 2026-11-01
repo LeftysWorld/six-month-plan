@@ -26,7 +26,7 @@ import { isWeightGoal } from '../data/weightGoal.ts';
 import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { catchUpPlan, chainFor, isSet, opsAddExtra, opsEnsureStep, periodStatus, opsSetLevel, stepFor, type Chain, type ChainLevel } from '../data/chain.ts';
-import { GoalExtras, GoalManage, GoalRecord, WhyLine } from './GoalDetail.tsx';
+import { GoalExtras, GoalManage, GoalMeasurements, GoalRecord, WhyLine } from './GoalDetail.tsx';
 import { GoalPrizes } from '../components/Prize.tsx';
 import { PaceLine } from '../components/PaceLine.tsx';
 import { GoalGroupCard } from '../components/Connections.tsx';
@@ -131,8 +131,9 @@ export function Flow({ goalId }: { goalId: string }) {
           <PlanCard goal={goal} plan={plan} chain={chain} onEdit={setEditing} />
         </div>
         <aside className="goal-page-side">
+          {weight && <GoalMeasurements goal={goal} />}
           {weight && <WeightSide goal={goal} plan={plan} />}
-          <GoalRecord goal={goal} />
+          <GoalRecord goal={goal} measurements={!weight} />
           <GoalPrizes goal={goal} plan={plan} />
           <GoalGroupCard goal={goal} />
           <GoalManage goal={goal} />

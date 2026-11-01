@@ -230,7 +230,7 @@ export function WhyLine({ goal }: { goal: Goal }) {
  * The goal's record: milestones (for "finish" goals or any that have them), photos and files, and
  * other measurements. A number goal's readings and path live in its progress card instead.
  */
-export function GoalRecord({ goal }: { goal: Goal }) {
+export function GoalRecord({ goal, measurements = true }: { goal: Goal; measurements?: boolean }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
@@ -253,7 +253,7 @@ export function GoalRecord({ goal }: { goal: Goal }) {
   return (
     <>
       {/* What it tracks first: the numbers you log, above the dates you're working toward. */}
-      <Measurements goal={goal} types={types} onAdd={toast} />
+      {measurements && <Measurements goal={goal} types={types} onAdd={toast} />}
       {/* Every goal can have milestones: checkpoints inside it (class begins, exam booked, module 5). */}
       {(
         <div className="card stack-sm">
@@ -518,6 +518,14 @@ export function GoalEdit({ goal, onSaved }: { goal: Goal; onSaved?: () => void }
       </button>
     </form>
   );
+}
+
+/** The Measurements card on its own, for pages that place it apart from the rest of the record. */
+export function GoalMeasurements({ goal }: { goal: Goal }) {
+  const { data } = useStore();
+  const toast = useToast();
+  const types = data.measurementTypes.filter((t) => !t.archived_at && (t.goal_id === goal.id || t.id === goal.measurement_type_id));
+  return <Measurements goal={goal} types={types} onAdd={toast} />;
 }
 
 /**
