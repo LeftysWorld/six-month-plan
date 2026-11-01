@@ -20,6 +20,7 @@ import {
   type PlannedExercise,
   type StretchPlan,
   cleanStretchPlan,
+  logsReading,
 } from '@six/core';
 import { applyOp, type AppData, type Op } from './model.ts';
 import { findMeasure } from './connect.ts';
@@ -183,7 +184,7 @@ export interface TaskInput {
 
 /** The measurement a measure task records: an existing one, or a new one created with the task. */
 function measureFor(data: AppData, input: TaskInput, goalId: string): { id: string | null; ops: Op[] } {
-  if (input.kind !== 'measure') return { id: null, ops: [] };
+  if (!logsReading(input.kind)) return { id: null, ops: [] };
   if (input.newMeasure && input.newMeasure.name.trim()) {
     // Already tracking one with this name? Use it, so the goal's chart gets the readings.
     const existing = findMeasure(data, goalId, input.newMeasure.name, input.newMeasure.unit);

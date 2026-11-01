@@ -1,3 +1,4 @@
+import { isWeightGoal, weighInNow } from './weightGoal.ts';
 import { addDays, daysBetween, isoWeekday, paceLabel, progressFor, quarterRange, shortDate, weekStart, type Goal, type ISODate, type PaceLabel, type Plan } from '@six/core';
 import { fmt, type View } from './derive.ts';
 import { headlineTally, tallyUnit } from './tally.ts';
@@ -91,9 +92,16 @@ export function goalTrack(view: View, goal: Goal, plan: Plan): Track {
     // With a saved path, even pace is the path's value today; without one, a straight line.
     const hasPath = view.pathFor(goal).length > 0;
     const exp = whole && n && start != null && hasPath ? clamp(((n.pathToday - start) / whole) * 100) : timeShare;
-    const units = hasPath ? n?.aheadBy ?? null : whole && latest != null && start != null ? (latest - (start + (whole * timeShare) / 100)) * Math.sign(whole) : null;
-    const ahead = units != null && Math.abs(units) >= 0.05 ? `${fmt(Math.abs(units))} ${goal.unit ?? ''} ${units > 0 ? 'ahead' : 'behind'}`.replace(/\s+/g, ' ') : null;
-    return { prog, exp, now: latest != null ? `${fmt(latest)} ${goal.unit ?? ''}`.trim() : 'No readings yet', target, by, label, status: started && ahead ? ahead : word('Too early'), started };
+    let units = hasPath ? n?.aheadBy ?? null : whole && latest != null && start != null ? (latest - (start + (whole * timeShare) / 100)) * Math.sign(whole) : null;
+    let numberLabel = label;
+    // A weight goal is judged by the latest weigh-in against the path, and within the on-track zone it's on track.
+    const w = n && isWeightGoal(view.data, goal) ? weighInNow(goal, n.start, view.pathFor(goal), view.measurementsFor(goal.measurement_type_id), today) : null;
+    if (w) {
+      units = w.status.aheadBy;
+      numberLabel = w.status.zone === 'ahead' ? 'ahead' : w.status.zone === 'on_track' ? 'on_track' : 'behind';
+    }
+    const ahead = w && w.status.zone === 'on_track' ? 'On track' : units != null && Math.abs(units) >= 0.05 ? `${fmt(Math.abs(units))} ${goal.unit ?? ''} ${units > 0 ? 'ahead' : 'behind'}`.replace(/\s+/g, ' ') : null;
+    return { prog, exp, now: latest != null ? `${fmt(latest)} ${goal.unit ?? ''}`.trim() : 'No readings yet', target, by, label: started ? numberLabel : label, status: started && ahead ? ahead : word('Too early'), started };
   }
   // A goal with a running total ("250 applications") is summed up by the total, not by milestones ticked.
   const tally = headlineTally(view, goal.id, today);

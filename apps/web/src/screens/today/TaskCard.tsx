@@ -1,5 +1,5 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { shortDate, tallyText, type Session } from '@six/core';
+import { shortDate, tallyText, type Session, logsReading } from '@six/core';
 import { useStore } from '../../data/store.tsx';
 import { fmt, minutesText } from '../../data/derive.ts';
 import { useView } from '../../data/useView.ts';
@@ -76,7 +76,7 @@ export function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: 
 
   const logged = s.status === 'done' || s.status === 'partial' || s.status === 'minimum';
   // A measure task shows the number it saved that day.
-  const reading = action?.kind === 'measure' && logged ? readingOn(data, action.measurement_type_id, s.date) : null;
+  const reading = action && logsReading(action.kind) && logged ? readingOn(data, action.measurement_type_id, s.date) : null;
   const unit = reading != null ? data.measurementTypes.find((t) => t.id === action?.measurement_type_id)?.unit ?? '' : '';
   const topLine = reading != null ? `${fmt(reading)}${unit ? ` ${unit}` : ''}` : right;
 

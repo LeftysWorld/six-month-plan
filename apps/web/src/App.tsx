@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import type { Session as AuthSession } from '@supabase/supabase-js';
 import type { Db } from './data/db.ts';
 import { createLocalDb } from './data/local.ts';
@@ -37,18 +37,20 @@ import { WorkoutReport } from './screens/WorkoutReport.tsx';
 
 const MODE_KEY = 'six.mode';
 
-export function useDemoChoice(): [boolean, (on: boolean) => void] {
-  const [demo, setDemo] = useState(() => !supabaseConfigured || localStorage.getItem(MODE_KEY) === 'demo');
-  const set = useCallback((on: boolean) => {
-    if (on) localStorage.setItem(MODE_KEY, 'demo');
-    else localStorage.removeItem(MODE_KEY);
-    setDemo(on || !supabaseConfigured);
-  }, []);
-  return [demo, set];
+/**
+ * Demo mode runs only where no account is set up (a local preview). With an account, the app is
+ * always your own data: the old "Try the demo" choice is cleared.
+ */
+export function useDemoMode(): boolean {
+  const [demo] = useState(() => {
+    if (supabaseConfigured) localStorage.removeItem(MODE_KEY);
+    return !supabaseConfigured;
+  });
+  return demo;
 }
 
 export function App() {
-  const [demo, setDemo] = useDemoChoice();
+  const demo = useDemoMode();
   const [authSession, setAuthSession] = useState<AuthSession | null | undefined>(demo ? null : undefined);
   const [db, setDb] = useState<Db | null>(null);
   const [initial, setInitial] = useState<AppData | null>(null);
@@ -86,7 +88,7 @@ export function App() {
   }, [demo, userId]);
 
   if (!demo && authSession === undefined) return <Splash text="Loading…" />;
-  if (!demo && !authSession) return <Login onDemo={() => setDemo(true)} />;
+  if (!demo && !authSession) return <Login />;
   if (error) {
     return (
       <div className="center-screen">
@@ -108,8 +110,6 @@ export function App() {
         <Shell
           demo={demo}
           email={demo ? null : authSession?.user.email ?? null}
-          onExitDemo={supabaseConfigured ? () => setDemo(false) : undefined}
-          onEnterDemo={demo || !supabaseConfigured ? undefined : () => setDemo(true)}
           onSignOut={demo ? undefined : () => void getSupabase()?.auth.signOut()}
         />
       </ToastProvider>
@@ -129,10 +129,6 @@ export interface ShellProps {
   demo: boolean;
   /** Who is signed in (null in demo mode). */
   email?: string | null;
-  /** Demo → the real account (sign-in screen, or straight in when a session exists). */
-  onExitDemo?: () => void;
-  /** Signed in → the demo in this browser, without signing out. */
-  onEnterDemo?: () => void;
   onSignOut?: () => void;
 }
 
@@ -268,14 +264,7 @@ function Shell(props: ShellProps) {
         <div className="stack">
           {props.demo && (
             <div className="banner info">
-              <span>Demo mode: data stays in this browser.</span>
-              {props.onExitDemo ? (
-                <button type="button" className="link-btn small" onClick={props.onExitDemo}>
-                  Switch to my account
-                </button>
-              ) : (
-                <a href={href('/settings')}>Settings</a>
-              )}
+              <span>Preview: no account is set up here, so this is example data in this browser.</span>
             </div>
           )}
           {schemaWarning && !props.demo && (

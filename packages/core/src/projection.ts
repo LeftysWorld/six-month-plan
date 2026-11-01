@@ -15,6 +15,8 @@ export interface Projection {
   daysOff: number | null;
   /** Readings used. */
   points: number;
+  /** The unrounded change per day behind ratePerWeek; null when there's no rate. */
+  perDay?: number | null;
 }
 
 export function projectNumberGoal(goal: Pick<Goal, 'target_value' | 'target_date'>, readings: Measurement[], today: ISODate, windowDays = 28): Projection {
@@ -38,10 +40,10 @@ export function projectNumberGoal(goal: Pick<Goal, 'target_value' | 'target_date
   const latestDate = addDays(from, last.x);
   const remaining = goal.target_value - latest;
   if (Math.abs(slope) < 1e-6 || Math.sign(remaining) !== Math.sign(slope) || Math.abs(remaining) < 1e-9) {
-    return { ratePerWeek, eta: Math.abs(remaining) < 1e-9 ? today : null, daysOff: null, points: n };
+    return { ratePerWeek, eta: Math.abs(remaining) < 1e-9 ? today : null, daysOff: null, points: n, perDay: slope };
   }
   const days = Math.ceil(remaining / slope);
   const eta = addDays(latestDate, Math.min(days, 3650));
   const daysOff = goal.target_date ? daysBetween(goal.target_date, eta) : null;
-  return { ratePerWeek, eta, daysOff, points: n };
+  return { ratePerWeek, eta, daysOff, points: n, perDay: slope };
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type Session, type SessionStatus } from '@six/core';
+import { type Session, type SessionStatus, logsReading } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { opsLogSession, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
@@ -28,14 +28,14 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
   const [note, setNote] = useState(session.note);
   const [moving, setMoving] = useState(false);
   // A measure task records the day's number (e.g. weight) along with the log.
-  const isMeasure = action?.kind === 'measure';
+  const isMeasure = logsReading(action?.kind);
   const measureType = isMeasure ? data.measurementTypes.find((t) => t.id === action?.measurement_type_id) : undefined;
   const [reading, setReading] = useState<string>(() => {
     if (!measureType) return '';
     const day = readingOn(data, measureType.id, session.date ?? today);
     return day != null ? String(day) : String(lastReading(data, measureType.id)?.value ?? '');
   });
-  const noTime = action?.kind === 'measure' || action?.kind === 'photo';
+  const noTime = logsReading(action?.kind) || action?.kind === 'photo';
 
   // A workout with a plan opens the workout log; "Skip, move…" comes back here.
   const [general, setGeneral] = useState(false);

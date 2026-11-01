@@ -7,7 +7,7 @@ import { useView } from '../../data/useView.ts';
 import { opsLogSession, opsRestoreSession } from '../../data/ops.ts';
 import { lastReading, measureLabel, measureOnToday, opsRecordReading, readingOn } from '../../data/connect.ts';
 import { nextValuedPrize } from '../../data/prizes.ts';
-import { addDays, shortDate, weekdayName, type Goal } from '@six/core';
+import { addDays, shortDate, weekdayName, type Goal, logsReading } from '@six/core';
 import { Icon, useToast } from '../../components/ui.tsx';
 import { FileThumb, useAddFiles } from '../../components/Attachments.tsx';
 import { usePhotoInput } from '../../components/usePhotoInput.tsx';
@@ -59,7 +59,7 @@ export function TodayNumbers({ photoSessions, day: shownDay }: { photoSessions: 
     data.sessions
       .filter((s) => s.date === day && s.status !== 'skipped')
       .map((s) => data.actions.find((a) => a.id === s.action_id))
-      .filter((a) => a?.kind === 'measure' && a.measurement_type_id)
+      .filter((a) => logsReading(a?.kind) && a?.measurement_type_id)
       .map((a) => a!.measurement_type_id!),
   );
   const rows = data.measurementTypes

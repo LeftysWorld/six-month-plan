@@ -749,7 +749,7 @@ function DataSection({ onExport }: { onExport: () => void }) {
 
 // ---------- Advanced ----------
 
-function AdvancedSection({ demo, email, onExitDemo, onEnterDemo, onSignOut }: ShellProps) {
+function AdvancedSection({ demo, email, onSignOut }: ShellProps) {
   const { data, commit, today } = useStore();
   const toast = useToast();
   const [pack, setPack] = useState(false);
@@ -757,20 +757,10 @@ function AdvancedSection({ demo, email, onExitDemo, onEnterDemo, onSignOut }: Sh
   return (
     <div className="set-stack">
       <SetCard title="Account">
-        <span className="small">{demo ? <><b>Demo mode.</b> Everything here is stored only in this browser.</> : <>Signed in as <b>{email ?? 'you'}</b>.</>}</span>
-        {((demo && onExitDemo) || (!demo && (onEnterDemo || onSignOut))) && (
+        <span className="small">{demo ? <><b>Preview.</b> No account is set up here; this is example data in this browser.</> : <>Signed in as <b>{email ?? 'you'}</b>.</>}</span>
+        {!demo && onSignOut && (
         <div className="btn-row">
-          {demo && onExitDemo && (
-            <button type="button" className="btn primary small" onClick={onExitDemo}>
-              Switch to my account
-            </button>
-          )}
-          {!demo && onEnterDemo && (
-            <button type="button" className="btn small" onClick={onEnterDemo}>
-              Try the demo
-            </button>
-          )}
-          {!demo && onSignOut && (
+          {onSignOut && (
             <button
               type="button"
               className="btn small"
@@ -784,7 +774,6 @@ function AdvancedSection({ demo, email, onExitDemo, onEnterDemo, onSignOut }: Sh
           )}
         </div>
         )}
-        <span className="set-hint">{demo ? 'Your account’s data is untouched by anything you do in the demo.' : 'The demo keeps you signed in; come back from the demo’s Settings.'}</span>
         {demo && (
           <div className="btn-row">
             <button

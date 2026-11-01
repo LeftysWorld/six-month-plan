@@ -2392,3 +2392,48 @@ img.demo-media { background: var(--fill); }
 .workout-card-superset { display: flex; flex-direction: column; gap: 2px; padding-left: 8px; border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); }
 .workout-card-ss-head .workout-card-name { font-weight: 600; color: var(--accent-ink); }
 .workout-card-ex.in-superset { padding-left: 8px; }
+
+/* ---------- Weight goals: weigh-in first, the on-track zone, pace and milestones ---------- */
+.wg-card { display: flex; flex-direction: column; gap: 16px; }
+.wg-hero { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.wg-now { font-size: 48px; font-weight: 650; letter-spacing: -0.035em; line-height: 1; }
+.wg-unit { font-size: 19px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.wg-ink { color: var(--ink); }
+.wg-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 650; padding: 5px 11px; border-radius: 999px; }
+.wg-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.wg-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.wg-stats > div { display: flex; flex-direction: column; gap: 2px; background: var(--fill); border-radius: 14px; padding: 9px 12px; min-width: 0; }
+.wg-stats span { font-size: 11.5px; color: var(--muted); }
+.wg-stats b { font-size: 16px; }
+.wg-pace { display: flex; flex-direction: column; gap: 10px; background: var(--fill); border-radius: 16px; padding: 12px 14px; font-size: 14px; line-height: 1.5; }
+.wgc-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--ink-2); }
+.wgc-legend li { display: flex; align-items: center; gap: 8px; }
+.wg-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.wg-day { border: 1px solid transparent; background: var(--fill); color: var(--ink); border-radius: 14px; min-height: 60px; padding: 6px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font: inherit; cursor: pointer; }
+.wg-day b { font-size: 14px; }
+.wg-day-wd { font-size: 11px; color: var(--muted); }
+.wg-day.empty { background: transparent; border: 1px dashed var(--border-strong); color: var(--muted); }
+.wg-day.on { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+.wg-day.on .wg-day-wd { color: color-mix(in srgb, var(--ground) 75%, transparent); }
+.wg-detail { display: flex; flex-wrap: wrap; gap: 14px 24px; background: var(--fill); border-radius: 18px; padding: 14px 16px; }
+.wg-detail-main { flex: 1 1 260px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.wg-detail-weight { font-size: 26px; letter-spacing: -0.02em; line-height: 1; }
+.wg-detail-side { flex: 1 1 240px; display: flex; flex-direction: column; gap: 12px; }
+.wg-detail-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; font-size: 12px; color: var(--muted); }
+.wg-detail-nums > span { display: flex; flex-direction: column; gap: 2px; }
+.wg-detail-nums b { font-size: 14px; color: var(--ink); }
+.wg-shot { display: flex; align-items: center; gap: 12px; }
+.wg-shot .file-thumb, .wg-shot > :first-child { width: 76px; flex: none; }
+.wg-weeks { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.wg-week { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
+.wg-week b { font-size: 20px; }
+.wg-week.good { border-color: color-mix(in srgb, var(--blue) 35%, transparent); background: var(--blue-soft); }
+.wg-week.over { border-color: var(--amber-line); background: var(--amber-soft); }
+.wg-week.future { border-style: dashed; background: transparent; cursor: default; }
+.wg-meter { position: relative; height: 12px; border-radius: 999px; background: var(--fill-strong); margin: 10px 0 2px; }
+.wg-meter-steady { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--blue) 40%, transparent); }
+.wg-meter-fast { position: absolute; top: 0; bottom: 0; right: 0; border-radius: 0 999px 999px 0; background: color-mix(in srgb, var(--amber-bar) 40%, transparent); }
+.wg-meter-path { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: var(--blue-ink); }
+.wg-meter-you { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--accent-ink); box-shadow: 0 0 0 3px var(--surface); }
+.wg-ms { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; min-height: 44px; border-top: 1px solid var(--line-2); font-size: 14.5px; }
+.wg-ms.head { min-height: 0; border-top: 0; font-size: 12px; }

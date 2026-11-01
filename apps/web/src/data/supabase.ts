@@ -63,6 +63,7 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261124000000_workout_effort.sql', table: 'sessions', columns: ['effort'] },
   { file: '20261125000000_coach_key.sql', table: 'profiles', columns: ['coach_key_hash'] },
   { file: '20261126000000_settings.sql', table: 'profiles', columns: ['training_rules', 'workout_prefs', 'body_prefs'] },
+  { file: '20261127000000_weight_task.sql', table: 'actions', columns: [] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */
@@ -117,8 +118,8 @@ function migrationFor(message: string, table?: string): (typeof MIGRATIONS)[numb
     if (m.creates && tableMissing && (m.table === table || new RegExp(`\\b${m.table}\\b`).test(message))) return m;
     if (m.columns.some((c) => new RegExp(`\\b${c}\\b`).test(message))) return m;
   }
-  // Measure and photo tasks need the connected-goals migration (it widens the allowed task kinds).
-  if (/actions_kind_check/.test(message)) return MIGRATIONS.find((m) => m.file.includes('stretching')) ?? null;
+  // A task kind the database doesn't allow yet: the latest migration that widens the allowed kinds.
+  if (/actions_kind_check/.test(message)) return MIGRATIONS.find((m) => m.file.includes('weight_task')) ?? null;
   return null;
 }
 

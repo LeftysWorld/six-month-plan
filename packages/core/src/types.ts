@@ -3,8 +3,11 @@ import type { ISODate } from './dates.ts';
 /** Row shapes shared by the web app and the database. Field names match the SQL columns. */
 
 export type GoalType = 'number' | 'practice' | 'finish';
-/** measure: logging it records a number (e.g. the day's weight); photo: logging it takes a photo. */
-export type ActionKind = 'check' | 'count' | 'minutes' | 'workout' | 'study' | 'measure' | 'photo' | 'stretch';
+/**
+ * measure: logging it records a number; photo: logging it takes a photo; weight: a weigh-in, which
+ * records the day's weight and gives its goal the weight page (trend, on-track zone, pace, milestones).
+ */
+export type ActionKind = 'check' | 'count' | 'minutes' | 'workout' | 'study' | 'measure' | 'photo' | 'stretch' | 'weight';
 export type SessionStatus = 'planned' | 'done' | 'partial' | 'minimum' | 'skipped' | 'moved';
 export type SessionOrigin = 'scheduled' | 'oneoff' | 'unplanned';
 export type ReviewKind = 'weekly' | 'block' | 'quarter' | 'retro';

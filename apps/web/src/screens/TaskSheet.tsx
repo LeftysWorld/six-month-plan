@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { addDays, describeSchedule, isoWeekday, rangeLabel, shortDate, weekDates, weekdayName, parseWorkoutPlan, blankStretchPlan, type ActionKind, type Goal, type ISODate, type Plan, type PlanStep } from '@six/core';
+import { addDays, describeSchedule, isoWeekday, rangeLabel, shortDate, weekDates, weekdayName, parseWorkoutPlan, blankStretchPlan, type ActionKind, type Goal, type ISODate, type Plan, type PlanStep, isWeightType, logsReading } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { opsEnsureStep } from '../data/chain.ts';
@@ -72,7 +72,18 @@ export function TaskSheet({
   const pickKind = (kind: ActionKind) => {
     const patch: Partial<TaskInput> = { kind };
     // A weigh-in or a photo takes no real time: don't count 30 minutes toward the day.
-    if ((kind === 'measure' || kind === 'photo') && v.kind !== 'measure' && v.kind !== 'photo') patch.minutes = 0;
+    if ((logsReading(kind) || kind === 'photo') && !logsReading(v.kind) && v.kind !== 'photo') patch.minutes = 0;
+    // A weigh-in records your weight: the weight measurement you have, or a new one in your units.
+    if (kind === 'weight') {
+      const weightType = types.find((t) => isWeightType(t));
+      patch.measurementTypeId = weightType?.id ?? null;
+      patch.newMeasure = weightType ? null : { name: 'Weight', unit: data.profile.units === 'kg' ? 'kg' : 'lb' };
+      if (!v.title.trim()) patch.title = 'Weigh in';
+      if (!task) {
+        patch.when = 'days';
+        patch.days = [1, 2, 3, 4, 5, 6, 7];
+      }
+    }
     // A new workout starts from the exercises written in details, or one empty exercise.
     if (kind === 'stretch' && !v.stretchPlan?.holds.length) patch.stretchPlan = blankStretchPlan();
     if (kind === 'workout' && !v.workoutPlan?.length) {
@@ -105,7 +116,7 @@ export function TaskSheet({
   const dayChoices = weekDates(addDays(week.start_date, 1 - isoWeekday(week.start_date))).filter(
     (d) => d >= week.start_date && d <= week.end_date && (d >= from || d === originalDate),
   );
-  const measureOk = v.kind !== 'measure' || (v.newMeasure ? v.newMeasure.name.trim().length > 0 : !!v.measurementTypeId);
+  const measureOk = !logsReading(v.kind) || (v.newMeasure ? v.newMeasure.name.trim().length > 0 : !!v.measurementTypeId);
   const valid = v.title.trim().length > 0 && (v.kind !== 'workout' || (v.workoutPlan ?? []).some((e) => e.name.trim())) && (v.kind !== 'stretch' || (v.stretchPlan?.holds ?? []).some((h) => h.name.trim())) && (v.when !== 'days' || v.days.length > 0) && (v.when !== 'once' || dayChoices.includes(v.date) || v.date >= from) && (v.when === 'once' || !v.through || v.through >= (v.start ?? from)) && measureOk;
 
   function save() {
@@ -140,7 +151,7 @@ export function TaskSheet({
       <div className="stack-sm">
         <span className="xsmall muted">Task type</span>
         <div className="seg" role="tablist" aria-label="Task type">
-          <button role="tab" aria-selected={v.kind !== 'workout' && v.kind !== 'stretch'} onClick={() => (v.kind === 'workout' || v.kind === 'stretch') && pickKind('check')}>
+          <button role="tab" aria-selected={v.kind !== 'workout' && v.kind !== 'stretch' && v.kind !== 'weight'} onClick={() => (v.kind === 'workout' || v.kind === 'stretch' || v.kind === 'weight') && pickKind('check')}>
             General
           </button>
           <button role="tab" aria-selected={v.kind === 'workout'} onClick={() => v.kind !== 'workout' && pickKind('workout')}>
@@ -149,7 +160,11 @@ export function TaskSheet({
           <button role="tab" aria-selected={v.kind === 'stretch'} onClick={() => v.kind !== 'stretch' && pickKind('stretch')}>
             Stretching
           </button>
+          <button role="tab" aria-selected={v.kind === 'weight'} onClick={() => v.kind !== 'weight' && pickKind('weight')}>
+            Weight
+          </button>
         </div>
+        {v.kind === 'weight' && <span className="xsmall muted">A weigh-in. Checking it off asks for your weight and lets you add that day's progress photo. Its goal gets the weight page: today's weigh-in against the path, your rolling average, the on-track zone, pace and milestones.</span>}
         {v.kind === 'workout' && <span className="xsmall muted">Plan the exercises with sets, reps and weight. On the day, the log opens with the plan filled in and you enter what you actually did.</span>}
         {v.kind === 'stretch' && <span className="xsmall muted">Plan the day's holds in order: how long, contract-relax on push days, knee care. On the day, you tick each one off and flag any that hurt.</span>}
       </div>
@@ -275,7 +290,7 @@ export function TaskSheet({
       )}
       {v.kind === 'workout' && <WorkoutPlanEditor plan={v.workoutPlan ?? []} details={v.details ?? ''} unit={data.profile.units} onChange={(p) => set({ workoutPlan: p })} />}
       {v.kind === 'stretch' && <StretchPlanEditor plan={v.stretchPlan ?? blankStretchPlan()} onChange={(p) => set({ stretchPlan: p })} />}
-      {v.kind !== 'workout' && v.kind !== 'stretch' && (
+      {v.kind !== 'workout' && v.kind !== 'stretch' && v.kind !== 'weight' && (
       <div className="stack-sm">
         <span className="xsmall muted">How you log it</span>
         <div className="chips">
@@ -289,15 +304,15 @@ export function TaskSheet({
         {v.kind === 'photo' && <span className="xsmall muted">Checking it off opens the camera or your photos and saves the photo to that day.</span>}
       </div>
       )}
-      {v.kind === 'measure' && (
+      {logsReading(v.kind) && (
         <div className="stack-sm">
           <label className="field">
-            What it records
+            {v.kind === 'weight' ? 'Your weight measurement' : 'What it records'}
             <select
               value={v.newMeasure ? '__new' : v.measurementTypeId ?? ''}
               onChange={(e) => (e.target.value === '__new' ? set({ newMeasure: { name: '', unit: data.profile.units }, measurementTypeId: null }) : set({ measurementTypeId: e.target.value, newMeasure: null }))}
             >
-              {types.map((t) => (
+              {types.filter((t) => v.kind !== 'weight' || isWeightType(t)).map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
                   {t.unit ? ` (${t.unit})` : ''}
@@ -321,7 +336,7 @@ export function TaskSheet({
         </div>
       )}
       <div className="grid-2">
-        {v.kind !== 'measure' && v.kind !== 'photo' && (
+        {!logsReading(v.kind) && v.kind !== 'photo' && (
           <label className="field">
             Minutes
             <input type="number" min={0} value={v.minutes} onChange={(e) => set({ minutes: Math.max(0, Number(e.target.value)) })} />

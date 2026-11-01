@@ -6,7 +6,7 @@ import { getSupabase } from '../data/supabase.ts';
  * emailed magic link (needs Supabase's mailer, which is rate-limited and often filtered until you
  * add an SMTP provider). For one person running their own app, the password is the dependable one.
  */
-export function Login({ onDemo }: { onDemo: () => void }) {
+export function Login() {
   const [mode, setMode] = useState<'password' | 'create' | 'link'>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -122,9 +122,6 @@ export function Login({ onDemo }: { onDemo: () => void }) {
             {mode === 'create' && <span className="xsmall muted">Made right here, no email needed — as long as “Confirm email” is off in Supabase (Authentication → Providers → Email). Turn sign-ups off there once your account exists.</span>}
           </form>
         )}
-        <button className="btn ghost" onClick={onDemo}>
-          Try the demo instead
-        </button>
       </div>
     </div>
   );

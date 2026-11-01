@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { addDays, hourIn, isoWeekday, minutesLeft, shortDate, weekDates, weekStart, weekdayName, type ISODate, type Session } from '@six/core';
+import { addDays, hourIn, isoWeekday, minutesLeft, shortDate, weekDates, weekStart, weekdayName, type ISODate, type Session, logsReading } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { minutesText } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
@@ -156,7 +156,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
       return;
     }
     const kind = view.action(s.action_id)?.kind;
-    if (s.status === 'planned' && kind === 'measure') {
+    if (s.status === 'planned' && logsReading(kind)) {
       setMeasuring(s);
       return;
     }

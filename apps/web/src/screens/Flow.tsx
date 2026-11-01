@@ -18,8 +18,11 @@ import {
   forecastFinish,
   weekToPlan,
   addDays as addDaysCore,
+  logsReading,
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
+import { WeightProgress, WeightSide } from '../components/WeightGoal.tsx';
+import { isWeightGoal } from '../data/weightGoal.ts';
 import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { catchUpPlan, chainFor, isSet, opsAddExtra, opsEnsureStep, periodStatus, opsSetLevel, stepFor, type Chain, type ChainLevel } from '../data/chain.ts';
@@ -81,6 +84,7 @@ export function Flow({ goalId }: { goalId: string }) {
   const week = stepFor(goal, plan, chain, 'week');
   const weeks = stepsForGoal(data, goal.id).filter((s) => s.level === 'week' && s.plan_id === plan.id);
   const t = goalTrack(view, goal, plan);
+  const weight = isWeightGoal(data, goal);
   const group = goal.group_id ? data.groups.find((g) => g.id === goal.group_id) : undefined;
   const path = goal.path_id ? data.paths.find((p) => p.id === goal.path_id && !p.archived_at) : undefined;
   const windowName = plan.name;
@@ -122,11 +126,12 @@ export function Flow({ goalId }: { goalId: string }) {
 
       <div className="goal-page">
         <div className="goal-page-main">
-          <ProgressCard goal={goal} plan={plan} chain={chain} onSetWeek={() => setEditing('week')} />
+          {weight ? <WeightProgress goal={goal} plan={plan} onSetWeek={() => setEditing('week')} /> : <ProgressCard goal={goal} plan={plan} chain={chain} onSetWeek={() => setEditing('week')} />}
           <ThisWeekCard goal={goal} plan={plan} chain={chain} week={week} weeks={weeks} onEditWeek={() => setEditing('week')} onToast={toast} />
           <PlanCard goal={goal} plan={plan} chain={chain} onEdit={setEditing} />
         </div>
         <aside className="goal-page-side">
+          {weight && <WeightSide goal={goal} plan={plan} />}
           <GoalRecord goal={goal} />
           <GoalPrizes goal={goal} plan={plan} />
           <GoalGroupCard goal={goal} />
@@ -360,7 +365,7 @@ function ProgressCard({ goal, plan, chain, onSetWeek }: { goal: Goal; plan: Plan
     if (!type) return;
     const { ops, undo } = opsRecordReading(data, type.id, v, today);
     // A "Log a number" task for this measurement today is checked off too.
-    const task = data.sessions.find((x) => x.date === today && x.status === 'planned' && view.action(x.action_id)?.kind === 'measure' && view.action(x.action_id)?.measurement_type_id === type.id);
+    const task = data.sessions.find((x) => x.date === today && x.status === 'planned' && logsReading(view.action(x.action_id)?.kind) && view.action(x.action_id)?.measurement_type_id === type.id);
     commit([...ops, ...(task ? opsLogSession(task, { status: 'done', on: today }) : [])]);
     toast(`${type.name}: ${fmt(v)} ${type.unit}`.trim(), () => commit([...undo, ...(task ? opsRestoreSession(task) : [])]));
     setLogging(false);
@@ -530,7 +535,7 @@ function ThisWeekCard({ goal, plan, chain, week, weeks, onEditWeek, onToast }: {
     const x = sessionOn(t.action.id, d);
     if (x && x.status !== 'planned') return setLogging(x);
     const target = x ?? data.sessions.find((s) => s.action_id === t.action.id && !s.date && s.week_start === weekStart(d) && s.status === 'planned');
-    if (t.action.kind === 'measure' && target) return setMeasuring(target);
+    if (logsReading(t.action.kind) && target) return setMeasuring(target);
     if (t.action.kind === 'photo' && target) return setLogging(target);
     if (target) {
       if (!target.date && !view.canPlace(target, d)) return onToast(`${t.action.title} is already logged that day`);
