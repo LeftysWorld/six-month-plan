@@ -233,7 +233,16 @@ The **weekly review** opens with your week in a few plain lines (days you showed
 
 A number goal's progress card says what the numbers mean: how far ahead of or behind the path you are, and — from the straight line through the last four weeks of readings — the day you reach the target at this rate and how far that is from your date. When it's late, two levers: **Move the date to …** (the on-time bonus still judges against the date it was set with) or **Tighten this week**. Every number goal's dates work the way weight does: a value marks a date hit, a prize can hang on it, Today's numbers say "next prize at 184.2 by Dec 13 · 1.6 to go".
 
-**Photos** (a goal's Photos card → Timeline, or the link in Today's numbers) is every progress photo on the goal oldest to newest with that day's number under each: scrub through them, compare with any earlier photo, and **Save before / after** as a JPEG with dates, numbers and the change.
+**Photos** (a goal's Photos card → Timeline, or the link in Today's numbers) is every progress photo on the goal, with that day's number, in four views:
+
+- **Side by side**: a **Before** and an **After** slot (tap a slot, then a photo; **Swap**), and the change between them as the headline, measured on the 7-day average, with the scale's own numbers underneath. **Quick picks**: First vs latest, Last week, 4 weeks, 12 weeks (as the season allows).
+- **Timeline**: one photo at a time. Scrub, step with ‹ ›, or **▶ Play** through them as a time-lapse; **Ghost of the first photo** lays the first one faintly on top.
+- **Overlay**: the after over the before; drag the white line (anywhere up its height, or the small handle at its foot; arrow keys move it) to wipe between them.
+- **Month by month** (from three months of photos): the first photo of each month, with how far the average moved.
+
+**Lining up** (Overlay only): **Auto-align all** finds your eyes and hips on each photo (Google's MediaPipe pose model, loaded in the browser the first time and run on the device) and zooms and moves every photo so they sit where they do on the first one. **Adjust** a photo by hand: drag it, zoom, nudge with the arrows, with dashed guides at the first photo's eyes and hips; **Show and adjust** flips between the first photo (moving it moves the guides) and the one you're adjusting. A photo you've adjusted by hand is never changed by Auto-align again (purple dot in the strip; teal for lined up automatically); **Reset this photo** / **Reset all** undo. Side by side, Timeline, the strip and the slot thumbnails always show photos as taken. Line-ups are saved with each photo (`attachments.align`, needs `supabase/migrations/20261128000000_photo_align.sql`), so they follow you across devices.
+
+**Every photo** lists them by week, newest first (with each week's average), or **One a week**. **Save before / after** still makes a JPEG with dates, numbers and the change.
 
 ## Paths that do something
 

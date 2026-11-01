@@ -64,6 +64,7 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261125000000_coach_key.sql', table: 'profiles', columns: ['coach_key_hash'] },
   { file: '20261126000000_settings.sql', table: 'profiles', columns: ['training_rules', 'workout_prefs', 'body_prefs'] },
   { file: '20261127000000_weight_task.sql', table: 'actions', columns: [] },
+  { file: '20261128000000_photo_align.sql', table: 'attachments', columns: ['align'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */
@@ -185,6 +186,7 @@ const OPTIONAL_COLUMNS: Partial<Record<string, string[]>> = {
   stretchHolds: ['set_no', 'seconds', 'reps'],
   groups: ['gradient_slot'],
   paths: ['gradient_slot'],
+  attachments: ['align'],
 };
 
 /** A network failure is worth retrying; a database refusal is not. */

@@ -279,6 +279,24 @@ export interface Attachment {
   mime_type: string;
   size_bytes: number;
   created_at: string;
+  /** How a progress photo lines up with the others in the overlay (null until it's lined up). */
+  align?: PhotoAlign | null;
+}
+
+/** A point on a progress photo, in % of the 3:4 frame it's shown in (x across, y down). */
+export interface PhotoPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * A progress photo's line-up for the overlay: where the body is on it (found by pose detection),
+ * and the zoom and move that put it on the first photo. `manual` fits were set by hand; lining up
+ * again leaves them alone.
+ */
+export interface PhotoAlign {
+  marks?: { eyes: PhotoPoint; hips: PhotoPoint } | null;
+  fit?: { s: number; tx: number; ty: number; manual?: boolean } | null;
 }
 
 export interface WorkoutSet {
