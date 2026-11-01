@@ -2405,6 +2405,56 @@ img.demo-media { background: var(--fill); }
 .wg-stats > div { display: flex; flex-direction: column; gap: 2px; background: var(--fill); border-radius: 14px; padding: 9px 12px; min-width: 0; }
 .wg-stats span { font-size: 11.5px; color: var(--muted); }
 .wg-stats b { font-size: 16px; }
+.wg-stats small { font-size: 11px; color: var(--muted); }
+.wg-stat-key { display: inline-flex; align-items: center; gap: 6px; }
+.wg-key-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
+
+/* ---------- The plan, for a weight goal ---------- */
+.wp-card { display: flex; flex-direction: column; gap: 16px; }
+.wp-bar { position: relative; height: 22px; margin: 0 8px; }
+.wp-bar-track, .wp-bar-fill { position: absolute; left: 0; top: 9px; height: 4px; border-radius: 4px; }
+.wp-bar-track { right: 0; background: var(--track); }
+.wp-mark { position: absolute; top: 11px; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--accent-ink); background: var(--surface); transform: translate(-50%, -50%); }
+.wp-mark.week { background: var(--accent-ink); }
+.wp-mark.quarter { border-radius: 2px; transform: translate(-50%, -50%) rotate(45deg); }
+.wp-mark.season { border-radius: 3px; }
+.wp-mark.on { width: 14px; height: 14px; background: var(--accent-ink); }
+.wp-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.wp-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 100px; padding: 12px 14px; border: 0; border-radius: 14px; background: var(--fill); color: var(--ink); font: inherit; text-align: left; cursor: pointer; min-width: 0; transition: background 0.2s; }
+.wp-tile b { font-size: 17px; font-weight: 650; letter-spacing: -0.03em; line-height: 1.15; }
+.wp-tile-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.wp-tile-date { font-size: 11px; color: var(--muted); }
+.wp-tile-stat { font-size: 11px; font-weight: 650; }
+.wp-tile-stat.good { color: var(--blue-ink); }
+.wp-tile-stat.late { color: var(--amber-ink); }
+.wp-tile-stat.none { color: var(--muted); }
+.wp-tile.on { background: var(--ink); color: var(--ground); }
+.wp-tile.on .wp-tile-label, .wp-tile.on .wp-tile-date { color: color-mix(in srgb, var(--ground) 78%, transparent); }
+.wp-tile.on .wp-tile-stat.good { color: #7fe0d6; }
+.wp-tile.on .wp-tile-stat.late { color: #ffc58f; }
+.wp-tile.on .wp-tile-stat.none { color: color-mix(in srgb, var(--ground) 70%, transparent); }
+.wp-detail { display: flex; flex-wrap: wrap; gap: 18px; padding: 18px; border-radius: 18px; background: var(--fill); }
+.wp-detail-main, .wp-detail-side { flex: 1 1 250px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.wp-value { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; line-height: 1; }
+.wp-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; align-self: stretch; }
+.wp-stats > div { display: flex; flex-direction: column; gap: 2px; background: var(--surface); border-radius: 12px; padding: 8px 10px; min-width: 0; }
+.wp-stats span { font-size: 11px; color: var(--muted); }
+.wp-stats b { font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.wp-edit { display: flex; flex-direction: column; gap: 8px; align-self: stretch; }
+.wp-check { font-size: 13.5px; line-height: 1.45; padding: 9px 12px; border-radius: 12px; }
+.wp-check.good { background: var(--blue-soft); color: var(--blue-ink); }
+.wp-check.late { background: var(--amber-soft); color: var(--amber-ink); }
+.wp-do { display: flex; flex-direction: column; gap: 4px; }
+.wp-doing { display: flex; flex-direction: column; gap: 6px; align-self: stretch; padding-top: 8px; border-top: 1px solid var(--line); }
+.wp-doing-row { display: grid; grid-template-columns: 8px auto minmax(0, 1fr); align-items: baseline; gap: 8px; }
+.wp-next { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; align-self: stretch; padding: 10px 12px; border-radius: 14px; background: var(--surface); }
+@media (max-width: 480px) {
+  .wp-tiles { gap: 6px; }
+  .wp-tile { min-height: 92px; padding: 9px 8px; }
+  .wp-tile b { font-size: 16px; }
+  .wp-tile-label { font-size: 10.5px; }
+  .wp-detail { padding: 14px; }
+}
 .wg-pace { display: flex; flex-direction: column; gap: 10px; background: var(--fill); border-radius: 16px; padding: 12px 14px; font-size: 14px; line-height: 1.5; }
 .wgc-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--ink-2); }
 .wgc-legend li { display: flex; align-items: center; gap: 8px; }

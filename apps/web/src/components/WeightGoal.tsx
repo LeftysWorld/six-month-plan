@@ -46,7 +46,7 @@ const DAY = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
 const fmt1 = (v: number) => (Math.round(v * 10) / 10).toFixed(1);
 
 /** Everything the weight page computes once: path, readings, the weigh-in's standing, the pace. */
-function useWeight(goal: Goal, plan: Plan) {
+export function useWeight(goal: Goal, plan: Plan) {
   const { data, today } = useStore();
   const view = useView();
   const n = view.goalPace(goal, plan).number;
@@ -69,7 +69,27 @@ function useWeight(goal: Goal, plan: Plan) {
   const trendAt = (d: ISODate) => rollingAverage(readings, d);
   const band = onTrackBand(unit);
   const milestones = weightMilestones(start, path, target, readings, latest, perDay, unit);
-  return { data, today, view, type, unit, readings, path, target, by, start, direction, latest, pathAt, statusOn, proj, perDay, pathPerWeek, slowEta, trendAt, band, milestones };
+  // The first weeks of a cut are mostly water: until there are three weeks of weigh-ins, no finish
+  // date, no "pull the date in", and pace dates are marked early.
+  const firstOn = readings.find((r) => r.measured_on >= start.date)?.measured_on ?? null;
+  const daysIn = firstOn ? daysBetween(firstOn, latest?.measured_on ?? today) : 0;
+  const early = daysIn < 21;
+  const projectsOn = firstOn ? addDays(firstOn, 21) : null;
+  // Where you stand: the 7-day average at the latest weigh-in against the path that day.
+  const trendNow = latest ? trendAt(latest.measured_on) : null;
+  const standing = latest && trendNow != null ? statusOn(trendNow, latest.measured_on) : null;
+  return { data, today, view, type, unit, readings, path, target, by, start, direction, latest, pathAt, statusOn, proj, perDay, pathPerWeek, slowEta, trendAt, band, milestones, firstOn, daysIn, early, projectsOn, trendNow, standing };
+}
+
+/** "On track: your 7-day average is 0.2 lb above the path", from the standing on the average. */
+function standingText(s: WeighInStatus, direction: number, unit: string): string {
+  const u = unit ? ` ${unit}` : '';
+  const off = Math.abs(s.aheadBy);
+  // For a cut, behind the path is above it; for a gain, below it.
+  const side = (behind: boolean) => ((direction < 0) === behind ? 'above' : 'below');
+  if (s.zone === 'ahead') return `${fmt1(off)}${u} ahead: your 7-day average is ${fmt1(off)} ${side(false)} the path`;
+  if (s.zone === 'on_track') return off < 0.05 ? 'On track: your 7-day average is on the path' : `On track: your 7-day average is ${fmt1(off)}${u} ${side(true)} the path`;
+  return `Behind: your 7-day average is ${fmt1(off)}${u} ${side(true)} the path`;
 }
 
 const chipStyle = (s: WeighInStatus | null) =>
@@ -132,9 +152,15 @@ export function WeightProgress({ goal, plan, onSetWeek }: { goal: Goal; plan: Pl
   }
 
   // The pace in one or two sentences, and the levers when you're running late.
-  const late = proj.eta && proj.daysOff != null && proj.daysOff > 7;
+  const late = !w.early && proj.eta && proj.daysOff != null && proj.daysOff > 7;
+  const weeksIn = Math.max(1, Math.ceil(w.daysIn / 7));
   let pace = '';
   if (proj.points < 3) pace = 'A few more weigh-ins and this will say when you get there at your current rate.';
+  else if (w.early) {
+    const lead = w.daysIn < 7 ? 'A few days in' : `${weeksIn === 1 ? 'One week' : `${weeksIn} weeks`} in`;
+    const why = w.direction < 0 ? 'the first weeks of a cut drop water and stored carbs' : 'the first weeks swing with water and food';
+    pace = `${lead}, so no finish date yet: ${why}. After three weeks of weigh-ins${w.projectsOn ? ` (${shortDate(w.projectsOn)})` : ''} this tells you when you reach ${fmt(target)} at your pace.`;
+  }
   else if (!proj.eta) pace = `Over the last four weeks the trend is ${proj.ratePerWeek === 0 ? 'flat' : 'going the wrong way'}; at that rate ${fmt(target)} doesn’t arrive.`;
   else {
     const rate = `${fmt(Math.abs(proj.ratePerWeek ?? 0))} ${unit} a week`;
@@ -214,7 +240,7 @@ export function WeightProgress({ goal, plan, onSetWeek }: { goal: Goal; plan: Pl
             {' · '}
             <b className="wg-ink">{fmt(toGo)}</b> to go
           </span>
-          <Chip s={status} fallback="Log a weigh-in to see where you stand" />
+          <Chip s={w.standing ? { ...w.standing, text: standingText(w.standing, w.direction, unit) } : status} fallback="Log a weigh-in to see where you stand" />
           {logging ? (
             <form
               className="row-start"
@@ -262,16 +288,25 @@ export function WeightProgress({ goal, plan, onSetWeek }: { goal: Goal; plan: Pl
 
         <div className="wg-stats">
           <div>
-            <span>7-day average</span>
+            <span className="wg-stat-key">
+              <i className="wg-key-dot" style={{ background: 'var(--accent-ink)' }} aria-hidden="true" />
+              7-day average
+            </span>
             <b style={{ color: 'var(--accent-ink)' }}>{trendNow != null ? fmt1(trendNow) : '—'}</b>
+            <small>The trend line</small>
           </div>
           <div>
-            <span>Rate, last 4 weeks</span>
+            <span>{w.early ? `Rate, first ${weeksIn === 1 ? 'week' : `${weeksIn} weeks`}` : 'Rate, last 4 weeks'}</span>
             <b>{proj.ratePerWeek != null && proj.points >= 3 ? `${fmt(Math.abs(proj.ratePerWeek))} ${unit}/wk` : '—'}</b>
+            <small>{w.early ? (w.direction < 0 ? 'Mostly water so far' : 'Early days') : 'Your recent pace'}</small>
           </div>
           <div>
-            <span>The path today</span>
+            <span className="wg-stat-key">
+              <i className="wg-key-dot" style={{ background: 'var(--blue)' }} aria-hidden="true" />
+              The path today
+            </span>
             <b style={{ color: 'var(--blue-ink)' }}>{fmt1(w.pathAt(today))}</b>
+            <small>Where the plan has you</small>
           </div>
         </div>
 
@@ -412,8 +447,11 @@ function WeekByWeek({ w, onOpen }: { w: ReturnType<typeof useWeight>; onOpen: (l
       <div className="wg-weeks">
         {[...past].reverse().map((x) => {
           const thisWeek = x.start <= today && today <= x.end;
-          const over = x.aheadBy != null && x.aheadBy < -w.band;
-          const ahead = x.aheadBy != null && x.aheadBy >= 0.05;
+          // Judged like the page: the 7-day average at the week's last weigh-in against the path that day.
+          const trend = x.lastOn ? w.trendAt(x.lastOn) : null;
+          const aheadBy = x.lastOn && trend != null ? Math.round((w.pathAt(x.lastOn) - trend) * (direction < 0 ? 1 : -1) * 10) / 10 : x.aheadBy;
+          const over = aheadBy != null && aheadBy < -w.band;
+          const ahead = aheadBy != null && aheadBy >= 0.05;
           return (
             <button key={x.start} type="button" className={`wg-week${over ? ' over' : x.last != null ? ' good' : ''}`} onClick={() => onOpen(x.end)}>
               <span className="xsmall muted">
@@ -425,9 +463,9 @@ function WeekByWeek({ w, onOpen }: { w: ReturnType<typeof useWeight>; onOpen: (l
                 path {fmt1(x.pathEnd)}
                 {x.average != null ? ` · avg ${fmt1(x.average)}` : ''}
               </span>
-              {x.aheadBy != null && (
+              {aheadBy != null && (
                 <span className="xsmall" style={{ fontWeight: 650, color: over ? 'var(--amber-ink)' : 'var(--blue-ink)' }}>
-                  {ahead ? `${fmt(x.aheadBy)} ahead` : over ? `${fmt(-x.aheadBy)} over` : 'On track'}
+                  {ahead ? `${fmt(aheadBy)} ahead` : over ? `${fmt(-aheadBy)} over` : 'On track'}
                   {x.change != null && Math.abs(x.change) >= 0.05 ? ` · ${x.change * direction > 0 ? 'down' : 'up'} ${fmt(Math.abs(x.change))}` : ''}
                 </span>
               )}
@@ -439,7 +477,7 @@ function WeekByWeek({ w, onOpen }: { w: ReturnType<typeof useWeight>; onOpen: (l
             <span className="xsmall muted">{shortDate(x.start)}</span>
             <b className="num muted">—</b>
             <span className="xsmall muted">
-              {WD[6]} target {fmt1(x.pathEnd)} {unit}
+              Path by {WD[6]} {fmt1(x.pathEnd)} {unit}
             </span>
           </div>
         ))}
@@ -479,7 +517,7 @@ export function WeightSide({ goal, plan }: { goal: Goal; plan: Plan }) {
   // Well ahead: keep the date as margin, or pull it in to where a steady 1% a week would land.
   const remaining = Math.abs(target - weight);
   const pullTo = latest ? addDays(latest.measured_on, Math.ceil((remaining / steady.high) * 7)) : null;
-  const wellAhead = !kept && proj.eta && proj.daysOff != null && proj.daysOff < -14 && pullTo && pullTo < by && pullTo > proj.eta && daysBetween(today, proj.eta) > 14;
+  const wellAhead = !kept && !w.early && proj.eta && proj.daysOff != null && proj.daysOff < -14 && pullTo && pullTo < by && pullTo > proj.eta && daysBetween(today, proj.eta) > 14;
   const pullIn = () => {
     if (!pullTo) return;
     const points = suggestPath(weight, target, today, pullTo, plan.block_days);
@@ -708,7 +746,7 @@ function WeightMilestonesCard({ goal, plan }: { goal: Goal; plan: Plan }) {
     : `${prized.length} prize${prized.length === 1 ? '' : 's'}${goal.prize_on_time?.trim() ? ' + a bonus' : ''}${nextPrize ? (latest ? ` · next: ${nextPrize.title}, ${fmt(Math.abs(Number(latest.value) - nextPrize.value))} ${unit} away` : ` · next: ${nextPrize.title}`) : ' · all reached'}`;
 
   return (
-    <section className="card stack-sm" aria-label="Milestones and prizes">
+    <section className="card stack-sm" aria-label="Milestones and prizes" id="wg-milestones">
       <div className="row-between" style={{ alignItems: 'flex-start' }}>
         <span className="stack-sm" style={{ gap: 2 }}>
           <span className="label">Milestones &amp; prizes</span>
@@ -750,7 +788,10 @@ function WeightMilestonesCard({ goal, plan }: { goal: Goal; plan: Plan }) {
       <div className="wg-ms4 head xsmall muted">
         <span />
         <span>Milestone</span>
-        <InfoTip label="At your pace" text={`If you keep losing what you have over the last four weeks${w.proj.ratePerWeek != null ? ` (${fmt(Math.abs(w.proj.ratePerWeek))} ${unit} a week)` : ''}, this is when you get there. It moves as your pace changes.`} />
+        <InfoTip
+          label={w.early ? 'At your pace (early)' : 'At your pace'}
+          text={`If you keep losing what you have over the last four weeks${w.proj.ratePerWeek != null ? ` (${fmt(Math.abs(w.proj.ratePerWeek))} ${unit} a week)` : ''}, this is when you get there. It moves as your pace changes.${w.early ? ' The first weeks are mostly water, so these dates firm up after three weeks of weigh-ins.' : ''}`}
+        />
         <InfoTip label="On the path" align="right" text={`Where your plan has you: the steady line from your start to ${fmt(target)} by ${shortDate(by)}. Be there by this date and you stay on schedule. It’s also when the milestone shows on your calendar and roadmap.`} />
       </div>
 

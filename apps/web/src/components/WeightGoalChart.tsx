@@ -160,6 +160,8 @@ export function WeightGoalChart(p: Props) {
   const lx = latest ? x(latest.measured_on) + (nearRight ? -12 : 12) : 0;
   const anchor = nearRight ? 'end' : 'start';
   const latestTrend = latest ? p.trendAt(latest.measured_on) : null;
+  // The path's value on the latest weigh-in's day, labelled beside the trend so the three numbers read apart.
+  const latestPath = latest ? valueOnPath(start, path, latest.measured_on) : null;
   // The biggest overnight jump in view gets a word about water (it isn't fat).
   const jump = (() => {
     if (long) return null;
@@ -371,6 +373,16 @@ export function WeightGoalChart(p: Props) {
                 {fmt(latestTrend)} trend
               </text>
             )}
+            {!long &&
+              latestPath != null &&
+              latestPath >= lo &&
+              latestPath <= hi &&
+              Math.abs(y(latestPath) - y(Number(latest.value))) > 14 &&
+              (latestTrend == null || Math.abs(y(latestPath) - y(latestTrend)) > 14) && (
+                <text x={lx} y={y(latestPath) + (latestTrend != null && y(latestPath) < y(latestTrend) ? -8 : 16)} fontSize="12" fontWeight="650" textAnchor={anchor} style={{ fill: 'var(--blue-ink)', ...halo }}>
+                  {fmt(Math.round(latestPath * 10) / 10)} path
+                </text>
+              )}
           </>
         )}
         {projTo && !long && !showCone && x(projTo.date) - x(latest!.measured_on) > 120 && (
@@ -397,6 +409,12 @@ export function WeightGoalChart(p: Props) {
             <line x1="1" y1="5" x2="21" y2="5" style={{ stroke: C.trend }} strokeWidth="3.5" strokeLinecap="round" />
           </svg>
           Trend (7-day average)
+        </li>
+        <li>
+          <svg width="22" height="10" aria-hidden="true">
+            <line x1="1" y1="5" x2="21" y2="5" stroke={C.path} strokeWidth="1.5" strokeDasharray="2 5" strokeLinecap="round" />
+          </svg>
+          The path
         </li>
         <li>
           <svg width="22" height="10" aria-hidden="true">

@@ -22,6 +22,7 @@ import {
 } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { WeightProgress, WeightSide } from '../components/WeightGoal.tsx';
+import { WeightPlanCard } from '../components/WeightPlanCard.tsx';
 import { isWeightGoal } from '../data/weightGoal.ts';
 import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
@@ -126,8 +127,8 @@ export function Flow({ goalId }: { goalId: string }) {
       <div className="goal-page">
         <div className="goal-page-main">
           {weight ? <WeightProgress goal={goal} plan={plan} onSetWeek={() => setEditing('week')} /> : <ProgressCard goal={goal} plan={plan} chain={chain} onSetWeek={() => setEditing('week')} />}
+          {weight ? <WeightPlanCard goal={goal} plan={plan} chain={chain} onEdit={setEditing} /> : <PlanCard goal={goal} plan={plan} chain={chain} onEdit={setEditing} />}
           <ThisWeekCard goal={goal} plan={plan} chain={chain} week={week} weeks={weeks} onEditWeek={() => setEditing('week')} onToast={toast} />
-          <PlanCard goal={goal} plan={plan} chain={chain} onEdit={setEditing} />
         </div>
         <aside className="goal-page-side">
           {weight && <GoalMeasurements goal={goal} />}
@@ -702,7 +703,7 @@ function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain
   const open = (step: string, m = monday) => () => navigate(planHref(goal.id, step as never, m));
   // Late in the week with nothing set for it, but next week planned: show next week's goals.
   const nextWeek = !weekSet && nextPlanned ? targetsAt(data, goal.id, plan.id, 'week', ladderPeriods(view, goal, plan, nextMonday).week.start) : [];
-  const lines: { key: string; name: string; text: string; when: string; status: { text: string; label: PaceLabel } | null; current: boolean; onClick?: () => void; edit: boolean; empty?: string }[] = [
+  const lines: { key: string; name: string; text: string; when: string; date?: ISODate; status: { text: string; label: PaceLabel } | null; current: boolean; onClick?: () => void; edit: boolean; empty?: string }[] = [
     nextWeek.length
       ? { key: 'week', name: 'Next week', text: nextWeek.map((x) => targetText(goal, x)).join(' · '), when: `by ${shortDate(addDaysCore(nextMonday, 6))}`, status: null, current: true, onClick: open('week', nextMonday), edit: true }
       : {
@@ -718,13 +719,13 @@ function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain
         },
     ...(planned
       ? [
-          { key: 'month', name: 'This month', text: ladder.month.map((x) => targetText(goal, x)).join(' · '), when: `by ${shortDate(periodEnd(p, p.month))}`, status: doneOf(ladder.month), current: false, onClick: open('month'), edit: true, empty: '+ Set this month' },
-          { key: 'quarter', name: '3 months', text: ladder.quarter.map((x) => targetText(goal, x)).join(' · '), when: `by ${shortDate(periodEnd(p, p.quarter))}`, status: doneOf(ladder.quarter), current: false, onClick: open('quarter'), edit: true, empty: '+ Set the checkpoint' },
+          { key: 'month', name: 'This month', text: ladder.month.map((x) => targetText(goal, x)).join(' · '), when: `by ${shortDate(periodEnd(p, p.month))}`, date: periodEnd(p, p.month), status: doneOf(ladder.month), current: false, onClick: open('month'), edit: true, empty: '+ Set this month' },
+          { key: 'quarter', name: '3 months', text: ladder.quarter.map((x) => targetText(goal, x)).join(' · '), when: `by ${shortDate(periodEnd(p, p.quarter))}`, date: periodEnd(p, p.quarter), status: doneOf(ladder.quarter), current: false, onClick: open('quarter'), edit: true, empty: '+ Set the checkpoint' },
         ]
       : []),
     ...upcoming.map((m) => {
       const t = tallyFor(view, m, today);
-      return { key: m.id, name: t ? 'Running total' : 'Date to hit', text: m.title, when: `by ${shortDate(m.due_date)}`, status: t ? { text: tallyText(t), label: t.label } : null, current: false, edit: false };
+      return { key: m.id, name: t ? 'Running total' : 'Date to hit', text: m.title, when: `by ${shortDate(m.due_date)}`, date: m.due_date, status: t ? { text: tallyText(t), label: t.label } : null, current: false, edit: false };
     }),
     {
       key: 'goal',
@@ -737,6 +738,9 @@ function PlanCard({ goal, plan, chain, onEdit }: { goal: Goal; plan: Plan; chain
       edit: true,
     },
   ];
+  // Between this week and the season, everything in date order: months, the checkpoint and dates to hit.
+  const middle = lines.slice(1, -1).sort((a, b) => ((a.date ?? '') < (b.date ?? '') ? -1 : (a.date ?? '') > (b.date ?? '') ? 1 : 0));
+  lines.splice(1, middle.length, ...middle);
   return (
     <section className="card plan-card" aria-label="The plan">
       <div className="row-between" style={{ flexWrap: 'wrap' }}>
