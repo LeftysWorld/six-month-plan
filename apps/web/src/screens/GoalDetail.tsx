@@ -230,7 +230,7 @@ export function WhyLine({ goal }: { goal: Goal }) {
  * The goal's record: milestones (for "finish" goals or any that have them), photos and files, and
  * other measurements. A number goal's readings and path live in its progress card instead.
  */
-export function GoalRecord({ goal, measurements = true }: { goal: Goal; measurements?: boolean }) {
+export function GoalRecord({ goal, measurements = true, milestones: showMilestones = true }: { goal: Goal; measurements?: boolean; milestones?: boolean }) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
@@ -254,8 +254,8 @@ export function GoalRecord({ goal, measurements = true }: { goal: Goal; measurem
     <>
       {/* What it tracks first: the numbers you log, above the dates you're working toward. */}
       {measurements && <Measurements goal={goal} types={types} onAdd={toast} />}
-      {/* Every goal can have milestones: checkpoints inside it (class begins, exam booked, module 5). */}
-      {(
+      {/* Every goal can have milestones: checkpoints inside it (class begins, exam booked, module 5). A weight goal shows its own Milestones card. */}
+      {showMilestones && (
         <div className="card stack-sm">
           <div className="row-between">
             <span className="label">Milestones</span>

@@ -53,3 +53,13 @@ test('milestones on the 5s, with the date at your pace and on the path', () => {
 test('steady pace is half to one percent of your weight a week', () => {
   assert.deepEqual(steadyRange(190.8), { low: 1, high: 1.9 });
 });
+
+test('the app’s stops, and the path and pace dates for any weight', async () => {
+  const { weightStopValues, onPathDate, atPaceDate } = await import('../src/index.ts');
+  assert.deepEqual(weightStopValues(194.2, 155, 'lb'), [185, 175, 165]);
+  assert.deepEqual(weightStopValues(194.2, 155, 'lb', 5), [190, 185, 180, 175, 170, 165, 160]);
+  assert.deepEqual(weightStopValues(88, 75, 'kg'), [85, 80]);
+  assert.deepEqual(weightStopValues(150, 170, 'lb'), [155, 165]);
+  assert.equal(onPathDate(start, path, 185), '2026-12-04');
+  assert.equal(atPaceDate(readings.at(-1)!, 185, -2.364 / 7), '2026-11-19');
+});

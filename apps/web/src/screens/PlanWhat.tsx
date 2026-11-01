@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { addDays, daysBetween, shortDate, type GoalType } from '@six/core';
+import { useEffect, useMemo, useState } from 'react';
+import { addDays, daysBetween, isWeightType, onPathDate, shortDate, weightStopValues, type GoalType } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { fmt } from '../data/derive.ts';
@@ -46,6 +46,35 @@ export function WhatStep(props: StepProps) {
   const paths = pathsOf(data);
   const others = view.activeGoals;
   const path = useMemo(() => newGoalPath(input, start, blockDays), [input.type, input.baseline, input.target, input.targetDate, input.pathEdits, start, blockDays]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A weight goal's milestones come filled in with the app's stops (each dated where the path has you),
+  // to put prizes on, change or remove. Until you edit them, they follow the start, target and spacing.
+  const isWeight = input.type === 'number' && isWeightType({ name: input.measureName || input.title || 'weight', unit: input.unit || '' }) && input.baseline != null && input.target != null && path.length > 0;
+  const kg = /kg/i.test(input.unit);
+  const [every, setEvery] = useState<number>(kg ? 5 : 10);
+  const [touched, setTouched] = useState(() => d.input.milestones.length > 0);
+  const startPt = { date: start, value: input.baseline ?? 0 };
+  const dueOn = (v: number) => onPathDate(startPt, path, v) ?? end;
+  const stopsFor = (n: number) =>
+    isWeight
+      ? weightStopValues(input.baseline!, input.target!, input.unit, n || undefined).map((v) => ({ title: `${fmt(v)} ${input.unit}`.trim(), due_date: dueOn(v), value: v, prize: input.milestones.find((m) => m.value === v)?.prize ?? '' }))
+      : [];
+  useEffect(() => {
+    if (!isWeight || touched) return;
+    set({ milestones: every === 0 ? [] : stopsFor(every) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isWeight, touched, every, input.baseline, input.target, input.targetDate, input.unit, path.length]);
+  const editStop = (i: number, patch: Partial<{ value: number; prize: string }>) => {
+    setTouched(true);
+    set({
+      milestones: input.milestones.map((m, j) => {
+        if (j !== i) return m;
+        const value = patch.value ?? m.value ?? null;
+        return { ...m, ...patch, ...(patch.value != null ? { title: `${fmt(patch.value)} ${input.unit}`.trim(), due_date: dueOn(patch.value) } : {}), value };
+      }),
+    });
+  };
+  const downText = (v: number | null | undefined) => (v == null || input.baseline == null ? '' : `${fmt(Math.abs(input.baseline - v))} ${input.unit} ${v < input.baseline ? 'down' : 'up'}`);
 
   const gaps: string[] = [];
   if (!input.title.trim()) gaps.push('a name');
@@ -234,12 +263,81 @@ export function WhatStep(props: StepProps) {
         {existing.length >= 3 && <div className="banner warn">{plan?.name} already has {existing.length} goals. Most people stick with 3–4 at a time.</div>}
       </div>
 
+      {isWeight && (
+        <div className="stack-sm">
+          <span className="label">Milestones and prizes</span>
+          <span className="small muted" style={{ lineHeight: 1.5 }}>
+            Stops on the way, filled in for you. Each ticks itself the morning you weigh in at or {input.target! < input.baseline! ? 'under' : 'over'} it. Put a prize on the ones you want to work for.
+          </span>
+          <div className="chips" role="radiogroup" aria-label="Stops">
+            {(kg ? [2.5, 5, 0] : [5, 10, 0]).map((n) => (
+              <button
+                key={n}
+                type="button"
+                className="chip"
+                role="radio"
+                aria-checked={every === n}
+                onClick={() => {
+                  setEvery(n);
+                  setTouched(false);
+                  set({ milestones: n === 0 ? [] : stopsFor(n) });
+                }}
+              >
+                {n === 0 ? 'None' : `Every ${fmt(n)} ${input.unit}`}
+              </button>
+            ))}
+          </div>
+          {input.milestones.map((m, i) => (
+            <div key={i} className="plan-stop">
+              <span className="stack-sm" style={{ gap: 3 }}>
+                <input className="input" type="number" step="any" inputMode="decimal" aria-label={`Milestone ${i + 1} weight`} value={m.value ?? ''} onChange={(e) => e.target.value !== '' && editStop(i, { value: Number(e.target.value) })} />
+                <span className="xsmall muted">
+                  {downText(m.value)} · {shortDate(m.due_date)}
+                </span>
+              </span>
+              <input className="input" aria-label={`Prize at milestone ${i + 1}`} placeholder="Prize (optional), e.g. Canon RF 16mm lens" value={m.prize ?? ''} onChange={(e) => editStop(i, { prize: e.target.value })} />
+              <button
+                type="button"
+                className="link-btn"
+                aria-label={`Remove milestone ${i + 1}`}
+                onClick={() => {
+                  setTouched(true);
+                  set({ milestones: input.milestones.filter((_, j) => j !== i) });
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <div className="plan-stop" style={{ color: 'var(--muted)' }}>
+            <b className="num" style={{ paddingLeft: 12 }}>{fmt(input.target!)}</b>
+            <span className="small">The goal · prizes for finishing are below</span>
+            <span />
+          </div>
+          <button
+            type="button"
+            className="link-btn small"
+            style={{ alignSelf: 'flex-start' }}
+            onClick={() => {
+              setTouched(true);
+              const last = input.milestones.length ? input.milestones[input.milestones.length - 1]!.value ?? input.baseline! : input.baseline!;
+              const down = input.target! < input.baseline!;
+              const v = Math.round(down ? Math.max(input.target! + 1, last - 5) : Math.min(input.target! - 1, last + 5));
+              set({ milestones: [...input.milestones, { title: `${fmt(v)} ${input.unit}`.trim(), due_date: dueOn(v), value: v, prize: '' }] });
+            }}
+          >
+            + Add a milestone
+          </button>
+          <span className="xsmall muted">The date under each is where your path has you then: it's when the milestone shows on your calendar and roadmap.</span>
+        </div>
+      )}
+
       <details open={more} onToggle={(e) => setMore((e.currentTarget as HTMLDetailsElement).open)}>
         <summary className="small" style={{ cursor: 'pointer', minHeight: 40, display: 'flex', alignItems: 'center' }}>
-          More: dates to hit, prizes, a group
+          More: {isWeight ? "prizes for finishing, a group" : "dates to hit, prizes, a group"}
         </summary>
         <div className="stack" style={{ marginTop: 10 }}>
-          {(input.type === 'finish' || input.type === 'number') && (
+          {(input.type === 'finish' || input.type === 'number') && !isWeight && (
             <div className="stack-sm">
               <span className="label">{input.type === 'number' ? 'Dates to hit (10 lb down by Dec 13…)' : 'Dates to hit (modules, exam booking, exam day)'}</span>
               {input.milestones.map((m, i) => (

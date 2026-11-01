@@ -15,8 +15,14 @@ import {
   weighInStatus,
   weightMilestones,
   weightWeeks,
+  atPaceDate,
+  dateIn,
+  onPathDate,
+  weightStopValues,
+  isTally,
   type Goal,
   type ISODate,
+  type Milestone,
   type Plan,
   type WeighInStatus,
 } from '@six/core';
@@ -25,9 +31,11 @@ import { useView } from '../data/useView.ts';
 import { fmt } from '../data/derive.ts';
 import { opsLogSession, opsReplacePath, opsRestoreSession } from '../data/ops.ts';
 import { opsRecordReading } from '../data/connect.ts';
+import { opsAddMilestone, opsToggleMilestone } from '../data/ops.ts';
+import { opsDeleteMilestone, opsUpdateMilestone } from '../data/dated.ts';
 import type { Op } from '../data/model.ts';
 import { href } from '../router.ts';
-import { useToast } from './ui.tsx';
+import { Icon, useToast } from './ui.tsx';
 import { FileThumb } from './Attachments.tsx';
 import { photosOnGoal } from '../screens/PhotoTimeline.tsx';
 import { WeightGoalChart, type WeightRange } from './WeightGoalChart.tsx';
@@ -518,29 +526,7 @@ export function WeightSide({ goal, plan }: { goal: Goal; plan: Plan }) {
         <span className="small" style={{ lineHeight: 1.5, color: 'var(--ink-2)' }}>{paceText}</span>
       </section>
 
-      <section className="card stack-sm" aria-label="Weight milestones">
-        <span className="label">Weight milestones</span>
-        <div className="wg-ms head xsmall muted">
-          <span>Weight</span>
-          <span>At your pace</span>
-          <span>On the path</span>
-        </div>
-        {w.milestones.map((m) => (
-          <div key={m.value} className="wg-ms">
-            <span className="stack-sm" style={{ gap: 0 }}>
-              <b className="num">{fmt(m.value)}</b>
-              {!m.reachedOn && m === w.milestones.find((x) => !x.reachedOn) && <span className="xsmall muted">{fmt(m.toGo)} to go</span>}
-            </span>
-            {m.reachedOn ? (
-              <span style={{ color: 'var(--blue-ink)', fontWeight: 650 }}>Reached {shortDate(m.reachedOn)}</span>
-            ) : (
-              <span style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>{m.atPace ? shortDate(m.atPace) : '—'}</span>
-            )}
-            <span className="muted">{m.onPath ? shortDate(m.onPath) : '—'}</span>
-          </div>
-        ))}
-        <span className="xsmall muted">Each counts the first morning you weigh in at or {w.direction < 0 ? 'under' : 'over'} it.</span>
-      </section>
+      <WeightMilestonesCard goal={goal} plan={plan} />
 
       {wellAhead && pullTo && (
         <section className="card stack-sm" aria-label="Ahead by weeks">
@@ -559,5 +545,280 @@ export function WeightSide({ goal, plan }: { goal: Goal; plan: Plan }) {
         </section>
       )}
     </>
+  );
+}
+
+/** A heading with a short explanation on hover, focus or tap. */
+function InfoTip({ label, text, align = 'left' }: { label: string; text: string; align?: 'left' | 'right' }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="wg-tip-wrap">
+      <button type="button" className="wg-tip-btn" aria-expanded={open} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onClick={() => setOpen(true)}>
+        {label} <span aria-hidden="true">ⓘ</span>
+      </button>
+      {open && (
+        <span role="tooltip" className={`wg-tip ${align}`}>
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const ROUND_KEY = (goalId: string) => `six.milestones.round.${goalId}`;
+
+/**
+ * A weight goal's milestones: one list of weights on the way, each with its prize, when you get there
+ * at your pace and where the path has you. These are the goal's milestones (the same ones the
+ * roadmap, calendar and Prizes use): each ticks itself the morning a weigh-in reaches it. Adding one
+ * asks for a weight and a prize; its date is the path's. Milestones set off the app's stops (184.2)
+ * get a one-time offer to round to them (185), prizes and all.
+ */
+function WeightMilestonesCard({ goal, plan }: { goal: Goal; plan: Plan }) {
+  const w = useWeight(goal, plan);
+  const { data, unit, start, path, target, latest, perDay, by, direction } = w;
+  const { commit } = useStore();
+  const toast = useToast();
+  const [editing, setEditing] = useState<string | null>(null); // milestone id, or 'new'
+  const [wInput, setWInput] = useState('');
+  const [prizeInput, setPrizeInput] = useState('');
+  const [roundGone, setRoundGone] = useState(() => {
+    try {
+      return localStorage.getItem(ROUND_KEY(goal.id)) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const tz = data.profile.timezone;
+  const all = data.milestones.filter((m) => m.goal_id === goal.id);
+  const weighted = all.filter((m) => m.value != null && !isTally(m) && !m.count_action_id).sort((a, b) => (Number(b.value) - Number(a.value)) * (direction < 0 ? 1 : -1));
+  const dated = all.filter((m) => !weighted.includes(m) && !isTally(m)).sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
+  const stops = weightStopValues(start.value, target, unit);
+  const dueFor = (v: number) => onPathDate(start, path, v) ?? by;
+  const titleFor = (v: number) => `${fmt(v)} ${unit}`.trim();
+  const downText = (v: number) => `${fmt(Math.abs(start.value - v))} ${unit} ${direction < 0 ? 'down' : 'up'}`;
+
+  // Milestones that sit off the app's stops: each to its nearest free stop.
+  const used = new Set(weighted.map((m) => Number(m.value)));
+  const rounding: { m: Milestone; to: number }[] = [];
+  for (const m of weighted) {
+    const v = Number(m.value);
+    if (m.completed_at || stops.includes(v)) continue;
+    const near = stops.filter((x) => !used.has(x) && !rounding.some((r) => r.to === x)).sort((a, b) => Math.abs(a - v) - Math.abs(b - v))[0];
+    if (near != null && Math.abs(near - v) <= (/kg/i.test(unit) ? 2.5 : 5)) rounding.push({ m, to: near });
+  }
+  const dismissRound = () => {
+    setRoundGone(true);
+    try {
+      localStorage.setItem(ROUND_KEY(goal.id), '1');
+    } catch {
+      // storage blocked: the offer comes back next visit
+    }
+  };
+  const doRound = () => {
+    const ops = rounding.flatMap(({ m, to }) => opsUpdateMilestone(m, { value: to, title: titleFor(to), due_date: dueFor(to) }));
+    const undo = rounding.flatMap(({ m }): Op[] => [{ kind: 'update', collection: 'milestones', id: m.id, patch: { value: m.value, title: m.title, due_date: m.due_date } }]);
+    commit(ops);
+    dismissRound();
+    toast('Rounded to the app’s stops. Your prizes moved with them.', () => commit(undo));
+  };
+
+  const open = (m: Milestone | null) => {
+    setEditing(m ? m.id : 'new');
+    setWInput(m && m.value != null ? String(m.value) : '');
+    setPrizeInput(m?.prize ?? '');
+  };
+  const wNum = Number(wInput);
+  const wOk = wInput.trim() !== '' && Number.isFinite(wNum) && (direction < 0 ? wNum < start.value && wNum > target : wNum > start.value && wNum < target);
+  const save = () => {
+    if (!wOk) return;
+    if (editing === 'new') {
+      commit(opsAddMilestone(goal.id, titleFor(wNum), dueFor(wNum), { value: wNum, prize: prizeInput.trim() }));
+      toast(`Milestone added: ${titleFor(wNum)}`);
+    } else {
+      const m = all.find((x) => x.id === editing);
+      if (m) {
+        const moved = Number(m.value) !== wNum;
+        commit(opsUpdateMilestone(m, { value: wNum, prize: prizeInput.trim(), ...(moved ? { title: titleFor(wNum), due_date: dueFor(wNum) } : {}) }));
+      }
+    }
+    setEditing(null);
+  };
+  const remove = () => {
+    const m = all.find((x) => x.id === editing);
+    if (!m) return;
+    commit(opsDeleteMilestone(m));
+    toast(`Removed ${m.title}`, () => commit([{ kind: 'insert', collection: 'milestones', rows: [m as unknown as { id: string } & Record<string, unknown>] }]));
+    setEditing(null);
+  };
+  const addStops = () => {
+    const ops = stops.flatMap((v) => opsAddMilestone(goal.id, titleFor(v), dueFor(v), { value: v }));
+    commit(ops);
+    toast(`Added ${stops.map((v) => fmt(v)).join(', ')}`);
+  };
+
+  const form = (
+    <div className="wg-ms-form" role="group" aria-label={editing === 'new' ? 'Add a milestone' : 'Change milestone'}>
+      <b className="small">{editing === 'new' ? 'Add a milestone' : 'Change milestone'}</b>
+      <div className="row-start" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label className="field" style={{ flex: 'none' }}>
+          Weight
+          <span className="row-start" style={{ gap: 8, flexWrap: 'nowrap' }}>
+            <input type="number" step="any" inputMode="decimal" autoFocus value={wInput} onChange={(e) => setWInput(e.target.value)} placeholder={stops[0] != null ? fmt(stops[0]) : ''} style={{ width: 100 }} />
+            {wOk && <span className="small" style={{ color: 'var(--ink)' }}>{downText(wNum)}</span>}
+          </span>
+        </label>
+        <label className="field" style={{ flex: '1 1 180px' }}>
+          Prize (optional)
+          <input value={prizeInput} onChange={(e) => setPrizeInput(e.target.value)} placeholder="e.g. New running shoes" />
+        </label>
+      </div>
+      <span className="xsmall muted">
+        {wOk ? `On your calendar and roadmap on ${shortDate(dueFor(wNum))}, where the path has you there.` : `Between ${fmt(start.value)} and ${fmt(target)} ${unit}.`}
+      </span>
+      <div className="row-start" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" className="btn small primary" disabled={!wOk} onClick={save}>
+          Save
+        </button>
+        <button type="button" className="btn small" onClick={() => setEditing(null)}>
+          Cancel
+        </button>
+        {editing !== 'new' && (
+          <button type="button" className="link-btn small" style={{ color: 'var(--danger)' }} onClick={remove}>
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  const rows = [...weighted.map((m) => ({ m, value: Number(m.value) })), { m: null as Milestone | null, value: target }];
+  const nextOpen = rows.find((r) => (r.m ? !r.m.completed_at : !(latest && (direction < 0 ? Number(latest.value) <= target : Number(latest.value) >= target))));
+
+  return (
+    <section className="card stack-sm" aria-label="Milestones">
+      <div className="row-between">
+        <span className="label">Milestones</span>
+        <button type="button" className="link-btn small" onClick={() => open(null)}>
+          + Add a milestone
+        </button>
+      </div>
+
+      {!roundGone && rounding.length > 0 && (
+        <div className="wg-round">
+          <b className="small">Round your milestones to the app’s stops?</b>
+          <span className="small" style={{ lineHeight: 1.5 }}>
+            {rounding.map((r) => `${fmt(Number(r.m.value))} → ${fmt(r.to)}`).join(', ')}. Your prizes move with them, and their dates move to where your path has you ({rounding.map((r) => shortDate(dueFor(r.to))).join(', ')}).
+          </span>
+          <div className="row-start" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="btn small primary" onClick={doRound}>
+              Round them
+            </button>
+            <button type="button" className="btn small" onClick={dismissRound}>
+              Keep mine
+            </button>
+          </div>
+        </div>
+      )}
+
+      {weighted.length === 0 && stops.length > 0 && (
+        <div className="wg-round">
+          <span className="small" style={{ lineHeight: 1.5 }}>
+            Stops on the way down, each ticking itself when you get there: {stops.map((v) => fmt(v)).join(', ')}. Put a prize on the ones you want to work for.
+          </span>
+          <button type="button" className="btn small primary" style={{ alignSelf: 'flex-start' }} onClick={addStops}>
+            Add the app’s stops
+          </button>
+        </div>
+      )}
+
+      <div className="wg-ms4 head xsmall muted">
+        <span />
+        <span>Milestone</span>
+        <InfoTip label="At your pace" text={`If you keep losing what you have over the last four weeks${w.proj.ratePerWeek != null ? ` (${fmt(Math.abs(w.proj.ratePerWeek))} ${unit} a week)` : ''}, this is when you get there. It moves as your pace changes.`} />
+        <InfoTip label="On the path" align="right" text={`Where your plan has you: the steady line from your start to ${fmt(target)} by ${shortDate(by)}. Be there by this date and you stay on schedule. It’s also when the milestone shows on your calendar and roadmap.`} />
+      </div>
+
+      {rows.map(({ m, value }) => {
+        const reached = m ? !!m.completed_at : !!latest && (direction < 0 ? Number(latest.value) <= value : Number(latest.value) >= value);
+        const reachedOn = m?.completed_at ? dateIn(tz, m.completed_at) : null;
+        const pace = atPaceDate(latest, value, perDay);
+        const onPath = onPathDate(start, path, value);
+        const toGo = latest ? Math.max(0, (Number(latest.value) - value) * (direction < 0 ? 1 : -1)) : null;
+        const isNext = nextOpen && (nextOpen.m ? nextOpen.m === m : !m);
+        return (
+          <div key={m?.id ?? 'goal'} className={`wg-ms4${reached ? ' reached' : ''}`}>
+            <span className={`wg-ring${reached ? ' on' : ''}`} aria-label={reached ? 'Reached' : 'Not yet'}>
+              {reached && <Icon name="check" size={12} stroke={3.4} />}
+            </span>
+            <span className="stack-sm" style={{ gap: 3, minWidth: 0 }}>
+              {m ? (
+                <button type="button" className="wg-ms-name" onClick={() => open(m)} aria-label={`Change the ${fmt(value)} milestone`}>
+                  <b className="num">{fmt(value)}</b>
+                  <span className="xsmall muted">{downText(value)}</span>
+                </button>
+              ) : (
+                <span className="wg-ms-name">
+                  <b className="num">{fmt(value)}</b>
+                  <span className="xsmall muted">The goal</span>
+                </span>
+              )}
+              {m?.prize?.trim() ? (
+                <span className="wg-prize">
+                  <Icon name="gift" size={13} stroke={2} />
+                  <span>{m.prize}</span>
+                </span>
+              ) : (
+                m && !reached && (
+                  <button type="button" className="link-btn xsmall" style={{ alignSelf: 'flex-start', minHeight: 0 }} onClick={() => open(m)}>
+                    + Add a prize
+                  </button>
+                )
+              )}
+              {!reached && isNext && toGo != null && <span className="xsmall muted">{fmt(toGo)} {unit} to go</span>}
+              {m && reached && m.prize?.trim() && !m.prize_claimed_at && (
+                <button
+                  type="button"
+                  className="btn small wg-claim"
+                  onClick={() => {
+                    commit([{ kind: 'update', collection: 'milestones', id: m.id, patch: { prize_claimed_at: new Date().toISOString() } }]);
+                    toast(`Enjoy it: ${m.prize}`);
+                  }}
+                >
+                  Claim your prize
+                </button>
+              )}
+              {m && reached && m.prize_claimed_at && <span className="xsmall" style={{ color: 'var(--blue-ink)', fontWeight: 650 }}>Prize claimed</span>}
+            </span>
+            <b className="small" style={{ color: reached ? 'var(--blue-ink)' : 'var(--accent-ink)' }}>{reached ? `Reached${reachedOn ? ` ${shortDate(reachedOn)}` : ''}` : pace ? shortDate(pace) : '—'}</b>
+            <span className="small muted">{onPath ? shortDate(onPath) : '—'}</span>
+          </div>
+        );
+      })}
+
+      {dated.length > 0 && (
+        <div className="stack-sm" style={{ gap: 0, marginTop: 4 }}>
+          <span className="xsmall muted">Other dates</span>
+          {dated.map((m) => (
+            <div key={m.id} className="row-between small" style={{ minHeight: 44, borderTop: '1px solid var(--line-2)' }}>
+              <span className="row-start" style={{ gap: 8 }}>
+                <button type="button" className={`wg-ring${m.completed_at ? ' on' : ''}`} aria-label={m.completed_at ? `${m.title} done, tap to reopen` : `Mark ${m.title} done`} onClick={() => commit(opsToggleMilestone(m))}>
+                  {m.completed_at && <Icon name="check" size={12} stroke={3.4} />}
+                </button>
+                {m.title}
+                {m.prize?.trim() ? <span className="xsmall muted">· {m.prize}</span> : null}
+              </span>
+              <span className="muted">{shortDate(m.due_date)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing && form}
+
+      <span className="xsmall muted" style={{ lineHeight: 1.45 }}>
+        Each ticks itself the first morning you weigh in at or {direction < 0 ? 'under' : 'over'} it. They show on your calendar and roadmap on their path date, and their prizes in Prizes.
+      </span>
+    </section>
   );
 }

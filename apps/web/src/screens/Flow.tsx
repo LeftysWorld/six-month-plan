@@ -133,7 +133,7 @@ export function Flow({ goalId }: { goalId: string }) {
         <aside className="goal-page-side">
           {weight && <GoalMeasurements goal={goal} />}
           {weight && <WeightSide goal={goal} plan={plan} />}
-          <GoalRecord goal={goal} measurements={!weight} />
+          <GoalRecord goal={goal} measurements={!weight} milestones={!weight} />
           <GoalPrizes goal={goal} plan={plan} />
           <GoalGroupCard goal={goal} />
           <GoalManage goal={goal} />

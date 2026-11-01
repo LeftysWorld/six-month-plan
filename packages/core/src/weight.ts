@@ -111,6 +111,43 @@ export interface WeightMilestone {
 }
 
 /**
+ * The app's stops between a start and a target: every 10 lb (on the 5s: 185, 175 …) or every 5 kg,
+ * or every `every` units when given (5 lb: 190, 185 …). The target itself isn't included.
+ */
+export function weightStopValues(startValue: number, target: number, unit: string, every?: number): number[] {
+  const kg = /kg/i.test(unit);
+  const step = every ?? (kg ? 5 : 10);
+  if (!(step > 0)) return [];
+  const off = !kg && step === 10 ? 5 : 0;
+  const down = target < startValue;
+  const out: number[] = [];
+  if (down) for (let v = Math.floor((startValue - off - 1e-9) / step) * step + off; v > target + 1e-9; v -= step) out.push(v);
+  else for (let v = Math.ceil((startValue - off + 1e-9) / step) * step + off; v < target - 1e-9; v += step) out.push(v);
+  return out.filter((v) => (down ? v < startValue : v > startValue));
+}
+
+/** The first day the path is at or past `value` (in the goal's direction); null if it never gets there. */
+export function onPathDate(start: PathPoint, path: PathPoint[], value: number): ISODate | null {
+  const end = path.length ? path[path.length - 1]! : start;
+  const down = end.value < start.value;
+  const past = (x: number) => (down ? x <= value + 1e-9 : x >= value - 1e-9);
+  const span = daysBetween(start.date, end.date);
+  for (let i = 0; i <= span; i++) {
+    const d = addDays(start.date, i);
+    if (past(valueOnPath(start, path, d))) return d;
+  }
+  return null;
+}
+
+/** When `value` lands at `perDay` from the latest weigh-in; null without a rate going the right way. */
+export function atPaceDate(latest: Measurement | null, value: number, perDay: number | null): ISODate | null {
+  if (!latest || !perDay) return null;
+  const days = Math.ceil((value - Number(latest.value)) / perDay - 1e-9);
+  if (days < 0) return latest.measured_on;
+  return Math.sign(value - Number(latest.value)) === Math.sign(perDay) || days === 0 ? addDays(latest.measured_on, days) : null;
+}
+
+/**
  * Round-number stops between where you started and the target (every 10 lb or 5 kg), plus the
  * target itself, each with the day you reached it, or when it lands at your pace and on the path.
  */

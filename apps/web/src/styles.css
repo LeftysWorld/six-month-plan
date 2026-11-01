@@ -2437,3 +2437,25 @@ img.demo-media { background: var(--fill); }
 .wg-meter-you { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--accent-ink); box-shadow: 0 0 0 3px var(--surface); }
 .wg-ms { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; min-height: 44px; border-top: 1px solid var(--line-2); font-size: 14.5px; }
 .wg-ms.head { min-height: 0; border-top: 0; font-size: 12px; }
+
+/* Weight goal milestones: the stops, their prizes, at your pace and on the path */
+.wg-ms4 { display: grid; grid-template-columns: 28px minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 0.8fr); gap: 8px; align-items: center; padding: 10px 6px; margin: 0 -6px; border-top: 1px solid var(--line-2); border-radius: 10px; }
+.wg-ms4.head { border-top: 0; padding-top: 0; padding-bottom: 2px; }
+.wg-ms4.reached { background: var(--blue-soft); }
+.wg-ring { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border-strong); background: var(--surface); color: #fff; display: grid; place-items: center; box-sizing: border-box; padding: 0; flex: none; }
+button.wg-ring { cursor: pointer; }
+.wg-ring.on { border-color: var(--blue); background: var(--blue); }
+.wg-ms-name { display: flex; align-items: baseline; gap: 6px; border: 0; background: none; padding: 0; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+span.wg-ms-name { cursor: default; }
+.wg-ms-name b { font-size: 15.5px; }
+.wg-prize { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--amber-ink); min-width: 0; }
+.wg-prize span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wg-claim { align-self: flex-start; background: var(--amber-bar); color: #2a1404; border-color: transparent; min-height: 32px; }
+.wg-round { display: flex; flex-direction: column; gap: 10px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); border-radius: 16px; padding: 14px; }
+.wg-ms-form { display: flex; flex-direction: column; gap: 10px; background: var(--fill); border-radius: 16px; padding: 14px; }
+.wg-tip-wrap { position: relative; display: inline-flex; }
+.wg-tip-btn { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
+.wg-tip { position: absolute; top: 22px; z-index: 20; width: 250px; background: var(--ink); color: var(--ground); font-size: 12.5px; line-height: 1.45; padding: 10px 12px; border-radius: 12px; box-shadow: 0 8px 24px rgba(11,13,24,0.2); font-weight: 400; }
+.wg-tip.left { left: -40px; }
+.wg-tip.right { right: 0; }
+.plan-stop { display: grid; grid-template-columns: 110px minmax(0, 1fr) 36px; gap: 10px; align-items: start; padding-top: 8px; border-top: 1px solid var(--line-2); }
