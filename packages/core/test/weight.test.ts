@@ -50,6 +50,29 @@ test('milestones on the 5s, with the date at your pace and on the path', () => {
   assert.equal(ms[0]!.toGo, 5.8);
 });
 
+test('the trend pace runs through the 7-day average, not one morning', async () => {
+  const { trendPace } = await import('../src/index.ts');
+  // A first week like a real cut's: a big early drop (water), then a bounce.
+  const cut: Measurement[] = (
+    [
+      ['2026-10-26', 194.2], ['2026-10-27', 192.7], ['2026-10-28', 192.7], ['2026-10-29', 194.6],
+      ['2026-10-30', 194], ['2026-10-31', 192.4], ['2026-11-01', 190.8], ['2026-11-02', 191.3],
+    ] as const
+  ).map(([d, v]) => R(d, v));
+  const t = trendPace(cut, '2026-11-02')!;
+  assert.equal(t.date, '2026-11-02');
+  assert.equal(t.value, 192.6);
+  // About 1 lb a week on the trend, against about 2.6 on a line through the raw weigh-ins.
+  assert.ok(t.perDay! < -0.13 && t.perDay! > -0.17, String(t.perDay));
+  const ms = weightMilestones(start, path, 155, cut, cut.at(-1)!, -0.3726, 'lb', t);
+  // Trend dates land later than pace dates: the first week's water doesn't carry forward.
+  ms.forEach((m) => assert.ok(m.atTrend! > m.atPace!, `${m.value}: ${m.atTrend} vs ${m.atPace}`));
+  assert.equal(ms[0]!.atTrend, '2026-12-24');
+  // Too little to go on: no rate, so no trend dates.
+  assert.equal(trendPace(cut.slice(0, 2), '2026-10-27')!.perDay, null);
+  assert.equal(weightMilestones(start, path, 155, cut, cut.at(-1)!, -0.3726, 'lb', null)[0]!.atTrend, null);
+});
+
 test('steady pace is half to one percent of your weight a week', () => {
   assert.deepEqual(steadyRange(190.8), { low: 1, high: 1.9 });
 });

@@ -104,10 +104,45 @@ export interface WeightMilestone {
   reachedOn: ISODate | null;
   /** When it lands at the given rate from the latest weigh-in; null without a rate going the right way. */
   atPace: ISODate | null;
+  /** When it lands at the trend's rate from today's 7-day average; null without a trend going the right way. */
+  atTrend: ISODate | null;
   /** First day the path is at or past it. */
   onPath: ISODate | null;
   /** Still to go from the latest weigh-in (0 once reached). */
   toGo: number;
+}
+
+/** Where the 7-day average stands and how fast it's moving: the start of the trend projection. */
+export interface TrendPace {
+  /** The latest weigh-in's day. */
+  date: ISODate;
+  /** The 7-day average on that day. */
+  value: number;
+  /** Change per day of the 7-day average (negative when losing); null with too little to go on. */
+  perDay: number | null;
+}
+
+/**
+ * The trend's pace: a least-squares line through the 7-day average on each weigh-in day of the last
+ * `windowDays` days, starting from the average on the latest weigh-in. One big morning (or one big
+ * first week of water) moves it far less than it moves a line through the raw weigh-ins.
+ */
+export function trendPace(readings: Measurement[], today: ISODate, windowDays = 28): TrendPace | null {
+  const all = sorted(readings).filter((r) => r.measured_on <= today);
+  const latest = all.at(-1);
+  if (!latest) return null;
+  const value = rollingAverage(all, latest.measured_on);
+  if (value == null) return null;
+  const from = addDays(latest.measured_on, -(windowDays - 1));
+  const days = [...new Set(all.filter((r) => r.measured_on >= from).map((r) => r.measured_on))];
+  const pts = days.map((d) => ({ x: daysBetween(from, d), y: rollingAverage(all, d)! }));
+  if (pts.length < 2 || daysBetween(days[0]!, days.at(-1)!) < 3) return { date: latest.measured_on, value, perDay: null };
+  const n = pts.length;
+  const mx = pts.reduce((s, p) => s + p.x, 0) / n;
+  const my = pts.reduce((s, p) => s + p.y, 0) / n;
+  const sxx = pts.reduce((s, p) => s + (p.x - mx) ** 2, 0);
+  const slope = sxx ? pts.reduce((s, p) => s + (p.x - mx) * (p.y - my), 0) / sxx : 0;
+  return { date: latest.measured_on, value, perDay: Math.abs(slope) < 1e-6 ? null : slope };
 }
 
 /**
@@ -149,9 +184,19 @@ export function atPaceDate(latest: Measurement | null, value: number, perDay: nu
 
 /**
  * Round-number stops between where you started and the target (every 10 lb or 5 kg), plus the
- * target itself, each with the day you reached it, or when it lands at your pace and on the path.
+ * target itself, each with the day you reached it, or when it lands at your pace, at your trend and
+ * on the path.
  */
-export function weightMilestones(start: PathPoint, path: PathPoint[], target: number, readings: Measurement[], latest: Measurement | null, perDay: number | null, unit: string): WeightMilestone[] {
+export function weightMilestones(
+  start: PathPoint,
+  path: PathPoint[],
+  target: number,
+  readings: Measurement[],
+  latest: Measurement | null,
+  perDay: number | null,
+  unit: string,
+  trend: TrendPace | null = null,
+): WeightMilestone[] {
   const step = /kg/i.test(unit) ? 5 : 10;
   const down = target < start.value;
   // Pounds stop on the 5s (185, 175 …); kilograms on multiples of 5 (85, 80 …).
@@ -170,6 +215,11 @@ export function weightMilestones(start: PathPoint, path: PathPoint[], target: nu
       const days = Math.ceil((value - Number(latest.value)) / perDay);
       atPace = days <= 0 ? latest.measured_on : addDays(latest.measured_on, days);
     }
+    let atTrend: ISODate | null = null;
+    if (trend?.perDay && Math.sign(trend.perDay) === (down ? -1 : 1)) {
+      const days = Math.ceil((value - trend.value) / trend.perDay);
+      atTrend = days <= 0 ? trend.date : addDays(trend.date, Math.min(days, 3650));
+    }
     let onPath: ISODate | null = null;
     const span = daysBetween(start.date, lastPathDay);
     for (let i = 0; i <= span; i++) {
@@ -180,7 +230,7 @@ export function weightMilestones(start: PathPoint, path: PathPoint[], target: nu
       }
     }
     const toGo = latest ? Math.max(0, r1((Number(latest.value) - value) * (down ? 1 : -1))) : 0;
-    return { value, reachedOn: reached?.measured_on ?? null, atPace: reached ? null : atPace, onPath, toGo: reached ? 0 : toGo };
+    return { value, reachedOn: reached?.measured_on ?? null, atPace: reached ? null : atPace, atTrend: reached ? null : atTrend, onPath, toGo: reached ? 0 : toGo };
   });
 }
 

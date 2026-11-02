@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
-import { addDays, daysBetween, isoWeekday, shortDate, valueOnPath, type DateRange, type ISODate, type Measurement, type PathPoint } from '@six/core';
+import { addDays, daysBetween, isoWeekday, shortDate, valueOnPath, type DateRange, type ISODate, type Measurement, type PathPoint, type TrendPace } from '@six/core';
 import { fmt } from '../data/derive.ts';
 import { clampWindow, panWindow, windowLabel, xTicks, zoomWindow } from './chartZoom.ts';
 
@@ -21,10 +21,12 @@ interface Props {
   target: number;
   /** When the projection reaches the target at the slower edge of the range (the path's own pace). */
   slowEta: ISODate | null;
-  /** Round-number stops shown on the long views. */
-  milestones: { value: number; atPace: ISODate | null }[];
+  /** Round-number stops shown on the long views: where each lands at your pace, at your trend and on the path. */
+  milestones: { value: number; reachedOn?: ISODate | null; atPace: ISODate | null; atTrend?: ISODate | null; onPath?: ISODate | null }[];
   /** Rolling average per day (the trend line). */
   trendAt: (d: ISODate) => number | null;
+  /** Where the 7-day average stands and its pace, for the trend's projection; null without one. */
+  trend?: TrendPace | null;
   rangeId: WeightRange;
   onRange: (r: WeightRange) => void;
   picked: ISODate | null;
@@ -68,6 +70,104 @@ const C = {
   cone: 'rgba(125,107,255,0.14)',
   water: 'var(--amber-ink)',
 };
+
+type MarkKind = 'path' | 'trend' | 'pace';
+/** Each milestone marker takes the colour of the line it sits on. */
+const MARK: Record<MarkKind, string> = { path: C.path, trend: C.trend, pace: C.proj };
+const MARK_WORD: Record<MarkKind, string> = { path: 'on the path', trend: 'at your trend', pace: 'at your recent rate' };
+/** Labels are placed in this order, so when space runs out the recent-rate dates give way first. */
+const MARK_ORDER: MarkKind[] = ['trend', 'path', 'pace'];
+
+interface Mark {
+  key: string;
+  kind: MarkKind;
+  date: ISODate;
+  value: number;
+}
+
+/**
+ * The milestone markers for a window: each stop (not the target, which has its own line) on the
+ * path, on the trend's projection and on the recent rate's projection, where that date is in view.
+ * Stops already reached have no projected dates and drop off the path too. Markers right by the
+ * latest weigh-in are left off, where they'd sit on its label.
+ */
+export function milestoneMarks(
+  milestones: Props['milestones'],
+  target: number,
+  win: DateRange,
+  latest: Measurement | null,
+  x: (d: ISODate) => number,
+): Mark[] {
+  const out: Mark[] = [];
+  for (const m of milestones) {
+    if (m.value === target) continue;
+    const at: Record<MarkKind, ISODate | null | undefined> = { path: m.reachedOn ? null : m.onPath, trend: m.atTrend, pace: m.atPace };
+    for (const kind of MARK_ORDER) {
+      const d = at[kind];
+      if (!d || d < win.start || d > win.end) continue;
+      if (kind !== 'path' && latest && Math.abs(x(d) - x(latest.measured_on)) <= 70) continue;
+      out.push({ key: `${kind}-${m.value}`, kind, date: d, value: m.value });
+    }
+  }
+  return out;
+}
+
+interface Box {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
+const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+/**
+ * Where each marker's "185 · Dec 8" goes: above or below it, to the right or left, whichever spot
+ * stays inside the chart and clear of every label already placed (and the latest weigh-in's).
+ * Path labels try below first and the others above, so the lines' labels sit apart. A marker
+ * with no free spot keeps its dot (its date shows on hover) and goes without a label.
+ */
+export function placeMarkLabels(
+  marks: Mark[],
+  x: (d: ISODate) => number,
+  y: (v: number) => number,
+  area: { left: number; right: number; top: number; bottom: number },
+  reserved: { x: number; y: number; anchor: 'start' | 'end'; text: string } | null,
+): { key: string; kind: MarkKind; x: number; y: number; anchor: 'start' | 'end'; text: string }[] {
+  const charW = 6.3;
+  const H = 13;
+  const placed: Box[] = [];
+  if (reserved) {
+    const w = reserved.text.length * 7;
+    placed.push({ x0: reserved.anchor === 'start' ? reserved.x : reserved.x - w, x1: reserved.anchor === 'start' ? reserved.x + w : reserved.x, y0: reserved.y - 12, y1: reserved.y + 4 });
+  }
+  // Every marker's dot is kept clear too, so a label never covers another line's milestone.
+  for (const k of marks) placed.push({ x0: x(k.date) - 5, x1: x(k.date) + 5, y0: y(k.value) - 5, y1: y(k.value) + 5 });
+  const out: ReturnType<typeof placeMarkLabels> = [];
+  const order = [...marks].sort((a, b) => MARK_ORDER.indexOf(a.kind) - MARK_ORDER.indexOf(b.kind));
+  for (const k of order) {
+    const cx = x(k.date);
+    const cy = y(k.value);
+    const text = `${fmt(k.value)} · ${shortDate(k.date)}`;
+    const w = text.length * charW;
+    const above = { dy: -8 };
+    const below = { dy: 18 };
+    const vertical = k.kind === 'path' ? [below, above] : [above, below];
+    const spots = vertical.flatMap((v) => [
+      { x: cx + 8, y: cy + v.dy, anchor: 'start' as const },
+      { x: cx - 8, y: cy + v.dy, anchor: 'end' as const },
+    ]);
+    const own = { x0: cx - 5, x1: cx + 5, y0: cy - 5, y1: cy + 5 };
+    for (const s of spots) {
+      const box = { x0: s.anchor === 'start' ? s.x : s.x - w, x1: s.anchor === 'start' ? s.x + w : s.x, y0: s.y - H + 3, y1: s.y + 3 };
+      if (box.x0 < area.left || box.x1 > area.right + 8 || box.y0 < area.top - 4 || box.y1 > area.bottom) continue;
+      if (placed.some((b) => !(b.x0 === own.x0 && b.y0 === own.y0) && overlaps(b, box))) continue;
+      placed.push(box);
+      out.push({ key: k.key, kind: k.kind, x: s.x, y: s.y, anchor: s.anchor, text });
+      break;
+    }
+  }
+  return out;
+}
 
 /**
  * The weight goal's chart: your weigh-ins joined day to day, the rolling average, the on-track zone
@@ -127,11 +227,23 @@ export function WeightGoalChart(p: Props) {
   })();
   const showCone = rangeId === 'all' && latest && p.slowEta && projTo;
 
+  // The trend's projection: from today's 7-day average at the average's own pace, to the window's end
+  // or the target. Steadier than the line from one morning's weigh-in at the recent rate.
+  const trendTo = (() => {
+    const t = p.trend;
+    if (!t?.perDay || win.end <= t.date) return null;
+    const daysToTarget = Math.ceil((target - t.value) / t.perDay);
+    if (!(daysToTarget > 0)) return null;
+    const end = addDays(t.date, Math.min(daysToTarget, daysBetween(t.date, win.end)));
+    return { from: t, date: end, value: t.value + t.perDay * daysBetween(t.date, end) };
+  })();
+
   // The scale: zoomed in it fits your weigh-ins and the zone near them; zoomed out, the whole path.
   const readingValues = visible.map((r) => Number(r.value));
   const bandValues = [planAt(win.start), planAt(win.end)].flatMap((v) => [v + band, v - band]);
   let values = long ? [...bandValues, ...readingValues, target] : [...readingValues, ...bandValues.filter((v) => !readingValues.length || (v >= Math.min(...readingValues) - 4 && v <= Math.max(...readingValues) + 4))];
   if (projTo && !long) values.push(projTo.value);
+  if (trendTo && !long) values.push(trendTo.value);
   if (!values.length) values = bandValues;
   let lo = Math.min(...values);
   let hi = Math.max(...values);
@@ -269,7 +381,8 @@ export function WeightGoalChart(p: Props) {
   const ticks = xTicks(win);
   const label = rangeId === 'week' ? `This week · ${shortDate(addDays(today, 1 - isoWeekday(today)))} – ${shortDate(addDays(today, 7 - isoWeekday(today)))}` : windowLabel(win);
   const description = `${unit} from ${shortDate(win.start)} to ${shortDate(win.end)}.${latest ? ` Latest weigh-in ${fmt(Number(latest.value))} on ${shortDate(latest.measured_on)}.` : ''} The on-track zone is the path plus or minus ${band} ${unit}. Drag to pan, pinch or Ctrl-scroll to zoom, tap a day.`;
-  const ms = long ? p.milestones.filter((m) => m.atPace && m.atPace >= win.start && m.atPace <= win.end && m.value !== target && (!latest || Math.abs(x(m.atPace) - x(latest.measured_on)) > 70)) : [];
+  const marks = long ? milestoneMarks(p.milestones, target, win, latest, x) : [];
+  const markLabels = placeMarkLabels(marks, x, y, { left: LEFT, right: RIGHT, top: TOP, bottom: BOTTOM }, latest ? { x: lx, y: y(Number(latest.value)), anchor, text: `${fmt(Number(latest.value))} today` } : null);
 
   return (
     <div className="stack-sm wgc" ref={box}>
@@ -334,18 +447,28 @@ export function WeightGoalChart(p: Props) {
           </>
         )}
         {projTo && latest && <line x1={x(latest.measured_on)} y1={y(Number(latest.value))} x2={x(projTo.date)} y2={y(projTo.value)} stroke={C.proj} strokeWidth="2.5" strokeDasharray="6 6" strokeLinecap="round" />}
+        {trendTo && <line x1={x(trendTo.from.date)} y1={y(trendTo.from.value)} x2={x(trendTo.date)} y2={y(trendTo.value)} style={{ stroke: C.trend }} strokeWidth="3" strokeDasharray="1 7" strokeLinecap="round" />}
         {trendPts.length > 1 && <polyline points={trendLine} fill="none" style={{ stroke: C.trend }} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />}
         {visible.length > 1 && <polyline points={weighLine} fill="none" style={{ stroke: C.ink }} strokeWidth={long ? 1.4 : 2} strokeLinejoin="round" strokeLinecap="round" opacity={long ? 0.6 : 1} />}
         {visible.map((r) => (
           <circle key={r.id} cx={x(r.measured_on)} cy={y(Number(r.value))} r={r === latest ? dotR + 1.5 : dotR} style={{ fill: r === latest ? C.ink : 'var(--surface)', stroke: r === latest ? 'var(--surface)' : C.ink }} strokeWidth="2" />
         ))}
-        {ms.map((m) => (
-          <g key={m.value}>
-            <circle cx={x(m.atPace!)} cy={y(m.value)} r="4.5" style={{ fill: 'var(--surface)', stroke: C.trend }} strokeWidth="2" />
-            <text x={x(m.atPace!) + 9} y={y(m.value) - 7} fontSize="11.5" style={{ fill: C.trend, ...halo }}>
-              {fmt(m.value)} · {shortDate(m.atPace!)}
-            </text>
-          </g>
+        {marks.map((k) => (
+          <circle
+            key={k.key}
+            cx={x(k.date)}
+            cy={y(k.value)}
+            r={k.kind === 'trend' ? 5 : 4.5}
+            style={{ fill: k.kind === 'trend' ? MARK[k.kind] : 'var(--surface)', stroke: k.kind === 'trend' ? 'var(--surface)' : MARK[k.kind] }}
+            strokeWidth="2"
+          >
+            <title>{`${fmt(k.value)} ${unit} ${MARK_WORD[k.kind]}: ${shortDate(k.date)}`}</title>
+          </circle>
+        ))}
+        {markLabels.map((l) => (
+          <text key={l.key} x={l.x} y={l.y} fontSize="11.5" fontWeight={l.kind === 'trend' ? 650 : 500} textAnchor={l.anchor} style={{ fill: MARK[l.kind], ...halo }}>
+            {l.text}
+          </text>
         ))}
         {showCone && projTo && (
           <>
@@ -390,6 +513,11 @@ export function WeightGoalChart(p: Props) {
             ~{fmt(projTo.value)} by {shortDate(projTo.date)}
           </text>
         )}
+        {trendTo && !long && W >= 480 && x(trendTo.date) - x(trendTo.from.date) > 120 && (
+          <text x={x(trendTo.date) - 4} y={y(trendTo.value) - 10} fontSize="11.5" fontWeight="650" textAnchor="end" style={{ fill: C.trend, ...halo }}>
+            ~{fmt(Math.round(trendTo.value * 10) / 10)} trend by {shortDate(trendTo.date)}
+          </text>
+        )}
         {ticks.map((t) => (
           <text key={t.date} x={Math.min(Math.max(x(t.date), LEFT + 10), RIGHT - 10)} y={H - 8} fontSize="11" fontWeight={t.date === today ? 650 : t.major ? 600 : 400} textAnchor="middle" style={{ fill: t.date === today || t.major ? C.ink : C.muted }}>
             {rangeId === 'week' ? `${(W < 480 ? ['M', 'T', 'W', 'T', 'F', 'S', 'S'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])[isoWeekday(t.date) - 1]} ${t.date.slice(8).replace(/^0/, '')}` : t.label}
@@ -426,8 +554,26 @@ export function WeightGoalChart(p: Props) {
           <svg width="22" height="10" aria-hidden="true">
             <line x1="1" y1="5" x2="21" y2="5" stroke={C.proj} strokeWidth="2.5" strokeDasharray="5 4" />
           </svg>
-          Where you're heading
+          Heading at your recent rate
         </li>
+        {p.trend?.perDay != null && (
+          <li>
+            <svg width="22" height="10" aria-hidden="true">
+              <line x1="2" y1="5" x2="21" y2="5" style={{ stroke: C.trend }} strokeWidth="3" strokeDasharray="1 6" strokeLinecap="round" />
+            </svg>
+            Heading at your trend
+          </li>
+        )}
+        {marks.length > 0 && (
+          <li>
+            <svg width="40" height="10" aria-hidden="true">
+              <circle cx="6" cy="5" r="3.5" style={{ fill: 'var(--surface)', stroke: MARK.path }} strokeWidth="2" />
+              <circle cx="20" cy="5" r="4" style={{ fill: MARK.trend }} />
+              <circle cx="34" cy="5" r="3.5" style={{ fill: 'var(--surface)', stroke: MARK.pace }} strokeWidth="2" />
+            </svg>
+            Milestones on the path, trend and recent rate
+          </li>
+        )}
       </ul>
       <span className="xsmall muted">
         Drag to move · pinch or double-tap to zoom · tap a day

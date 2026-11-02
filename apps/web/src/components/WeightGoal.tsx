@@ -19,6 +19,7 @@ import {
   dateIn,
   onPathDate,
   weightStopValues,
+  trendPace,
   isTally,
   type Goal,
   type ISODate,
@@ -68,7 +69,10 @@ export function useWeight(goal: Goal, plan: Plan) {
   const slowEta = latest && pathPerWeek > 0 ? addDays(latest.measured_on, Math.ceil((Math.abs(remaining) / pathPerWeek) * 7)) : null;
   const trendAt = (d: ISODate) => rollingAverage(readings, d);
   const band = onTrackBand(unit);
-  const milestones = weightMilestones(start, path, target, readings, latest, perDay, unit);
+  // The trend's own pace (a line through the 7-day average), so milestone dates can ride the trend
+  // as well as your recent rate: one big first week of water barely moves it.
+  const trend = trendPace(readings, today);
+  const milestones = weightMilestones(start, path, target, readings, latest, perDay, unit, trend);
   // The first weeks of a cut are mostly water: until there are three weeks of weigh-ins, no finish
   // date, no "pull the date in", and pace dates are marked early.
   const firstOn = readings.find((r) => r.measured_on >= start.date)?.measured_on ?? null;
@@ -78,7 +82,7 @@ export function useWeight(goal: Goal, plan: Plan) {
   // Where you stand: the 7-day average at the latest weigh-in against the path that day.
   const trendNow = latest ? trendAt(latest.measured_on) : null;
   const standing = latest && trendNow != null ? statusOn(trendNow, latest.measured_on) : null;
-  return { data, today, view, type, unit, readings, path, target, by, start, direction, latest, pathAt, statusOn, proj, perDay, pathPerWeek, slowEta, trendAt, band, milestones, firstOn, daysIn, early, projectsOn, trendNow, standing };
+  return { data, today, view, type, unit, readings, path, target, by, start, direction, latest, pathAt, statusOn, proj, perDay, pathPerWeek, slowEta, trendAt, trend, band, milestones, firstOn, daysIn, early, projectsOn, trendNow, standing };
 }
 
 /** "On track: your 7-day average is 0.2 lb above the path", from the standing on the average. */
@@ -342,6 +346,7 @@ export function WeightProgress({ goal, plan, onSetWeek }: { goal: Goal; plan: Pl
             slowEta={w.slowEta}
             milestones={w.milestones}
             trendAt={w.trendAt}
+            trend={w.trend}
             rangeId={range}
             onRange={setRange}
             picked={range === 'week' ? picked : null}
