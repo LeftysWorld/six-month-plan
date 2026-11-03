@@ -14,6 +14,7 @@ import { Icon, useToast } from '../components/ui.tsx';
 import { CommitmentCard } from '../components/Commitment.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { carriedPhotos } from '../data/tracking.ts';
+import { DailyRoutine } from './today/DailyRoutine.tsx';
 import { useAddFiles } from '../components/Attachments.tsx';
 import { usePhotoInput } from '../components/usePhotoInput.tsx';
 import { LogSheet } from './LogSheet.tsx';
@@ -400,6 +401,8 @@ export function Today({ date }: { date?: ISODate } = {}) {
         {ritual}
         <DayDates day={day} />
         <TodayHabits day={day} />
+        {/* Your day sits right above the week's goals: here on a phone, under Check-ins on a computer. */}
+        {isToday && <div className="only-narrow"><DailyRoutine /></div>}
         {isToday && <div className="only-narrow"><WeekAhead /></div>}
         {isToday && commitment && commitment.forWeek === weekStart(today) && (
           <CommitmentCard review={commitment.review} text={commitment.text} forWeek={commitment.forWeek} today={today} compact />
@@ -410,6 +413,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
       <aside className="today-side stack only-wide" aria-label="This week">
         {weekStrip}
         <StreakCard streak={streak} />
+        {isToday && <DailyRoutine />}
         {isToday && <WeekAhead />}
         {anyDay}
         <p className="xsmall muted" style={{ margin: 0 }}>

@@ -42,6 +42,8 @@ export interface Profile {
   workout_prefs?: Partial<import('./settings.ts').WorkoutPrefs> | null;
   /** Tape-measuring day and photo reminder. */
   body_prefs?: Partial<import('./settings.ts').BodyPrefs> | null;
+  /** The daily routine on Today, built around a wake-up time (routine.ts). Unset: the default at 7:00. */
+  daily_routine?: Partial<import('./routine.ts').DailyRoutine> | null;
 }
 
 /**

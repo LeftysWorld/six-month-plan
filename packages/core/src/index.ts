@@ -18,3 +18,4 @@ export * from './ladder.ts';
 export * from './demo.ts';
 export * from './settings.ts';
 export * from './weight.ts';
+export * from './routine.ts';
