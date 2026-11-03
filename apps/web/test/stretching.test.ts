@@ -81,7 +81,7 @@ test('applying it: four goals in Body, sharing five stretching days and the mont
   assert.deepEqual(after.schedules.filter((s) => stretch.some((a) => a.id === s.action_id)).map((s) => `${s.days[0]}@${s.effective_from}`).sort(), ['1@2026-10-30', '2@2026-10-30', '4@2026-10-30', '5@2026-10-30', '6@2026-10-30']);
   const check = after.actions.find((a) => a.title === 'Monthly flexibility check')!;
   assert.equal(after.schedules.filter((s) => s.action_id === check.id).length, 6);
-  assert.deepEqual(after.measurementTypes.filter((t) => goalIds.includes(t.goal_id ?? '')).map((t) => `${t.name}:${t.cadence_days}`).sort(), ['Center split:7', 'Front split (left): front hip to floor:7', 'Front split (right): front hip to floor:7', 'Standing fold: chest to knees:7']);
+  assert.deepEqual(after.measurementTypes.filter((t) => goalIds.includes(t.goal_id ?? '')).map((t) => `${t.name}:${t.cadence_days}`).sort(), ['Center split:7', 'Front split (left): front hip to floor:7', 'Front split (right): front hip to floor:7', 'Seated fold: chest to knees:7', 'Standing fold: chest to knees:7']);
 });
 
 test('this week: stretching Friday and Saturday, one workout a day Thu–Sat, the old Stretch until today', () => {

@@ -242,6 +242,7 @@ export const FLEX_GOALS: { key: 'front' | 'side' | 'fold' | 'backbend'; title: s
     why: 'The same hamstrings as the front split, plus folding strength: each makes the other faster.',
     doneMeans: 'Chest on shins in the seated pike fold and the standing fold. 6–9 months is realistic.',
     measures: [
+      { name: 'Seated fold: chest to knees', unit: 'in', cadence: 7, weekday: 1 },
       { name: 'Standing fold: chest to knees', unit: 'in', cadence: 7, weekday: 1 },
     ],
     milestones: [],
