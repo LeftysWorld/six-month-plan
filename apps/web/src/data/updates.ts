@@ -615,5 +615,8 @@ export const stretchPicturesUpdate: AppUpdate = {
   },
 };
 
-/** Every update the app ships, newest first. */
-export const APP_UPDATES: AppUpdate[] = [stretchPicturesUpdate, fermentUpdate, glampGroupUpdate, flexMeasuresUpdate, docStudyUpdate];
+/**
+ * Every update the app ships, newest first. The flexibility measurements update (Oct 29) is applied
+ * and retired: the splits moved to a weekly check, and offering it again would set them back to daily.
+ */
+export const APP_UPDATES: AppUpdate[] = [stretchPicturesUpdate, fermentUpdate, glampGroupUpdate, docStudyUpdate];
