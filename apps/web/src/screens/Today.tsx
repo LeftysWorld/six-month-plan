@@ -13,6 +13,7 @@ import { href } from '../router.ts';
 import { Icon, useToast } from '../components/ui.tsx';
 import { CommitmentCard } from '../components/Commitment.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
+import { carriedPhotos } from '../data/tracking.ts';
 import { useAddFiles } from '../components/Attachments.tsx';
 import { usePhotoInput } from '../components/usePhotoInput.tsx';
 import { LogSheet } from './LogSheet.tsx';
@@ -106,7 +107,8 @@ export function Today({ date }: { date?: ISODate } = {}) {
   const isCheckInPhoto = (s: Session) => view.action(s.action_id)?.kind === 'photo';
   // Habits have their own section below, so they don't count toward the task total.
   const sessions = allSessions.filter((s) => !isCheckInPhoto(s) && !isHabit(data, s.action_id));
-  const photoSessions = allSessions.filter(isCheckInPhoto);
+  // A weekly photo missed on its day stays with your numbers until it's taken.
+  const photoSessions = [...allSessions.filter(isCheckInPhoto), ...carriedPhotos(data, day, today)];
   const done = sessions.filter((s) => s.status !== 'planned');
   const tray = view.unplacedThisWeek().filter((s) => !isHabit(data, s.action_id));
   const trayGroups = [...new Map(tray.map((s) => [s.action_id ?? s.id, s])).values()].map((s) => ({

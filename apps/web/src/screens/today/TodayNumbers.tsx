@@ -173,6 +173,7 @@ export function TodayNumbers({ photoSessions, day: shownDay }: { photoSessions: 
               {goal && (
                 <span className="xsmall muted today-number-goal">
                   {goal.title}
+                  {s.date && s.date < day ? ` · missed ${weekdayName(s.date)}` : ''}
                   {' · '}
                   <a href={href(`/goals/${goal.id}/photos`)}>timeline</a>
                 </span>

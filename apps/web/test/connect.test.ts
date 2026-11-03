@@ -314,3 +314,18 @@ test('a weekly number set to Monday shows from Monday until it is logged that we
   assert.equal(measureShownOn(d, 'any', '2026-11-04'), true);
   assert.equal(measureShownOn(d, 'off', '2026-11-02'), false);
 });
+
+test('a weekly photo missed on Monday stays on Today until it is taken; a daily one does not pile up', async () => {
+  const { carriedPhotos } = await import('../src/data/tracking.ts');
+  const d = base();
+  const photo = (id: string, title: string) => ({ id, title, kind: 'photo' as const, planned_minutes: 0, planned_count: null, min_label: '', min_minutes: null, min_count: null, priority: false, archived_at: null });
+  d.actions.push(photo('flex', 'Front split photo'), photo('daily', 'Progress photo'));
+  const s = (id: string, action_id: string, date: string, status = 'planned') =>
+    ({ id, action_id, week_start: '2026-11-02', slot: 0, date, title: id, priority: false, planned_minutes: 0, planned_count: null, status, actual_minutes: null, actual_count: null, note: '', obstacles: [], origin: 'scheduled', source: 'manual', moved_from: null, logged_at: null }) as never;
+  d.sessions = [s('mon', 'flex', '2026-11-02'), s('d-mon', 'daily', '2026-11-02'), s('d-wed', 'daily', '2026-11-04'), s('old', 'flex', '2026-10-26')];
+  // Wednesday: Monday's weekly photo carries over; the daily one has its own entry; last week's doesn't come back.
+  assert.deepEqual(carriedPhotos(d, '2026-11-04', '2026-11-04').map((x) => x.id), ['mon']);
+  assert.deepEqual(carriedPhotos(d, '2026-11-04', '2026-11-05'), [], 'only on today');
+  d.sessions[0] = { ...d.sessions[0]!, status: 'done' };
+  assert.deepEqual(carriedPhotos(d, '2026-11-04', '2026-11-04'), [], 'taken: gone');
+});

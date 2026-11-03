@@ -1,4 +1,4 @@
-import { isoWeekday, weekStart, type Action, type ActionSchedule, type ISODate } from '@six/core';
+import { isoWeekday, weekStart, type Action, type ActionSchedule, type ISODate, type Session } from '@six/core';
 import type { AppData, Op } from './model.ts';
 import { opsEnsureWeek } from './ops.ts';
 import { opsRemoveTask, withOps } from './breakdown.ts';
@@ -60,4 +60,17 @@ export function daysText(days: number[]): string {
   if (d === '1,2,3,4,5,6,7') return 'Every day';
   if (d === '1,2,3,4,5') return 'Weekdays';
   return days.map((n) => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][n - 1]).join(', ');
+}
+
+/**
+ * Photos missed earlier this week that still show in Today's numbers: a weekly photo (Monday's
+ * flexibility photos) stays until it's taken, as the weekly numbers do. Only on today, only this
+ * week, and not for a task that has its own entry today anyway (a daily progress photo).
+ */
+export function carriedPhotos(data: AppData, day: ISODate, today: ISODate): Session[] {
+  if (day !== today) return [];
+  const monday = weekStart(day);
+  const isPhoto = (s: Session) => data.actions.find((a) => a.id === s.action_id && !a.archived_at)?.kind === 'photo';
+  const dueToday = new Set(data.sessions.filter((s) => s.date === day && s.status !== 'moved').map((s) => s.action_id));
+  return data.sessions.filter((s) => s.date != null && s.date >= monday && s.date < day && s.status === 'planned' && isPhoto(s) && !dueToday.has(s.action_id));
 }
