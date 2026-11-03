@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { type Session, type SessionStatus, logsReading } from '@six/core';
+import { type Session, type SessionStatus, logsReading, shortDate } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { opsLogSession, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
 import { href } from '../router.ts';
 import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
 import { SessionFiles } from '../components/Attachments.tsx';
-import { lastReading, opsRecordReading, opsSetTaskGoals, readingOn } from '../data/connect.ts';
+import { checkMeasures, lastReading, opsRecordReading, opsRecordReadings, opsSetTaskGoals, readingOn } from '../data/connect.ts';
 import { WorkoutSheet } from '../components/Workout.tsx';
 import { StretchSheet } from '../components/Stretch.tsx';
 import { LinkToGoal, needsGoalLink } from '../components/LinkToGoal.tsx';
@@ -36,6 +36,12 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
     return day != null ? String(day) : String(lastReading(data, measureType.id)?.value ?? '');
   });
   const noTime = logsReading(action?.kind) || action?.kind === 'photo';
+  // A check task for goals that track numbers (the weekly flexibility check) logs them all here.
+  const day = session.date ?? today;
+  const [measures] = useState(() => checkMeasures(data, session.action_id));
+  const [numbers, setNumbers] = useState<Record<string, string>>(() =>
+    Object.fromEntries(measures.map((t) => [t.id, String(readingOn(data, t.id, day) ?? '')])),
+  );
 
   // A workout with a plan opens the workout log; "Skip, move…" comes back here.
   const [general, setGeneral] = useState(false);
@@ -51,6 +57,9 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
     const before = session;
     const value = reading.trim() === '' ? null : Number(reading);
     const record = measureType && status !== 'skipped' && value != null && Number.isFinite(value) ? opsRecordReading(data, measureType.id, value, session.date ?? today) : { ops: [], undo: [] };
+    const several = status !== 'skipped' ? opsRecordReadings(data, numbers, day) : { ops: [], undo: [], count: 0 };
+    record.ops.push(...several.ops);
+    record.undo.unshift(...several.undo);
     commit([
       ...record.ops,
       ...opsLogSession(session, {
@@ -62,7 +71,8 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
         on: today,
       }),
     ]);
-    toast(`${session.title}: ${states.find((s) => s.value === status)?.title.toLowerCase()}`, () => commit([...record.undo, ...opsRestoreSession(before)]));
+    const logged = several.count ? ` · ${several.count} number${several.count === 1 ? '' : 's'} logged` : '';
+    toast(`${session.title}: ${states.find((s) => s.value === status)?.title.toLowerCase()}${logged}`, () => commit([...record.undo, ...opsRestoreSession(before)]));
     onClose();
   }
 
@@ -143,6 +153,28 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
               </div>
             </div>
           ) : null}
+          {measures.length > 0 && (
+            <div className="stack-sm">
+              <div className="xsmall muted">The numbers{measures[0]?.unit ? ` (${measures[0].unit})` : ''}: fill in what you measured, leave the rest blank</div>
+              {measures.map((t) => {
+                const last = lastReading(data, t.id);
+                return (
+                  <label key={t.id} className="field">
+                    {t.name}
+                    {t.unit && t.unit !== measures[0]?.unit ? ` (${t.unit})` : ''}
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      value={numbers[t.id] ?? ''}
+                      placeholder={last && last.date !== day ? `Last: ${last.value} on ${shortDate(last.date)}` : 'First reading'}
+                      onChange={(e) => setNumbers({ ...numbers, [t.id]: e.target.value })}
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          )}
           {measureType && (
             <label className="field">
               {measureType.name}

@@ -289,3 +289,27 @@ test('tracking a photo on a goal makes a photo task on its days, and stopping en
   assert.equal(daysText([1, 2, 3, 4, 5, 6, 7]), 'Every day');
   assert.equal(daysText([1, 4]), 'Mon, Thu');
 });
+
+test('a check task logs every number its goals track, in one save with one undo', async () => {
+  const { checkMeasures, opsRecordReadings } = await import('../src/data/connect.ts');
+  const d = base();
+  d.goals.push(goal('splits', 'Front splits'), goal('fold', 'Chest to shins'));
+  d.measurementTypes = [
+    { id: 'left', name: 'Front split (left)', unit: 'in', cadence_days: 7, goal_id: 'splits', archived_at: null, on_today: false },
+    { id: 'right', name: 'Front split (right)', unit: 'in', cadence_days: 7, goal_id: 'splits', archived_at: null, on_today: false },
+    { id: 'gap', name: 'Splits gap', unit: 'in', cadence_days: 1, goal_id: 'splits', archived_at: '2026-10-29T00:00:00Z', on_today: false },
+    { id: 'standing', name: 'Standing fold', unit: 'in', cadence_days: 7, goal_id: 'fold', archived_at: null, on_today: false },
+    { id: 'kg', name: 'Weight', unit: 'lb', cadence_days: 1, goal_id: 'weight', archived_at: null, on_today: null },
+  ];
+  d.actions.push({ id: 'flex', title: 'Flexibility check', kind: 'check', planned_minutes: 10, planned_count: null, min_label: '', min_minutes: null, min_count: null, priority: false, archived_at: null });
+  d.actionGoals.push({ id: 'ag2', action_id: 'flex', goal_id: 'splits' }, { id: 'ag3', action_id: 'flex', goal_id: 'fold' }, { id: 'ag4', action_id: 'lift', goal_id: 'weight' });
+  // Stopped measurements are left out; a workout for a measured goal keeps its own log.
+  assert.deepEqual(checkMeasures(d, 'flex').map((t) => t.id), ['left', 'right', 'standing']);
+  assert.deepEqual(checkMeasures(d, 'lift'), []);
+  d.measurements = [{ id: 'm0', type_id: 'left', value: 14, measured_on: '2026-11-03', source: 'manual', note: '' }];
+  const r = opsRecordReadings(d, { left: '13.5', right: '12', standing: ' ' }, '2026-11-03');
+  assert.equal(r.count, 2, 'a blank box is skipped');
+  const after = run(d, r.ops);
+  assert.deepEqual(after.measurements.map((m) => `${m.type_id}:${m.value}`).sort(), ['left:13.5', 'right:12'], "the day's earlier reading is replaced");
+  assert.deepEqual(run(after, r.undo).measurements.map((m) => `${m.type_id}:${m.value}`), ['left:14'], 'one undo puts it all back');
+});

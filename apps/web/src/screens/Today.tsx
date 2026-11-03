@@ -13,6 +13,7 @@ import { href } from '../router.ts';
 import { Icon, useToast } from '../components/ui.tsx';
 import { CommitmentCard } from '../components/Commitment.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
+import { checkMeasures } from '../data/connect.ts';
 import { useAddFiles } from '../components/Attachments.tsx';
 import { usePhotoInput } from '../components/usePhotoInput.tsx';
 import { LogSheet } from './LogSheet.tsx';
@@ -162,6 +163,11 @@ export function Today({ date }: { date?: ISODate } = {}) {
     }
     if (s.status === 'planned' && kind === 'photo') {
       photo.pick(s);
+      return;
+    }
+    // A check that logs numbers (the weekly flexibility check) opens its sheet, so they go in with it.
+    if (s.status === 'planned' && checkMeasures(data, s.action_id).length) {
+      setOpen(s);
       return;
     }
     if (s.status === 'planned') {
