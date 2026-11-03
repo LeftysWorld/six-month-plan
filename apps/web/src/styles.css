@@ -910,6 +910,12 @@ input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-o
 .task-card { position: relative; transition: transform 0.25s var(--spring), opacity 0.2s; touch-action: pan-y; }
 .task-card.dragging { transition: none; }
 .task-card.logged { opacity: 0.72; }
+.task-card-wrap.has-grip .up-next-card { padding-left: 8px; gap: 8px; }
+.task-grip { align-self: stretch; height: auto; min-height: 44px; width: 26px; margin: -10px 0; }
+.task-card-wrap.lifted { opacity: 0.35; }
+.task-card-wrap.insert-before::before, .task-card-wrap.insert-after::after { content: ''; position: absolute; left: 12px; right: 12px; height: 3px; border-radius: 2px; background: var(--accent-ink); box-shadow: 0 0 0 3px var(--accent-soft); z-index: 2; }
+.task-card-wrap.insert-before::before { top: -7px; }
+.task-card-wrap.insert-after::after { bottom: -7px; }
 .task-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; background: none; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
 .task-card-title { font-size: 21px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15; }
 .task-card-title.done { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1.5px; }

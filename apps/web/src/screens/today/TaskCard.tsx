@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { shortDate, tallyText, type Session, logsReading } from '@six/core';
 import { useStore } from '../../data/store.tsx';
 import { fmt, minutesText } from '../../data/derive.ts';
@@ -12,7 +12,12 @@ import { StretchCardPlan } from '../../components/Stretch.tsx';
 const SWIPE_DONE = 84;
 
 /** One task card: tap the round button to check it off, tap the card for the log sheet, swipe left to finish it. */
-export function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: Session; hint?: string | null; onToggle: () => void; onOpen: () => void; swipe: boolean }) {
+/**
+ * `grip`: the drag handle that orders the day's cards (Today passes it), drawn at the card's left.
+ * `wrap`: attributes for the card's outer element (the drag list's data-row-id and friends, and
+ * the classes that mark where a dragged card would land).
+ */
+export function TaskCard({ session, hint, onToggle, onOpen, swipe, grip, wrap }: { session: Session; hint?: string | null; onToggle: () => void; onOpen: () => void; swipe: boolean; grip?: ReactNode; wrap?: HTMLAttributes<HTMLDivElement> & Record<`data-${string}`, string | number> }) {
   const view = useView();
   const { data, today } = useStore();
   const action = view.action(session.action_id);
@@ -81,7 +86,7 @@ export function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: 
   const topLine = reading != null ? `${fmt(reading)}${unit ? ` ${unit}` : ''}` : right;
 
   return (
-    <div className="task-card-wrap">
+    <div {...wrap} className={`task-card-wrap${wrap?.className ? ` ${wrap.className}` : ''}${grip ? ' has-grip' : ''}`}>
       {swipe && dx < 0 && (
         <div className="swipe-action" style={{ opacity: Math.min(1, -dx / SWIPE_DONE) }} aria-hidden="true">
           <Icon name="check" size={16} stroke={2.6} /> Done
@@ -95,6 +100,7 @@ export function TaskCard({ session, hint, onToggle, onOpen, swipe }: { session: 
         onPointerUp={onUp}
         onPointerCancel={onUp}
       >
+        {grip}
         <button type="button" className="task-card-body" onClick={() => !dx && onOpen()} aria-label={`${s.title}: details`}>
           {topLine && (
             <span className="mono" style={{ color: logged ? 'var(--accent-ink)' : 'var(--ink-2)' }}>

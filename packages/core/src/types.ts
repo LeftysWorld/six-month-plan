@@ -267,6 +267,8 @@ export interface Session {
   scheduled_on?: ISODate | null;
   /** A workout's overall effort, 1–10 (optional, asked when you finish). */
   effort?: number | null;
+  /** Where you put it on Today (0 = top), once you've dragged the day's cards; null: the default order. */
+  day_order?: number | null;
 }
 
 /** A photo or any other file attached to a logged task. The bytes live in file storage; this row says where. */

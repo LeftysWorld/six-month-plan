@@ -15,6 +15,9 @@ import { CommitmentCard } from '../components/Commitment.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { carriedPhotos } from '../data/tracking.ts';
 import { DailyRoutine } from './today/DailyRoutine.tsx';
+import { byDayOrder, opsOrderDay } from '../data/dayOrder.ts';
+import { useListDrag } from '../components/listDrag.ts';
+import { GRIP } from './Season.tsx';
 import { useAddFiles } from '../components/Attachments.tsx';
 import { usePhotoInput } from '../components/usePhotoInput.tsx';
 import { LogSheet } from './LogSheet.tsx';
@@ -110,7 +113,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
   const sessions = allSessions.filter((s) => !isCheckInPhoto(s) && !isHabit(data, s.action_id));
   // A weekly photo missed on its day stays with your numbers until it's taken.
   const photoSessions = [...allSessions.filter(isCheckInPhoto), ...carriedPhotos(data, day, today)];
-  const done = sessions.filter((s) => s.status !== 'planned');
+  const done = byDayOrder(sessions.filter((s) => s.status !== 'planned'));
   const tray = view.unplacedThisWeek().filter((s) => !isHabit(data, s.action_id));
   const trayGroups = [...new Map(tray.map((s) => [s.action_id ?? s.id, s])).values()].map((s) => ({
     first: s,
@@ -126,12 +129,19 @@ export function Today({ date }: { date?: ISODate } = {}) {
     const finished = all.filter((x) => x.status === 'done' || x.status === 'partial' || x.status === 'minimum').length;
     return `${finished} of ${all.length} this week`;
   };
-  const planned = [...sessions.filter((s) => s.status === 'planned'), ...trayToday].sort(
-    (a, b) => Number(b.priority) - Number(a.priority),
-  );
+  // Your order (drag a card by its grip), then priority first for cards you haven't placed.
+  const planned = byDayOrder([...sessions.filter((s) => s.status === 'planned'), ...trayToday]);
   const available = data.profile.available_minutes[isoWeekday(day) - 1] ?? 0;
   // "Any day this week" tasks go on the day you're looking at, unless that day has passed.
   const placeOn = day >= today ? day : today;
+  // Drag a card by its grip to put the day in your order. Done cards stay below the open ones.
+  const order = useListDrag((id, drop) => {
+    const shown = [...planned, ...done];
+    const { ops, undo } = opsOrderDay(shown, id, drop.index);
+    if (!ops.length) return;
+    commit(ops);
+    toast('Order saved', () => commit(undo));
+  });
 
   const plan = view.mainPlan;
   const coach = isToday ? coachLine(view, plan, today, sessions) : null;
@@ -389,12 +399,45 @@ export function Today({ date }: { date?: ISODate } = {}) {
           </div>
         )}
         {planned.length + done.length > 0 && (
-          <div className="task-cards">
-            {[...planned, ...done].map((s) => (
-              <TaskCard key={s.id} session={s} hint={hintFor(s)} onToggle={() => toggle(s)} onOpen={() => setOpen(s)} swipe={!isFuture && s.status === 'planned'} />
-            ))}
+          <div className="task-cards" data-bucket-drop="day">
+            {[...planned, ...done].map((s, i) => {
+              const drop = order.drag?.drop;
+              const insert = drop?.rowId === s.id ? (drop.side === 'before' ? ' insert-before' : ' insert-after') : '';
+              return (
+                <TaskCard
+                  key={s.id}
+                  session={s}
+                  hint={hintFor(s)}
+                  onToggle={() => toggle(s)}
+                  onOpen={() => setOpen(s)}
+                  swipe={!isFuture && s.status === 'planned'}
+                  wrap={{ 'data-row-id': s.id, 'data-bucket': 'day', 'data-index': i, className: `${order.drag?.id === s.id ? 'lifted' : ''}${insert}` }}
+                  grip={
+                    planned.length + done.length > 1 ? (
+                      <button
+                        type="button"
+                        className="season-grip task-grip"
+                        aria-label={`Drag ${s.title} to reorder`}
+                        onPointerDown={(e) => (e.stopPropagation(), order.start(e, s.id, true))}
+                        onClick={() => order.consumeClick()}
+                      >
+                        {GRIP}
+                      </button>
+                    ) : null
+                  }
+                />
+              );
+            })}
           </div>
         )}
+        {order.drag && (() => {
+          const moving = [...planned, ...done].find((x) => x.id === order.drag!.id);
+          return moving ? (
+            <div className="drag-ghost" style={{ left: order.drag.x, top: order.drag.y }} aria-hidden="true">
+              {moving.title}
+            </div>
+          ) : null;
+        })()}
         {(isToday || isFuture) && <AddTaskOnDay day={day} label={isToday ? 'Add a task' : `Add a task on ${weekdayName(day)}`} />}
 
         {/* What supports the list. On a phone the week's goals sit here; on a computer they sit in the right column under the streak. */}
