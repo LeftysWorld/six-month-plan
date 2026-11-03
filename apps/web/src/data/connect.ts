@@ -1,4 +1,4 @@
-import { milestoneReached, type Action, type ActionSchedule, type Goal, type ISODate, type MeasurementType, type Milestone, type Session } from '@six/core';
+import { milestoneReached, type Action, type ActionSchedule, type Goal, type ISODate, type Milestone, type Session } from '@six/core';
 import type { View } from './derive.ts';
 import type { AppData, Op } from './model.ts';
 import { opsLogSession } from './ops.ts';
@@ -70,36 +70,6 @@ export function opsRecordReading(data: AppData, typeId: string | null | undefine
     undo.push({ kind: 'update', collection: 'milestones', id: m.id, patch: { completed_at: null } });
   }
   return { ops, undo };
-}
-
-/**
- * The numbers a check task logs: every measurement still tracked by the goals it counts for, in
- * goal order (a weekly flexibility check logs the splits and the fold, one box each). Only check
- * tasks: a workout or a stretch for the same goals keeps its own log.
- */
-export function checkMeasures(data: AppData, actionId: string | null | undefined): MeasurementType[] {
-  const action = data.actions.find((a) => a.id === actionId);
-  if (!action || action.kind !== 'check') return [];
-  const goalIds = data.actionGoals.filter((ag) => ag.action_id === action.id).map((ag) => ag.goal_id);
-  const live = goalIds.filter((id) => data.goals.some((g) => g.id === id && !g.archived_at));
-  return live.flatMap((id) => data.measurementTypes.filter((t) => t.goal_id === id && !t.archived_at));
-}
-
-/** Several readings on one day, each replacing that day's earlier one; blanks are skipped. One undo for all. */
-export function opsRecordReadings(data: AppData, values: Record<string, string>, date: ISODate): { ops: Op[]; undo: Op[]; count: number } {
-  const ops: Op[] = [];
-  const undo: Op[] = [];
-  let count = 0;
-  for (const [typeId, raw] of Object.entries(values)) {
-    if (raw.trim() === '') continue;
-    const value = Number(raw);
-    if (!Number.isFinite(value)) continue;
-    const r = opsRecordReading(data, typeId, value, date);
-    ops.push(...r.ops);
-    undo.unshift(...r.undo);
-    count++;
-  }
-  return { ops, undo, count };
 }
 
 /** Open milestones with a value, on goals measured by this type, that a reading reaches. */
