@@ -367,6 +367,11 @@ export interface MeasurementType {
   archived_at: string | null;
   /** Shown in Today's numbers for a daily entry. Unset: on for a goal's main number, off for the rest. */
   on_today?: boolean | null;
+  /**
+   * The day of the week it's taken (1 = Monday … 7 = Sunday), for a weekly number. It shows in
+   * Today's numbers from that day until it's logged that week. Null: any day.
+   */
+  weekday?: number | null;
 }
 
 export interface Measurement {

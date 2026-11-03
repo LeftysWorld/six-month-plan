@@ -330,7 +330,7 @@ export function opsApplySplitsPack(data: AppData, today: ISODate, choices: PackC
     for (const g of FLEX_GOALS) {
       for (const m of g.measures) {
         if (hasMeasure(next, goalIds[g.key]!, m.name)) continue;
-        add([{ kind: 'insert', collection: 'measurementTypes', rows: [{ id: newId(), name: m.name, unit: m.unit, cadence_days: m.cadence ?? 28, goal_id: goalIds[g.key]!, archived_at: null, on_today: false }] }]);
+        add([{ kind: 'insert', collection: 'measurementTypes', rows: [{ id: newId(), name: m.name, unit: m.unit, cadence_days: m.cadence ?? 28, goal_id: goalIds[g.key]!, archived_at: null, on_today: m.weekday != null, weekday: m.weekday ?? null }] }]);
       }
       for (const m of g.milestones) {
         const due = addDays(start, Math.round(m.monthsIn * 30.4));
@@ -355,7 +355,7 @@ export function opsApplySplitsPack(data: AppData, today: ISODate, choices: PackC
       if (!goalIds[g.key]) continue;
       for (const m of g.measures) {
         if (hasMeasure(next, goalIds[g.key]!, m.name)) continue;
-        add([{ kind: 'insert', collection: 'measurementTypes', rows: [{ id: newId(), name: m.name, unit: m.unit, cadence_days: m.cadence ?? 28, goal_id: goalIds[g.key]!, archived_at: null, on_today: false }] }]);
+        add([{ kind: 'insert', collection: 'measurementTypes', rows: [{ id: newId(), name: m.name, unit: m.unit, cadence_days: m.cadence ?? 28, goal_id: goalIds[g.key]!, archived_at: null, on_today: m.weekday != null, weekday: m.weekday ?? null }] }]);
       }
     }
   }

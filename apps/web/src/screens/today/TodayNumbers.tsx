@@ -5,7 +5,7 @@ import { href } from '../../router.ts';
 import { fmt } from '../../data/derive.ts';
 import { useView } from '../../data/useView.ts';
 import { opsLogSession, opsRestoreSession } from '../../data/ops.ts';
-import { lastReading, measureLabel, measureOnToday, opsRecordReading, readingOn } from '../../data/connect.ts';
+import { lastReading, measureLabel, measureShownOn, opsRecordReading, readingOn } from '../../data/connect.ts';
 import { nextValuedPrize } from '../../data/prizes.ts';
 import { addDays, shortDate, weekdayName, type Goal, logsReading } from '@six/core';
 import { Icon, useToast } from '../../components/ui.tsx';
@@ -15,7 +15,8 @@ import { usePhotoInput } from '../../components/usePhotoInput.tsx';
 /**
  * Today's numbers: the measurements you've set to show on Today (a goal's main number by default),
  * logged right here so you never have to open each goal. Stopped measurements never show. One
- * that already has a "Log a number" task that day is left to that task.
+ * that already has a "Log a number" task that day is left to that task. A weekly one set to a day
+ * (the flexibility numbers on Mondays) shows from that day until it's logged that week.
  *
  * Every day shows them, but only today can log: a past day shows what you logged (or that you
  * didn't), a coming day shows what's due, with nothing to tap.
@@ -63,7 +64,7 @@ export function TodayNumbers({ photoSessions, day: shownDay }: { photoSessions: 
       .map((a) => a!.measurement_type_id!),
   );
   const rows = data.measurementTypes
-    .filter((t) => measureOnToday(data, t.id) && !taskTypes.has(t.id))
+    .filter((t) => measureShownOn(data, t.id, day) && !taskTypes.has(t.id))
     .map((t) => ({ type: t, goal: liveGoals.find((g) => g.id === t.goal_id || g.measurement_type_id === t.id) }))
     .filter((r): r is { type: typeof r.type; goal: NonNullable<typeof r.goal> } => !!r.goal)
     .map((r) => ({ ...r, main: r.goal.measurement_type_id === r.type.id }))

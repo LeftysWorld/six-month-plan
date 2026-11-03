@@ -289,3 +289,28 @@ test('tracking a photo on a goal makes a photo task on its days, and stopping en
   assert.equal(daysText([1, 2, 3, 4, 5, 6, 7]), 'Every day');
   assert.equal(daysText([1, 4]), 'Mon, Thu');
 });
+
+test('a weekly number set to Monday shows from Monday until it is logged that week', async () => {
+  const { measureShownOn } = await import('../src/data/connect.ts');
+  const d = base();
+  d.goals.push(goal('splits', 'Front splits'));
+  d.measurementTypes = [
+    { id: 'left', name: 'Front split (left)', unit: 'in', cadence_days: 7, goal_id: 'splits', archived_at: null, on_today: true, weekday: 1 },
+    { id: 'any', name: 'Center split', unit: 'in', cadence_days: 7, goal_id: 'splits', archived_at: null, on_today: true, weekday: null },
+    { id: 'off', name: 'Standing fold', unit: 'in', cadence_days: 7, goal_id: 'splits', archived_at: null, on_today: false, weekday: 1 },
+    { id: 'wed', name: 'Bridge', unit: 'in', cadence_days: 7, goal_id: 'splits', archived_at: null, on_today: true, weekday: 3 },
+  ];
+  // Week of Mon Nov 2, 2026. Not logged yet: from its day on, never before it.
+  assert.equal(measureShownOn(d, 'wed', '2026-11-03'), false, 'not before its day');
+  assert.equal(measureShownOn(d, 'wed', '2026-11-04'), true);
+  assert.equal(measureShownOn(d, 'left', '2026-11-02'), true);
+  assert.equal(measureShownOn(d, 'left', '2026-11-03'), true, 'missed Monday: still there Tuesday');
+  // Logged Tuesday: Tuesday keeps showing what was logged; Wednesday on, it waits for next Monday.
+  d.measurements = [{ id: 'm1', type_id: 'left', value: 12, measured_on: '2026-11-03', source: 'manual', note: '' }];
+  assert.equal(measureShownOn(d, 'left', '2026-11-03'), true);
+  assert.equal(measureShownOn(d, 'left', '2026-11-04'), false);
+  assert.equal(measureShownOn(d, 'left', '2026-11-09'), true, 'back next Monday');
+  // Without a day it's every day; "Show on Today" off still hides it.
+  assert.equal(measureShownOn(d, 'any', '2026-11-04'), true);
+  assert.equal(measureShownOn(d, 'off', '2026-11-02'), false);
+});

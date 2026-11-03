@@ -65,6 +65,7 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261126000000_settings.sql', table: 'profiles', columns: ['training_rules', 'workout_prefs', 'body_prefs'] },
   { file: '20261127000000_weight_task.sql', table: 'actions', columns: [] },
   { file: '20261128000000_photo_align.sql', table: 'attachments', columns: ['align'] },
+  { file: '20261129000000_measure_weekday.sql', table: 'measurement_types', columns: ['weekday'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */

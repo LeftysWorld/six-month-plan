@@ -1,4 +1,4 @@
-import { milestoneReached, type Action, type ActionSchedule, type Goal, type ISODate, type Milestone, type Session } from '@six/core';
+import { addDays, milestoneReached, weekStart, type Action, type ActionSchedule, type Goal, type ISODate, type Milestone, type Session } from '@six/core';
 import type { View } from './derive.ts';
 import type { AppData, Op } from './model.ts';
 import { opsLogSession } from './ops.ts';
@@ -215,6 +215,21 @@ export function measureOnToday(data: AppData, typeId: string): boolean {
   if (!t || t.archived_at) return false;
   if (measuredDaily(t)) return true;
   return t.on_today ?? data.goals.some((g) => g.measurement_type_id === typeId);
+}
+
+/**
+ * Whether a measurement is in Today's numbers on `day`. Set to a day of the week (the weekly
+ * flexibility numbers on Mondays), it shows from that day until it's logged that week: miss
+ * Monday and it's still there Tuesday; log it Tuesday and it's gone until next Monday (the day
+ * it was logged keeps showing what you logged). Without a day, as measureOnToday.
+ */
+export function measureShownOn(data: AppData, typeId: string, day: ISODate): boolean {
+  if (!measureOnToday(data, typeId)) return false;
+  const t = data.measurementTypes.find((m) => m.id === typeId)!;
+  if (!t.weekday || measuredDaily(t)) return true;
+  const from = addDays(weekStart(day), t.weekday - 1);
+  if (day < from) return false;
+  return !data.measurements.some((m) => m.type_id === typeId && m.measured_on >= from && m.measured_on < day);
 }
 
 /** "Body fat (%)": a measurement's name with its unit. */

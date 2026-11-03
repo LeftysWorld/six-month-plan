@@ -17,6 +17,7 @@ export function usePhotoInput(onPicked: (session: Session, files: File[]) => voi
       ref={ref}
       type="file"
       accept="image/*"
+      multiple
       hidden
       onChange={(e) => {
         const s = target.current;

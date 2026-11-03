@@ -8,6 +8,8 @@ import { daysText, opsAddPhotoTracker, opsStopPhotoTracker, photoTrackers } from
 import { opsAddMeasurementType, opsDeleteMeasurement, opsLogReading, opsUpdateGoal } from '../data/ops.ts';
 import { NumberInput } from './ui.tsx';
 
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
 /**
  * Tracking, shared by a goal's page and a group's page: one row per thing tracked (a number like
  * "Center split", or a photo), with its latest reading and the change since the
@@ -187,7 +189,7 @@ export function MeasureRow({ type, goal, goals, canLog = true, onMsg }: { type: 
           <span className="track-row-name">
             <b className="small">{type.name}</b>
             <span className="xsmall muted">
-              {main ? 'main number · ' : ''}every {type.cadence_days <= 1 ? 'day' : `${type.cadence_days} days`}
+              {main ? 'main number · ' : ''}every {type.cadence_days <= 1 ? 'day' : type.weekday && type.cadence_days >= 7 ? WEEKDAYS[type.weekday - 1] : `${type.cadence_days} days`}
               {onToday ? ' · on Today' : ''}
               {due && canLog ? ' · due' : ''}
             </span>
@@ -261,6 +263,27 @@ export function MeasureRow({ type, goal, goals, canLog = true, onMsg }: { type: 
             <input className="input" type="number" min={1} max={90} style={{ width: 70 }} value={type.cadence_days} onChange={(e) => Number(e.target.value) > 0 && update({ cadence_days: Number(e.target.value) })} aria-label="Every how many days" />
             days
           </label>
+          {type.cadence_days >= 7 && !measuredDaily(type) && (
+            <label className="row-start small" style={{ gap: 6 }}>
+              On
+              <select
+                value={type.weekday ?? ''}
+                aria-label="Which day of the week"
+                onChange={(e) => {
+                  const weekday = e.target.value === '' ? null : Number(e.target.value);
+                  update({ weekday });
+                  onMsg(weekday ? `${type.name} shows on Today from ${WEEKDAYS[weekday - 1]} until you log it` : `${type.name}: any day`);
+                }}
+              >
+                <option value="">Any day</option>
+                {WEEKDAYS.map((d, i) => (
+                  <option key={d} value={i + 1}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {goals && goals.length > 1 && !main && (
             <label className="row-start small" style={{ gap: 6 }}>
               Goal

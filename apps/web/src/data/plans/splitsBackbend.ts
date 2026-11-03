@@ -216,15 +216,15 @@ export const STRETCH_DETAILS = [
 ].join('\n');
 
 /** The four goals the plan serves. `key` matches a goal you may already have. */
-export const FLEX_GOALS: { key: 'front' | 'side' | 'fold' | 'backbend'; title: string; why: string; doneMeans: string; measures: { name: string; unit: string; cadence?: number }[]; milestones: { title: string; monthsIn: number }[] }[] = [
+export const FLEX_GOALS: { key: 'front' | 'side' | 'fold' | 'backbend'; title: string; why: string; doneMeans: string; measures: { name: string; unit: string; cadence?: number; weekday?: number }[]; milestones: { title: string; monthsIn: number }[] }[] = [
   {
     key: 'front',
     title: 'Front splits, both sides',
     why: 'Mobility I will keep for decades, and the hip flexors my backbend needs.',
     doneMeans: 'Front splits flat on both sides, hips square. 6–9 months is realistic; expect one side to lag.',
     measures: [
-      { name: 'Front split (left): front hip to floor', unit: 'in', cadence: 7 },
-      { name: 'Front split (right): front hip to floor', unit: 'in', cadence: 7 },
+      { name: 'Front split (left): front hip to floor', unit: 'in', cadence: 7, weekday: 1 },
+      { name: 'Front split (right): front hip to floor', unit: 'in', cadence: 7, weekday: 1 },
     ],
     milestones: [],
   },
@@ -233,7 +233,7 @@ export const FLEX_GOALS: { key: 'front' | 'side' | 'fold' | 'backbend'; title: s
     title: 'Side (center) split',
     why: 'The hardest of the four; daily time is what moves it.',
     doneMeans: 'Within about 4 inches (10 cm) of the floor by month 9, then keep going. Most adults take 12+ months to go flat.',
-    measures: [{ name: 'Center split', unit: 'in', cadence: 7 }],
+    measures: [{ name: 'Center split', unit: 'in', cadence: 7, weekday: 1 }],
     milestones: [],
   },
   {
@@ -242,7 +242,7 @@ export const FLEX_GOALS: { key: 'front' | 'side' | 'fold' | 'backbend'; title: s
     why: 'The same hamstrings as the front split, plus folding strength: each makes the other faster.',
     doneMeans: 'Chest on shins in the seated pike fold and the standing fold. 6–9 months is realistic.',
     measures: [
-      { name: 'Standing fold: chest to knees', unit: 'in', cadence: 7 },
+      { name: 'Standing fold: chest to knees', unit: 'in', cadence: 7, weekday: 1 },
     ],
     milestones: [],
   },
@@ -266,6 +266,6 @@ export const MONTHLY_CHECK = {
     'Center split: front-view photo.',
     'Chest to shins: side photo of the standing fold.',
     'Backbend: side photo of your best bridge.',
-    'Add the photos to this task. The numbers are logged in the weekly flexibility measurements.',
+    'Add the photos to this task. The numbers go in Today’s numbers every Monday.',
   ].join('\n'),
 };
