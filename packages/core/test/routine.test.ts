@@ -34,3 +34,14 @@ test('where you are in the day: the block under way, the next item, what is past
   assert.equal(timeOfDay(0), '12:00 am');
   assert.equal(timeOfDay(12 * 60 + 5), '12:05 pm');
 });
+
+test('a rest day drops the pre-workout and the lift; the rest keeps its times', () => {
+  const rest = routineRows(dailyRoutine(null), false);
+  assert.deepEqual(rest.map((r) => r.item.what), ['Wake up, glass of water', 'Whey shake #1 + creatine (5\u00a0g)', 'Whey shake #2', 'Dinner', 'Magnesium bisglycinate', 'Deep Sleep Complex', 'Lights out']);
+  assert.equal(rest[1]!.time, '9:45 am');
+  assert.match(rest[1]!.note, /^Rest day/);
+  assert.equal(routineRows(dailyRoutine(null), true).length, 9);
+  // A saved routine from before rest days (no "on") shows every item every day.
+  const old = dailyRoutine({ wake: 420, items: [{ at: 0, what: 'Wake' }, { at: 60, what: 'Lift' }] });
+  assert.equal(routineRows(old, false).length, 2);
+});

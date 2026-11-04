@@ -13,6 +13,10 @@ export interface RoutineItem {
   what: string;
   /** "{wake}" is replaced with the wake-up time ("8 hours of sleep, up at 7:00"). */
   note?: string;
+  /** Only on lifting days, or only on rest days. Unset: every day. */
+  on?: 'lift' | 'rest';
+  /** The note on a rest day instead, when it says something different. */
+  rest_note?: string;
 }
 
 export interface DailyRoutine {
@@ -25,9 +29,9 @@ export const DEFAULT_ROUTINE: DailyRoutine = {
   wake: 7 * 60,
   items: [
     { at: 0, what: 'Wake up, glass of water' },
-    { at: 30, what: 'GHOST Legend pre-workout', note: 'Take it 20–30 min before you lift.' },
-    { at: 60, minutes: 90, what: 'Lift, then stretch' },
-    { at: 165, what: 'Whey shake #1 + creatine (5\u00a0g)', note: 'Mix the creatine right into the shake. It works the same at any time of day. Taking it daily is what matters.' },
+    { at: 30, what: 'GHOST Legend pre-workout', note: 'Take it 20–30 min before you lift.', on: 'lift' },
+    { at: 60, minutes: 90, what: 'Lift, then stretch', on: 'lift' },
+    { at: 165, what: 'Whey shake #1 + creatine (5\u00a0g)', note: 'Mix the creatine right into the shake. It works the same at any time of day. Taking it daily is what matters.', rest_note: 'Rest day, same shake and creatine: taking it daily is what matters.' },
     { at: 360, what: 'Whey shake #2', note: 'This replaces lunch. No caffeine after this point.' },
     { at: 690, what: 'Dinner', note: 'Finish eating at least 3 hours before bed.' },
     { at: 900, what: 'Magnesium bisglycinate', note: 'It helps you relax and sleep.' },
@@ -64,14 +68,18 @@ export interface RoutineRow {
   note: string;
 }
 
-/** The day's items at clock times, from the wake-up. */
-export function routineRows(r: DailyRoutine): RoutineRow[] {
-  return r.items.map((item) => {
+/**
+ * The day's items at clock times, from the wake-up. On a rest day (`lift` false) the lifting-only
+ * items (pre-workout, the lift) drop out and rest-day notes are used; the rest of the day keeps its times.
+ */
+export function routineRows(r: DailyRoutine, lift = true): RoutineRow[] {
+  return r.items.filter((item) => !item.on || item.on === (lift ? 'lift' : 'rest')).map((item) => {
     const start = r.wake + item.at;
     const end = start + (item.minutes ?? 0);
     const samePeriod = Math.floor((start % 1440) / 720) === Math.floor((end % 1440) / 720);
     const time = item.minutes ? `${timeOfDay(start, !samePeriod)}–${timeOfDay(end)}` : timeOfDay(start);
-    return { item, start, end, time, note: (item.note ?? '').replace('{wake}', timeOfDay(r.wake, false)) };
+    const note = (!lift && item.rest_note ? item.rest_note : item.note) ?? '';
+    return { item, start, end, time, note: note.replace('{wake}', timeOfDay(r.wake, false)) };
   });
 }
 

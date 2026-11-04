@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { WAKE_CHOICES, dailyRoutine, routineNow, routineRows, timeOfDay } from '@six/core';
 import { useStore } from '../../data/store.tsx';
+import { useView } from '../../data/useView.ts';
 import { opsProfile } from '../../data/ops.ts';
 import { Icon, useToast } from '../../components/ui.tsx';
 
@@ -28,15 +29,20 @@ function inText(minutes: number): string {
 
 /**
  * Your day, on Today between the check-in and the week's goals: the routine at clock times, built
- * around one wake-up time. What's under way or next is marked; what's past fades and drops its
+ * around one wake-up time. On a rest day (no workout today) the pre-workout and the lift drop out.
+ * What's under way or next is marked; what's past fades and drops its
  * note. Change "Up at" and the whole day moves with it. Folds to one line (remembered on this
  * device) that still says what's next.
  */
 export function DailyRoutine() {
-  const { data, commit } = useStore();
+  const { data, commit, today } = useStore();
   const toast = useToast();
+  const view = useView();
   const routine = dailyRoutine(data.profile.daily_routine);
-  const rows = routineRows(routine);
+  // A lifting day is a day with a workout on it (moved or not, done or still to do); any other day is a
+  // rest day: no pre-workout, no lift. A workout skipped today makes it a rest day too.
+  const lift = view.sessionsOn(today).some((s) => s.status !== 'skipped' && view.action(s.action_id)?.kind === 'workout');
+  const rows = routineRows(routine, lift);
   const [now, setNow] = useState(() => minutesNow(data.profile.timezone));
   const [folded, setFolded] = useState(() => {
     try {
@@ -61,8 +67,9 @@ export function DailyRoutine() {
 
   const setWake = (wake: number) => {
     const before = data.profile.daily_routine ?? null;
-    commit(opsProfile({ daily_routine: { ...routine, wake } }));
-    const lights = routineRows({ ...routine, wake }).at(-1);
+    // Only the wake-up is saved; the items come from the app, so changes to them (rest days) reach you.
+    commit(opsProfile({ daily_routine: { ...(data.profile.daily_routine ?? {}), wake, items: undefined } }));
+    const lights = routineRows({ ...routine, wake }, lift).at(-1);
     toast(`Up at ${timeOfDay(wake)}${lights ? ` · ${lights.item.what.toLowerCase()} ${timeOfDay(lights.start)}` : ''}`, () => commit(opsProfile({ daily_routine: before })));
   };
 
@@ -76,7 +83,7 @@ export function DailyRoutine() {
   if (folded) {
     return (
       <button type="button" className="ritual-fold routine-fold" onClick={() => fold(false)} aria-expanded={false}>
-        <span className="label">Your day</span>
+        <span className="label">{lift ? 'Your day' : 'Rest day'}</span>
         <span className="xsmall muted routine-fold-sub">{summary}</span>
         <Icon name="chevron" size={14} stroke={2.2} />
       </button>
@@ -87,7 +94,7 @@ export function DailyRoutine() {
     <section className="card stack-sm routine" aria-label="Your day">
       <div className="row-between" style={{ gap: 8 }}>
         <button type="button" className="routine-head" onClick={() => fold(true)} aria-expanded>
-          <span className="label">Your day</span>
+          <span className="label">{lift ? 'Your day' : 'Rest day'}</span>
           <Icon name="chevron" size={14} stroke={2.2} />
         </button>
         <label className="routine-wake small">
