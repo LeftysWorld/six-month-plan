@@ -246,6 +246,7 @@ export function FinishWorkout({
   onSave,
   onBack,
   saveLabel,
+  pain,
 }: {
   summary: string;
   unrated: { name: string; index: number }[];
@@ -257,6 +258,8 @@ export function FinishWorkout({
   onSave: () => void;
   onBack: () => void;
   saveLabel: string;
+  /** A limit's pain check (the left shoulder): 0–10 for today, with its rule. */
+  pain?: { name: string; rule: string; value: number | null; onChange: (v: number | null) => void };
 }) {
   return (
     <Sheet title="Finish workout" onClose={onBack}>
@@ -291,6 +294,25 @@ export function FinishWorkout({
         </div>
         <span className="xsmall muted">{effort != null ? `${effort} · ${EFFORT_WORDS[effort]}` : 'Skip it if you like. Each exercise has its own rating.'}</span>
       </div>
+      )}
+      {pain && (
+        <div className="stack-sm" style={{ gap: 10 }}>
+          <div className="row-between" style={{ alignItems: 'baseline' }}>
+            <b>{pain.name} today, 0–10</b>
+            <span className="tag">0 = no pain</span>
+          </div>
+          <div className="finish-effort pain-scale" role="radiogroup" aria-label={`${pain.name} pain, 0 to 10`}>
+            {[0, ...STEPS].map((n) => (
+              <button key={n} type="button" role="radio" aria-checked={pain.value === n} className={`${pain.value === n ? 'on' : ''}${n > 3 ? ' high' : ''}`} onClick={() => pain.onChange(pain.value === n ? null : n)}>
+                {n}
+              </button>
+            ))}
+          </div>
+          <span className={`xsmall${pain.value != null && pain.value > 3 ? ' pain-warn' : ' muted'}`}>
+            {pain.value != null && pain.value > 3 ? `Above 3: stop or swap the exercise that hurt, and watch it tomorrow. ` : ''}
+            {pain.rule}
+          </span>
+        </div>
       )}
       <button type="button" className="btn primary" onClick={onSave}>
         {saveLabel}

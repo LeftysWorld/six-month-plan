@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { linkWithNext, planGroups, stepFor, trainingRules, workoutPrefs, cleanEffort, effortHint, effortZone as effortZoneOf, parseWorkoutPlan, repsText, restSeconds, setsText, suggestWeight, targetText, weekdayName, EFFORT_WORDS, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
+import { linkWithNext, planGroups, trainingRules, workoutPrefs, cleanEffort, effortHint, effortZone as effortZoneOf, parseWorkoutPlan, repsText, restSeconds, setsText, targetText, weekStart, weekdayName, CLASS_WORDS, EFFORT_WORDS, type DoneSet, type PlannedExercise, type Session, type WorkoutSet } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { fmt } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
 import { opsLogSession, opsRestoreSession, opsSaveExerciseLogs, opsSaveWorkout, opsStartExtra } from '../data/ops.ts';
 import { cleanPlan } from '../data/breakdown.ts';
+import { bodyWeight, opsSkipDeload, painCheck, targetsFor } from '../data/progress.ts';
 import { SessionFiles, useAddFiles } from './Attachments.tsx';
 import type { AppData, Op } from '../data/model.ts';
 import { Icon, Sheet, useToast } from './ui.tsx';
@@ -303,7 +304,12 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   const [draft] = useState<Draft | null>(() => readDraft(session.id));
   // Exercises added for this workout only (or to keep in the plan from now on).
   const [extras, setExtras] = useState<Extra[]>(() => draft?.extras ?? savedExtras(basePlan, saved));
-  const plan: Extra[] = [...basePlan, ...extras];
+  const rawPlan: Extra[] = [...basePlan, ...extras];
+  // The progression rules: each exercise's target (weight, sets, range) from your history, by class,
+  // and whether this is a deload week (half the sets, same weights).
+  const { targets, deload } = targetsFor(data, session, rawPlan);
+  const plan: Extra[] = rawPlan.map((e, i) => ({ ...e, sets: targets[i]!.sets, reps_min: targets[i]!.reps_min, reps_max: targets[i]!.reps_max }));
+  const body = bodyWeight(data, day);
   // Your settings: weight steps by equipment, the biggest jump allowed, and how you log.
   const rules = trainingRules(data.profile.training_rules);
   const prefs = workoutPrefs(data.profile.workout_prefs);
@@ -316,7 +322,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     const g = groups[gi]!;
     return g.superset ? `${gi + 1}${String.fromCharCode(65 + g.members.indexOf(i))}` : String(gi + 1);
   };
-  const suggestions = plan.map((e) => suggestWeight(e, last.get(e.name.toLowerCase()) ?? null, stepFor(e.name, rules, e.weight_note), lastEffort.get(e.name.toLowerCase()) ?? null, rules.max_jump_pct));
+  const suggestions = targets;
   const planWeight = (i: number) => suggestions[i]!.weight;
 
   const [rows, setRows] = useState<Row[][]>(() => {
@@ -348,6 +354,9 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   });
   const setFeedbackAt = (i: number, patch: Partial<ExerciseFeedbackValue>) => setFeedback((all) => all.map((f, a) => (a === i ? { ...f, ...patch } : f)));
   const [sessionEffort, setSessionEffort] = useState<number | null>(() => cleanEffort(session.effort));
+  // The limit that asks for a pain check at the end (the left shoulder), and today's number for it.
+  const pain = painCheck(data);
+  const [shoulderPain, setShoulderPain] = useState<number | null>(() => session.shoulder_pain ?? null);
   const [finishing, setFinishing] = useState(false);
   const firstOpen = (r: Row[][]) => r.findIndex((sets) => sets.some((x) => !x.done));
   const [open, setOpen] = useState<number>(() => Math.max(0, firstOpen(rows)));
@@ -513,13 +522,17 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     const effortChanged = sessionEffort !== cleanEffort(session.effort);
     const effortOps: Op[] = effortChanged ? [{ kind: 'update', collection: 'sessions', id: session.id, patch: { effort: sessionEffort } }] : [];
     const effortUndo: Op[] = effortChanged ? [{ kind: 'update', collection: 'sessions', id: session.id, patch: { effort: cleanEffort(session.effort) } }] : [];
-    commit([...saveOps, ...logs.ops, ...planOps, ...opsLogSession(session, { status, note, on: today }), ...effortOps]);
+    const painChanged = pain != null && shoulderPain !== (session.shoulder_pain ?? null);
+    const painOps: Op[] = painChanged ? [{ kind: 'update', collection: 'sessions', id: session.id, patch: { shoulder_pain: shoulderPain } }] : [];
+    const painUndo: Op[] = painChanged ? [{ kind: 'update', collection: 'sessions', id: session.id, patch: { shoulder_pain: session.shoulder_pain ?? null } }] : [];
+    commit([...saveOps, ...logs.ops, ...planOps, ...opsLogSession(session, { status, note, on: today }), ...effortOps, ...painOps]);
     try {
       localStorage.removeItem(draftKey(session.id));
     } catch {
       // nothing to clear
     }
-    toast(`${session.title}: ${doneCount} of ${total} sets`, () => commit([...undoSets, ...logs.undo, ...opsRestoreSession(before), ...effortUndo]));
+    const hurt = shoulderPain != null && shoulderPain > 3 ? ` · ${pain?.name.toLowerCase()} ${shoulderPain}/10: stop or swap what hurt` : '';
+    toast(`${session.title}: ${doneCount} of ${total} sets${hurt}`, () => commit([...undoSets, ...logs.undo, ...opsRestoreSession(before), ...effortUndo, ...painUndo]));
     onClose();
   }
 
@@ -555,7 +568,15 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
               </span>
             ) : (
               <span className="xsmall muted num">
-                {targetText({ ...e, weight: sug.weight }, unit)}
+                {targetText(
+                  {
+                    ...e,
+                    weight: sug.weight,
+                    // The rules' number beats the plan's note ("~70–80 lb assist") once there's history.
+                    weight_note: sug.weight != null && sug.why !== 'plan' ? (sug.cls === 'assisted' ? `${fmt(sug.weight)} ${unit} assist` : '') : e.weight_note,
+                  },
+                  unit,
+                )}
                 {e.rest && !groupOf(i).superset ? ` · rest ${e.rest}` : ''}
               </span>
             )}
@@ -572,19 +593,24 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
         {isOpen && (
           <div className="workout-ex-body">
             <DemoButton name={e.name} kind="strength" demo={e.demo} />
-            {sug.why === 'up' && !future && (
-              <span className="workout-up">
-                ↑ Up to {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time
+            {!future && sug.text && (
+              <span className={`workout-up${sug.why === 'failed_jump' || sug.why === 'deload' ? ' info' : ''}`}>
+                {sug.why === 'load_up' || sug.why === 'assist_down' || sug.why === 'carry' ? '↑ ' : sug.why === 'add_set' ? '+ ' : ''}
+                {sug.text}
               </span>
             )}
-            {sug.why === 'bigjump' && !future && (
-              <span className="workout-up">
-                You hit {e.reps_max} on every set last time, but the next weight is a bigger jump than your settings allow. Add a rep or a set first.
+            {!future && sug.stalled && (
+              <span className="workout-flag">Stalled: no more reps or weight for 2 sessions. Hold the weight and focus on clean reps; enough stalls bring the deload forward.</span>
+            )}
+            {!future && (
+              <span className="xsmall muted workout-effort-target">
+                <b>{CLASS_WORDS[sug.cls]}</b> · {sug.effort}
+                {sug.cap != null && !sug.effort.includes(String(sug.cap)) ? ` Stop at ${sug.cap} reps.` : ''}
               </span>
             )}
-            {sug.why === 'allout' && !future && (
-              <span className="workout-up">
-                Staying at {fmt(sug.weight!)} {unit}: you hit {e.reps_max} on every set last time, but rated it 10 (nothing left). Earn it once more.
+            {!future && sug.cls === 'assisted' && body.latest != null && sug.weight != null && (
+              <span className="xsmall muted">
+                You lift about {fmt(body.latest - sug.weight)} {unit} ({fmt(body.latest)} body weight − {fmt(sug.weight)} assist). Losing weight counts as progress too.
               </span>
             )}
             {e.note && !groupOf(i).superset && <span className="xsmall muted">{e.note}</span>}
@@ -732,6 +758,27 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
           </span>
         )}
       </div>
+      {deload.now && (
+        <div className="banner info deload-banner">
+          <span>
+            <b>Deload week</b>
+            {deload.reason ? ` (${deload.reason})` : ''}: half the sets, the same weights, 3–4 reps left on every set. Recover now, progress again next week.
+          </span>
+          {!future && session.status === 'planned' && (
+            <button
+              type="button"
+              className="link-btn small"
+              onClick={() => {
+                const { ops, undo } = opsSkipDeload(data, weekStart(day));
+                commit(ops);
+                toast('Deload moved to next week', () => commit(undo));
+              }}
+            >
+              Not this week
+            </button>
+          )}
+        </div>
+      )}
       {future && <div className="banner info">This is {weekdayName(day)}’s plan. On {weekdayName(day)}, open it from Today to tick off each set and enter your actual weight and reps.</div>}
       {action?.details?.trim() && (
         <details className="task-details">
@@ -865,6 +912,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
           askWorkout={prefs.workout_rating}
           effort={sessionEffort}
           onEffort={setSessionEffort}
+          pain={pain ? { name: pain.name, rule: pain.pain_rule ?? '', value: shoulderPain, onChange: setShoulderPain } : undefined}
           onRate={(i) => {
             setFinishing(false);
             openAndShow(i, '.ex-feedback');

@@ -15,6 +15,7 @@ import { CommitmentCard } from '../components/Commitment.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { carriedPhotos } from '../data/tracking.ts';
 import { DailyRoutine } from './today/DailyRoutine.tsx';
+import { TrainingNotices } from './today/TrainingNotices.tsx';
 import { byDayOrder, opsOrderDay } from '../data/dayOrder.ts';
 import { useListDrag } from '../components/listDrag.ts';
 import { GRIP } from './Season.tsx';
@@ -387,6 +388,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
           </p>
         )}
         {isFuture && <span className="xsmall muted">Coming up. You can check these off on the day.</span>}
+        {isToday && <TrainingNotices />}
 
         {/* Today's numbers and photos come first: a weigh-in or a progress photo is the quickest check-in of the day. */}
         <TodayNumbers photoSessions={photoSessions} day={day} />

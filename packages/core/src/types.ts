@@ -44,6 +44,8 @@ export interface Profile {
   body_prefs?: Partial<import('./settings.ts').BodyPrefs> | null;
   /** The daily routine on Today, built around a wake-up time (routine.ts). Unset: the default at 7:00. */
   daily_routine?: Partial<import('./routine.ts').DailyRoutine> | null;
+  /** Where training stands: the phase (cut until a weight, then build) and deload weeks you said no to. */
+  training_state?: Partial<import('./progression.ts').TrainingState> | null;
 }
 
 /**
@@ -269,6 +271,8 @@ export interface Session {
   effort?: number | null;
   /** Where you put it on Today (0 = top), once you've dragged the day's cards; null: the default order. */
   day_order?: number | null;
+  /** A workout's left-shoulder pain, 0–10, asked when you finish (when a limit asks for a pain check). */
+  shoulder_pain?: number | null;
 }
 
 /** A photo or any other file attached to a logged task. The bytes live in file storage; this row says where. */

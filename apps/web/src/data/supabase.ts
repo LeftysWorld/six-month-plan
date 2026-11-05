@@ -68,6 +68,8 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261129000000_measure_weekday.sql', table: 'measurement_types', columns: ['weekday'] },
   { file: '20261130000000_daily_routine.sql', table: 'profiles', columns: ['daily_routine'] },
   { file: '20261201000000_day_order.sql', table: 'sessions', columns: ['day_order'] },
+  { file: '20261202000000_progression.sql', table: 'sessions', columns: ['shoulder_pain'] },
+  { file: '20261202000000_progression.sql', table: 'profiles', columns: ['training_state'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */

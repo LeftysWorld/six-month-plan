@@ -166,12 +166,20 @@ export function TrainingSection() {
 
       <SetCard title="Weight steps">
         <span className="set-hint" style={{ marginTop: -4 }}>
-          The smallest jump you can make. Suggestions and the coach never go further in one step.
+          How each lift moves up. Compound lifts (presses, rows, pulldowns): every set at the top of the range, then one standard step. Isolation lifts (curls, raises, extensions, flys): every set at the top, then one more set (up to 4), then the small step. Assisted: less assist.
         </span>
-        <StepperControl label="Dumbbells" hint={`e.g. 12.5 → ${fmt(12.5 + rules.steps.dumbbell)}`} value={rules.steps.dumbbell} options={stepOptions} format={(v) => `${fmt(v)} ${u}`} onChange={(v) => save({ steps: { ...rules.steps, dumbbell: v } })} />
+        <StepperControl label="Dumbbells" hint={`compound · e.g. 50 → ${fmt(50 + rules.steps.dumbbell)}`} value={rules.steps.dumbbell} options={stepOptions} format={(v) => `${fmt(v)} ${u}`} onChange={(v) => save({ steps: { ...rules.steps, dumbbell: v } })} />
         <StepperControl label="Machines" hint="one plate on the stack" value={rules.steps.machine} options={stepOptions} format={(v) => `${fmt(v)} ${u}`} onChange={(v) => save({ steps: { ...rules.steps, machine: v } })} />
         <StepperControl label="Cable" hint="one pin" value={rules.steps.cable} options={stepOptions} format={(v) => `${fmt(v)} ${u}`} onChange={(v) => save({ steps: { ...rules.steps, cable: v } })} />
-        <StepperControl label="Biggest jump" hint="over that: more reps or a set first" value={rules.max_jump_pct} options={[0.05, 0.1, 0.15, 0.2, 0.25, 0.5]} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => save({ max_jump_pct: v })} />
+        <StepperControl label="Small dumbbell step" hint="isolation · 0 if your gym has none (then slower tempo instead)" value={rules.iso_steps.dumbbell} options={[0, ...stepOptions]} format={(v) => (v ? `${fmt(v)} ${u}` : 'None')} onChange={(v) => save({ iso_steps: { ...rules.iso_steps, dumbbell: v } })} />
+        <StepperControl label="Small cable step" hint="isolation · the smallest plate" value={rules.iso_steps.cable} options={[0, ...stepOptions]} format={(v) => (v ? `${fmt(v)} ${u}` : 'None')} onChange={(v) => save({ iso_steps: { ...rules.iso_steps, cable: v } })} />
+        <StepperControl label="Assist step" hint="pull-ups and dips: this much less assist" value={rules.assist_step} options={stepOptions} format={(v) => `${fmt(v)} ${u}`} onChange={(v) => save({ assist_step: v })} />
+        <StepperControl label="Biggest jump" hint="the coach never suggests more in one step" value={rules.max_jump_pct} options={[0.05, 0.1, 0.15, 0.2, 0.25, 0.5]} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => save({ max_jump_pct: v })} />
+        <label className="field">
+          Program started
+          <input type="date" value={rules.program_start} onChange={(e) => e.target.value && save({ program_start: e.target.value })} />
+          <span className="set-hint">Deload weeks count from here: every 8th week, or sooner when 3 or more lifts stall.</span>
+        </label>
       </SetCard>
 
       <SetCard title="Your training week">

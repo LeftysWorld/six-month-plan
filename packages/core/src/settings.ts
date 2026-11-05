@@ -14,6 +14,12 @@ export interface TrainingLimit {
   banned_patterns: string[];
   /** Exercises that bothered it before. */
   banned_exercises: string[];
+  /** Rep caps it puts on exercises: { match: 'lateral raise', max: 12 } (match is a pattern on the name). */
+  rep_caps?: { match: string; max: number }[];
+  /** Ask for this limit's pain, 0–10, when you finish a workout. */
+  pain_check?: boolean;
+  /** The pain rule, shown with the check: "Up to 3/10 that's gone by morning is OK." */
+  pain_rule?: string;
 }
 
 export interface TrainingRules {
@@ -26,6 +32,12 @@ export interface TrainingRules {
   steps: { dumbbell: number; machine: number; cable: number };
   /** A jump bigger than this share of the current weight is never suggested (0.10 = 10%). */
   max_jump_pct: number;
+  /** Smallest isolation step: 2.5 lb dumbbells if your gym has them, the smallest cable plate. 0 = none. */
+  iso_steps: { dumbbell: number; cable: number };
+  /** How much less assist per step on assisted pull-ups and dips. */
+  assist_step: number;
+  /** The program's first day: deload weeks count from here (the 8th week, or sooner when lifts stall). */
+  program_start: string;
   /** Training days, 1 = Monday … 7 = Sunday. */
   days: number[];
   session_minutes: { min: number; max: number };
@@ -82,7 +94,20 @@ export const PATTERNS: { id: string; name: string }[] = [
   { id: 'overhead_press', name: 'Overhead press' },
   { id: 'dip', name: 'Dip' },
   { id: 'pull_up', name: 'Pull-up' },
+  { id: 'incline_press', name: 'Incline press' },
 ];
+
+/** The left rotator cuff (Nov 2026): no overhead or incline pressing, lateral raises capped at 12, a pain check. */
+export const LEFT_SHOULDER: TrainingLimit = {
+  id: 'left_shoulder',
+  name: 'Left shoulder',
+  summary: 'Left rotator cuff: no overhead pressing, Arnold press or incline DB press until cleared. Lateral raises stop at 12 reps (more causes soreness). Flat DB press and dips are pain-free. After 2–3 pain-free weeks, a low incline (20° or less, neutral grip, 10 reps or fewer) first, overhead pressing last.',
+  banned_patterns: ['overhead_press', 'incline_press'],
+  banned_exercises: ['Arnold press', 'Seated DB Arnold Press', 'Seated DB Shoulder Press', 'Incline DB Press'],
+  rep_caps: [{ match: 'lateral raise', max: 12 }],
+  pain_check: true,
+  pain_rule: "Up to about 3/10 during a lift that's gone by the next morning is OK. Sharper pain, or worse the next day: stop or swap the exercise.",
+};
 
 /** Your rules as they stood in the coach's profile when they moved into the app. */
 export const DEFAULT_TRAINING_RULES: TrainingRules = {
@@ -94,12 +119,16 @@ export const DEFAULT_TRAINING_RULES: TrainingRules = {
       banned_patterns: ['squat', 'lunge', 'leg_press', 'leg_extension', 'leg_curl', 'step_up', 'jump', 'deadlift', 'kettlebell_swing'],
       banned_exercises: ['Weighted crunch', 'Seated kettlebell twist', 'Hollow-body hold', 'Dead bug'],
     },
+    LEFT_SHOULDER,
   ],
   equipment: ['dumbbells', 'adjustable_bench', 'incline_bench', 'sit_up_bench', 'single_cable', 'lat_pulldown', 'seated_cable_row', 'chest_press_machine', 'hammer_strength_back_extension', 'hammer_strength_glute_ham', 'rear_delt_machine'],
   one_cable_at_a_time: true,
   weights_only: true,
   steps: { dumbbell: 5, machine: 5, cable: 5 },
   max_jump_pct: 0.1,
+  iso_steps: { dumbbell: 2.5, cable: 2.5 },
+  assist_step: 5,
+  program_start: '2026-10-26',
   days: [1, 2, 3, 4, 5],
   session_minutes: { min: 35, max: 45 },
   exercises_per_workout: 5,
@@ -116,6 +145,7 @@ export function trainingRules(saved: Partial<TrainingRules> | null | undefined):
     ...d,
     ...saved,
     steps: { ...d.steps, ...(saved.steps ?? {}) },
+    iso_steps: { ...d.iso_steps, ...(saved.iso_steps ?? {}) },
     session_minutes: { ...d.session_minutes, ...(saved.session_minutes ?? {}) },
     limits: saved.limits ?? d.limits,
     equipment: saved.equipment ?? d.equipment,
