@@ -36,6 +36,8 @@ export interface TrainingRules {
   iso_steps: { dumbbell: number; cable: number };
   /** How much less assist per step on assisted pull-ups and dips. */
   assist_step: number;
+  /** Most reps on any lift except bodyweight ones (12: a 12–15 range becomes 10–12). 0 = no cap. */
+  max_reps: number;
   /** The program's first day: deload weeks count from here (the 8th week, or sooner when lifts stall). */
   program_start: string;
   /** Training days, 1 = Monday … 7 = Sunday. */
@@ -129,6 +131,7 @@ export const DEFAULT_TRAINING_RULES: TrainingRules = {
   max_jump_pct: 0.1,
   iso_steps: { dumbbell: 2.5, cable: 2.5 },
   assist_step: 5,
+  max_reps: 0,
   program_start: '2026-10-26',
   days: [1, 2, 3, 4, 5],
   session_minutes: { min: 35, max: 45 },

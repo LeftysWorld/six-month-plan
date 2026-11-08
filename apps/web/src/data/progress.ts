@@ -82,6 +82,15 @@ function stepsFor(data: AppData, ex: PlannedExercise): ProgressionSteps {
   return { compound: stepFor(ex.name, rules, ex.weight_note) || rules.steps.dumbbell, isolation: iso > 0 ? iso : null, assist: rules.assist_step, max_isolation_jump: 0.25 };
 }
 
+/**
+ * The plan's range under your rep cap (Settings → Training): bodyweight lifts are left alone; a range
+ * that reaches past the cap ends at it and starts 2 below (12–15 → 10–12, 15 → 10–12).
+ */
+export function capPlan(ex: PlannedExercise, maxReps: number): PlannedExercise {
+  if (!maxReps || maxReps <= 0 || ex.reps_max <= maxReps || exerciseClass(ex) === 'bodyweight') return ex;
+  return { ...ex, reps_max: maxReps, reps_min: Math.max(1, Math.min(ex.reps_min, maxReps - 2)) };
+}
+
 export interface ExerciseTarget extends Target {
   stalled: boolean;
   cap: number | null;
@@ -93,7 +102,9 @@ export function targetsFor(data: AppData, session: Session, plan: PlannedExercis
   const deload = deloadFor(data, weekStart(day));
   const deloads = new Set(deload.weeks);
   const caps = repCaps(data);
-  const targets = plan.map((ex) => {
+  const maxReps = trainingRules(data.profile.training_rules).max_reps;
+  const targets = plan.map((planned) => {
+    const ex = capPlan(planned, maxReps);
     const history = sessionsOf(data, ex.name, day, { actionId: session.action_id }, deloads);
     const others = sessionsOf(data, ex.name, day, { notActionId: session.action_id }, deloads).filter((s) => !s.deload);
     const cap = repCap(ex.name, caps);

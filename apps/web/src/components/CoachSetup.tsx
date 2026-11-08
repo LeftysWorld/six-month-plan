@@ -8,7 +8,7 @@ import { Icon, useToast } from './ui.tsx';
  * Setting up the workout coach from the app, no command line and no GitHub: the app serves the
  * coach's door itself (/api/workout-agent on Vercel), makes the coach's key here, tests the
  * connection, and shows exactly what to paste into the coach's own Vercel project, which runs it
- * every Friday (and on Run in Vercel → Cron Jobs).
+ * every Sunday night (and on Run in Vercel → Cron Jobs).
  */
 
 const VERCEL_ENV = 'https://vercel.com/dashboard';
@@ -73,7 +73,7 @@ interface RunResult {
 /**
  * "Run the coach now": starts one review on the coach's Vercel project with your sign-in (the coach
  * checks it's the account its key belongs to), waits for it (a minute or two), shows what it said and
- * brings the new report in. The Friday schedule is separate and unchanged.
+ * brings the new report in. The Sunday schedule is separate and unchanged.
  */
 export function RunCoachButton() {
   const { db, reload } = useStore();
@@ -302,7 +302,7 @@ export function CoachSetup() {
 
       <div className="coach-step">
         <b>4. Run it</b>
-        <span className="small">It runs itself every Friday at 11 pm. To test it now:</span>
+        <span className="small">It runs itself every Sunday at 9 pm. To test it now:</span>
         <CoachAddress />
         <RunCoachButton />
         <span className="small muted">

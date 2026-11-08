@@ -34,6 +34,7 @@ import { Habits } from './screens/Habits.tsx';
 import { GroupPage } from './screens/GroupPage.tsx';
 import { PathDetail, Paths } from './screens/Paths.tsx';
 import { WorkoutReport } from './screens/WorkoutReport.tsx';
+import { WeekSheetScreen } from './screens/WeekSheet.tsx';
 
 const MODE_KEY = 'six.mode';
 
@@ -212,7 +213,7 @@ function Shell(props: ShellProps) {
       screen = <Progress />;
       break;
     case 'workouts':
-      screen = <WorkoutReport />;
+      screen = s1 === 'week' ? <WeekSheetScreen week={route.query.get('week')} /> : <WorkoutReport />;
       break;
     case 'roadmap':
       screen = <Roadmap />;

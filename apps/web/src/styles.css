@@ -2614,3 +2614,6 @@ span.wg-ms-name { cursor: default; }
 .pain-scale { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
 .pain-scale button.high.on { background: var(--amber-ink); border-color: var(--amber-ink); }
 .pain-warn { color: var(--amber-ink); }
+
+/* ---------- Week sheet ---------- */
+.week-sheet-frame { width: 100%; border: 1px solid var(--line); border-radius: 14px; background: #fff; display: block; }

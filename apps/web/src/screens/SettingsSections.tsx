@@ -174,6 +174,7 @@ export function TrainingSection() {
         <StepperControl label="Small dumbbell step" hint="isolation · 0 if your gym has none (then slower tempo instead)" value={rules.iso_steps.dumbbell} options={[0, ...stepOptions]} format={(v) => (v ? `${fmt(v)} ${u}` : 'None')} onChange={(v) => save({ iso_steps: { ...rules.iso_steps, dumbbell: v } })} />
         <StepperControl label="Small cable step" hint="isolation · the smallest plate" value={rules.iso_steps.cable} options={[0, ...stepOptions]} format={(v) => (v ? `${fmt(v)} ${u}` : 'None')} onChange={(v) => save({ iso_steps: { ...rules.iso_steps, cable: v } })} />
         <StepperControl label="Assist step" hint="pull-ups and dips: this much less assist" value={rules.assist_step} options={stepOptions} format={(v) => `${fmt(v)} ${u}`} onChange={(v) => save({ assist_step: v })} />
+        <StepperControl label="Most reps" hint="every lift except bodyweight · a 12–15 range becomes 10–12" value={rules.max_reps} options={[0, 8, 10, 12, 15, 20]} format={(v) => (v ? `${v} reps` : 'No cap')} onChange={(v) => save({ max_reps: v })} />
         <StepperControl label="Biggest jump" hint="the coach never suggests more in one step" value={rules.max_jump_pct} options={[0.05, 0.1, 0.15, 0.2, 0.25, 0.5]} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => save({ max_jump_pct: v })} />
         <label className="field">
           Program started
@@ -469,10 +470,10 @@ function MeasureRow({ type, hint, last, today, onLog }: { type: MeasurementType;
 
 // ---------- Workout coach ----------
 
-/** The next scheduled run: the coach's cron is Saturday 04:00 UTC (Friday 11 pm Eastern). */
+/** The next scheduled run: the coach's cron is Monday 02:00 UTC (Sunday 9 pm Eastern, 10 pm in summer). */
 export function nextCoachRun(now = new Date()): Date {
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 4, 0, 0));
-  while (d.getUTCDay() !== 6 || d <= now) d.setUTCDate(d.getUTCDate() + 1);
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 2, 0, 0));
+  while (d.getUTCDay() !== 1 || d <= now) d.setUTCDate(d.getUTCDate() + 1);
   return d;
 }
 
@@ -526,7 +527,7 @@ export function CoachSection() {
       </SetCard>
 
       <SetCard title="When it runs">
-        <span className="small">Fridays at 11 pm Eastern, after your last workout of the week, so the report covers all of it.</span>
+        <span className="small">Sundays at 9 pm Eastern, after your last workout of the week, so the report covers all of it and the week sheet is ready for Monday.</span>
         <span className="set-hint">The schedule lives in the coach's Vercel project. Run it any time with the button above.</span>
       </SetCard>
 
