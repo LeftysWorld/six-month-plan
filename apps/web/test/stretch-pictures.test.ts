@@ -13,9 +13,9 @@ test('DuckDuckGo image links show as pictures', () => {
   for (const p of STRETCH_PICTURES) assert.equal(linkKind(p.url), 'image', p.label);
 });
 
-test('every Friday hold has its picture; measurements and other holds do not', () => {
+test('the Daily Eight and the bridges have their pictures; measurements and other holds do not', () => {
   const friday = STRETCH_DAYS.find((d) => d.day === 5)!;
-  for (const h of friday.plan.holds) assert.ok(pictureFor(h.name), h.name);
+  for (const h of friday.plan.holds.filter((x) => x.part === 'daily' || x.name === 'Bridge Holds')) assert.ok(pictureFor(h.name), h.name);
   for (const n of ['Front split (left): front hip to floor', 'Side-Lying Leg Raise', 'Seated Pike Leg Lifts', 'Supported Fish Pose (with blocks)']) assert.equal(pictureFor(n), null, n);
   assert.deepEqual(pictureFor('Front Split, Left Leg Forward'), pictureFor('Front Split, Right Leg Forward'));
 });

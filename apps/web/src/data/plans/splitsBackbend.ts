@@ -1,12 +1,14 @@
 import type { StretchHold, StretchPlan } from '@six/core';
 
 /**
- * The Splits & Backbend Plan (months 1–9, starting Fri Oct 30 2026), right after every lifting
- * session: Mon, Tue, Thu, Fri, Sat. Wed and Sun are rest days. All on the floor; gear: bands and blocks.
+ * The Splits & Backbend Plan (months 1–9, applied from Fri Oct 30 2026; updated Nov 9), right after
+ * every lifting session: Mon, Tue, Thu, Fri, Sat. Wed and Sun are rest days. All on the floor;
+ * gear: bands and blocks.
  *
- * Every session is the Daily Eight (about 24 minutes), then a focus slot of 3–6 minutes that
- * changes by day. Mon, Thu, Sat are push days (7–8 out of 10 with contract-relax rounds); Tue and
- * Fri are easy days (passive, 5–6 out of 10) and the big backbend days.
+ * Every session is the Daily Eight (about 24 minutes), then a focus slot of 3–8 minutes that
+ * changes by day: hamstrings (Mon), backbend (Tue, Fri), twists (Thu), side split + twist (Sat).
+ * Mon, Thu, Sat are push days (7–8 out of 10 with contract-relax rounds); Tue and Fri are easy
+ * days (passive, 5–6 out of 10) and the big backbend days.
  */
 
 export const PLAN_START = '2026-10-30';
@@ -58,11 +60,11 @@ const DAILY_EIGHT: StretchHold[] = [
     push: 'During minutes 2–4, 3 rounds of contract-relax: squeeze your legs toward each other into the floor for 5–10 s, then slide wider for 20–30 s.',
   },
   {
-    name: 'Lying Butterfly',
+    name: 'Supported Reclined Butterfly (with blocks)',
     dose: '2 min',
     knee,
     part: 'daily',
-    how: 'On your back, soles of the feet together, knees falling open, a block under each knee so they’re supported. Passive: just breathe and let the inner thighs relax after the side split. Don’t press your knees down.',
+    how: 'The yoga name is supta baddha konasana. Set a block lengthwise under your upper back and one under your head, like supported fish pose, then put the soles of your feet together and let your knees fall open. It stretches your inner thighs and opens your chest at the same time. Passive: just breathe after the side split, and don’t press your knees down.',
   },
   {
     name: 'Standing Chest to Shins (Standing Fold)',
@@ -90,11 +92,12 @@ const BRIDGES: StretchHold = {
   how: 'On your back, feet flat and hip-width apart close to your hips. Squeeze your glutes and press your hips up. Start with a glute bridge (shoulders on the floor). Once that’s easy, put your hands by your ears and press up into a full bridge (wheel pose), pushing your chest toward the wall behind you. Rest 30 s between holds. Knee check: bridges bend the knee under load. If your knee complains, stay with glute bridges and keep the feet a bit further away.',
 };
 
-const PIKE_LIFTS: StretchHold = {
-  name: 'Seated Pike Leg Lifts',
-  dose: '2 × 8–10',
+const SUPINE_TWIST: StretchHold = {
+  name: 'Supine Spinal Twist',
+  dose: '2 min each side',
+  knee,
   part: 'focus',
-  how: 'Sit with legs together and straight, hands on blocks beside your knees. Keeping both legs straight, lift your heels a few inches off the floor using your hip flexors, hold 2 s, lower. This builds the strength that pulls your chest to your shins. Small lifts count.',
+  how: 'Lie on your back, arms out wide. Pull one knee up and across your body toward the floor on the other side, keeping both shoulders down. Turn your head away from the knee if it’s comfortable. Breathe into your lower back. Put a block under the knee if it doesn’t reach the floor or the knee complains.',
 };
 
 const HUG = 'Finish with 30 seconds hugging both knees to your chest to settle your lower back.';
@@ -132,10 +135,10 @@ export const STRETCH_DAYS: { day: number; title: string; minutes: number; plan: 
       holds: [
         ...DAILY_EIGHT,
         {
-          name: 'Supported Fish Pose (with blocks)',
+          name: 'Supported Fish Pose, Legs Straight (with blocks)',
           dose: '3 min',
           part: 'focus',
-          how: 'Sit with legs straight, place one block lengthwise along your spine just below the shoulder blades (lowest height to start) and a second block behind it for your head. Lie back over them, arms out to the sides or overhead. Let your chest lift and your upper back drape. Raise the blocks one height after a few weeks.',
+          how: 'Sit with legs straight and together, place one block lengthwise along your spine just below the shoulder blades (lowest height to start) and a second block behind it for your head. Lie back over them, arms resting out to the sides. Keep the legs straight today: that stretches the hip flexors your bridge needs, which the daily butterfly version doesn’t. Raise the blocks one height after a few weeks.',
         },
         BRIDGES,
       ],
@@ -144,20 +147,21 @@ export const STRETCH_DAYS: { day: number; title: string; minutes: number; plan: 
   },
   {
     day: 4,
-    title: 'Thu · Stretch: push + folding strength',
-    minutes: 28,
+    title: 'Thu · Stretch: push + twists',
+    minutes: 31,
     plan: {
       day: 'push',
-      intensity: '7–8 out of 10',
-      focus: 'Folding strength',
+      intensity: '7–8 out of 10 (twists easy)',
+      focus: 'Twists',
       holds: [
         ...DAILY_EIGHT,
-        PIKE_LIFTS,
+        SUPINE_TWIST,
         {
-          name: 'Active Leg Raise',
-          dose: '2 × 8 each leg',
+          name: 'Seated Spinal Twist',
+          dose: '1.5 min each side',
+          knee,
           part: 'focus',
-          how: 'On your back, lift one straight leg as high as you can without hands, pause 3 s at the top, lower slowly. Strength in the hamstring range you’re building, so your body lets you keep it.',
+          how: 'Sit with both legs straight. Cross your right foot over your left knee and plant it on the floor. Hug the right knee with your left arm, sit tall, and twist toward the right, right hand on the floor behind you. Lengthen on each inhale, twist a little more on each exhale. Switch sides. Skip it if the bent knee bothers you.',
         },
       ],
     },
@@ -173,11 +177,10 @@ export const STRETCH_DAYS: { day: number; title: string; minutes: number; plan: 
       holds: [
         ...DAILY_EIGHT,
         {
-          name: 'Puppy Pose (Melting Heart)',
-          dose: '3 min',
-          knee,
+          name: 'Side-Lying Open Book',
+          dose: '1.5 min each side',
           part: 'focus',
-          how: 'Start on hands and knees with a folded mat under your knees, hips stacked over your knees. Walk your hands forward and let your chest melt toward the floor, arms straight overhead, forehead or chin resting on a block. Keep your hips high. This opens the shoulders and upper back for the overhead part of a backbend.',
+          how: 'Lie on your side, knees bent and stacked at hip height, arms straight out in front of you, palms together. Keeping your knees together, sweep the top arm up and over to the other side and let it rest open toward the floor behind you, following it with your eyes. This twists your upper back and opens your chest for the backbend. On the left-arm side, keep the arm low and relaxed while your shoulder settles.',
         },
         BRIDGES,
       ],
@@ -186,21 +189,21 @@ export const STRETCH_DAYS: { day: number; title: string; minutes: number; plan: 
   },
   {
     day: 6,
-    title: 'Sat · Stretch: push + split strength',
-    minutes: 28,
+    title: 'Sat · Stretch: push + side split + twist',
+    minutes: 32,
     plan: {
       day: 'push',
-      intensity: '7–8 out of 10',
-      focus: 'Split strength',
+      intensity: '7–8 out of 10 (focus slot easy)',
+      focus: 'Side split + twist',
       holds: [
         ...DAILY_EIGHT,
         {
-          name: 'Side-Lying Leg Raise',
-          dose: '2 × 10 each leg',
+          name: 'Wall Straddle (Legs-Up-the-Wall Straddle)',
+          dose: '3–4 min',
           part: 'focus',
-          how: 'On your side, bottom knee bent for balance, top leg straight. Lift it as high as you can, toes pointing forward, pause 2 s, lower slowly. Strength at the edge of your side split.',
+          how: 'Lie on your back with your butt against a wall and your legs straight up it. Slowly let them slide apart into a wide V and let gravity do the work. Don’t push. Your legs will sink a little lower every minute. To come out, use your hands to bring your legs together, bend your knees and roll to your side.',
         },
-        PIKE_LIFTS,
+        SUPINE_TWIST,
       ],
     },
   },
@@ -265,7 +268,7 @@ export const MONTHLY_CHECK = {
     'Phone on a tripod at hip height, same spot and distance every month. Use the remote so you can take the photo while holding the position.',
     'Front splits: side-view photo of each side.',
     'Center split: front-view photo.',
-    'Chest to shins: side photo of the standing fold.',
+    'Chest to shins: side photo of the seated and standing folds.',
     'Backbend: side photo of your best bridge.',
     'Add the photos to this task. The numbers go in Today’s numbers every Monday.',
   ].join('\n'),

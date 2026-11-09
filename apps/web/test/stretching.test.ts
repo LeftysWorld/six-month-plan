@@ -89,7 +89,7 @@ test('this week: stretching Friday and Saturday, one workout a day Thu–Sat, th
   const after = run(d, opsApplySplitsPack(d, TODAY, all(d)).ops);
   assert.deepEqual(stretchOn(after, '2026-10-29'), []);
   assert.deepEqual(stretchOn(after, '2026-10-30'), ['Fri · Stretch: easy + backbend']);
-  assert.deepEqual(stretchOn(after, '2026-10-31'), ['Sat · Stretch: push + split strength']);
+  assert.deepEqual(stretchOn(after, '2026-10-31'), ['Sat · Stretch: push + side split + twist']);
   assert.deepEqual(stretchOn(after, '2026-11-01'), []);
   assert.deepEqual(liftOn(after, '2026-10-28'), []);
   assert.deepEqual(liftOn(after, '2026-10-29'), ['Chest & Back B']);
@@ -207,7 +207,7 @@ test('already applied the Nov 2 version: the update moves it up to tomorrow, int
   after = run(after, opsEnsureWeek(after, '2026-10-26'));
   // Stretching tomorrow and Saturday; the old Stretch only through today.
   assert.deepEqual(stretchOn(after, '2026-10-30'), ['Fri · Stretch: easy + backbend']);
-  assert.deepEqual(stretchOn(after, '2026-10-31'), ['Sat · Stretch: push + split strength']);
+  assert.deepEqual(stretchOn(after, '2026-10-31'), ['Sat · Stretch: push + side split + twist']);
   assert.ok(!titlesOn(after, '2026-10-31').includes('Stretch'));
   // One workout a day, Saturday's Chest & Back C not on Friday.
   assert.deepEqual(liftOn(after, '2026-10-29'), ['Chest & Back B']);
