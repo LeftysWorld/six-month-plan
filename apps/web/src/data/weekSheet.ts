@@ -1,5 +1,6 @@
 import {
   addDays,
+  isPushupPracticeOnly,
   scheduleForWeek,
   sessionFromSlot,
   slotsForWeek,
@@ -21,7 +22,7 @@ import type { Decision, DecisionChange } from './workoutHistory.ts';
  * sheet is the week the coach recommends. Printed, it's the PDF.
  */
 
-export type SheetTag = 'UP' | 'HOLD' | 'DOWN' | '+1 SET' | 'TEMPO' | 'LESS ASSIST' | 'LIGHT WEEK' | 'NEW' | 'SWAP' | 'COACH' | 'MAX TEST';
+export type SheetTag = 'UP' | 'HOLD' | 'DOWN' | '+1 SET' | 'TEMPO' | 'LESS ASSIST' | 'LIGHT WEEK' | 'NEW' | 'SWAP' | 'COACH' | 'MAX TEST' | 'OPTIONAL';
 
 export interface SheetRow {
   name: string;
@@ -178,7 +179,7 @@ export function weekSheet(data: AppData, monday: ISODate, today: ISODate): WeekS
       const p = t.pushup;
       if (p) {
         const lastReps = Math.max(0, ...(/× ([\d, ]+)/.exec(last)?.[1]?.split(',').map((x) => Number(x.trim()) || 0) ?? [0]));
-        tag = p.deload ? 'LIGHT WEEK' : p.role === 'test' ? 'MAX TEST' : last === 'new' ? 'NEW' : p.reps > lastReps ? 'UP' : 'HOLD';
+        tag = p.deload ? 'LIGHT WEEK' : p.role === 'test' ? 'MAX TEST' : p.role === 'practice' ? 'OPTIONAL' : last === 'new' ? 'NEW' : p.reps > lastReps ? 'UP' : 'HOLD';
       }
       const short = ex.name.replace(/ \(knee test\)/i, '');
       if (p) pushups.push(p);
@@ -209,13 +210,14 @@ export function weekSheet(data: AppData, monday: ISODate, today: ISODate): WeekS
     return {
       date: s.date,
       title: `${s.date ? `${DAY_NAMES[dow(s.date)]} · ${sheetDate(s.date)}` : 'Any day this week'} · ${action.title}`,
-      label: plan[0] ? `${plan[0].name.replace(/ \(knee test\)/i, '')} first` : '',
+      label: isPushupPracticeOnly(plan) ? 'Optional · at home' : plan[0] ? `${plan[0].name.replace(/ \(knee test\)/i, '')} first` : '',
       tone: toneOf.get(action.id)!,
       rows,
     };
   });
 
-  const on = [...new Set(sessions.filter((s) => s.date).map((s) => dow(s.date!)))].sort();
+  // The optional home push-up practice doesn't make Wed or Sun a training day.
+  const on = [...new Set(sessions.filter((s) => s.date && !isPushupPracticeOnly(data.actions.find((a) => a.id === s.action_id)?.workout_plan)).map((s) => dow(s.date!)))].sort();
   const rules = trainingRules(data.profile.training_rules);
   const summary: string[] = [];
   if (coach) summary.push(`<b>Coach changes</b> (report of ${sheetDate(coach.as_of)}): ${esc(coach.changes.map((c) => (c.type === 'swap' && c.to?.name ? `${c.exercise} → ${c.to.name}` : `${c.exercise} (${c.type === 'reps' ? 'new rep range' : c.type === 'sets' ? 'sets' : c.type === 'load' ? 'weight' : c.type})`)).join('; '))}.`);
@@ -249,7 +251,7 @@ export function weekSheet(data: AppData, monday: ISODate, today: ISODate): WeekS
   };
 }
 
-const TAG_CLASS: Record<SheetTag, string> = { UP: 't-up', 'LESS ASSIST': 't-up', '+1 SET': 't-up', HOLD: 't-hold', TEMPO: 't-hold', DOWN: 't-down', 'LIGHT WEEK': 't-hold', NEW: 't-swap', SWAP: 't-swap', COACH: 't-coach', 'MAX TEST': 't-coach' };
+const TAG_CLASS: Record<SheetTag, string> = { UP: 't-up', 'LESS ASSIST': 't-up', '+1 SET': 't-up', HOLD: 't-hold', TEMPO: 't-hold', DOWN: 't-down', 'LIGHT WEEK': 't-hold', NEW: 't-swap', SWAP: 't-swap', COACH: 't-coach', 'MAX TEST': 't-coach', OPTIONAL: 't-hold' };
 
 /** The sheet as a self-contained page (letter size, prints straight to PDF). */
 export function weekSheetHtml(w: WeekSheet): string {

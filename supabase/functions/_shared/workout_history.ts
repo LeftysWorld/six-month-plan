@@ -442,7 +442,13 @@ function fingerprint(text: string): string {
 }
 
 function isWorkoutAction(a: WHAction | undefined): boolean {
-  return !!a && (a.kind === 'workout' || (Array.isArray(a.workout_plan) && a.workout_plan.length > 0));
+  return !!a && (a.kind === 'workout' || (Array.isArray(a.workout_plan) && a.workout_plan.length > 0)) && !isHomePractice(a);
+}
+
+/** The optional home push-up practice (Road to 100): not a workout for the coach's counts. */
+function isHomePractice(a: WHAction): boolean {
+  const plan = Array.isArray(a.workout_plan) ? (a.workout_plan as { name?: unknown }[]) : [];
+  return plan.length > 0 && plan.every((e) => /push[- ]?ups?\b/i.test(String(e?.name ?? '')) && /practice/i.test(String(e?.name ?? '')));
 }
 
 /** The schedule a task runs on at a date. */

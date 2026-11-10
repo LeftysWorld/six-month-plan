@@ -88,7 +88,11 @@ function fingerprint(text) {
   return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
 }
 function isWorkoutAction(a) {
-  return !!a && (a.kind === "workout" || Array.isArray(a.workout_plan) && a.workout_plan.length > 0);
+  return !!a && (a.kind === "workout" || Array.isArray(a.workout_plan) && a.workout_plan.length > 0) && !isHomePractice(a);
+}
+function isHomePractice(a) {
+  const plan = Array.isArray(a.workout_plan) ? a.workout_plan : [];
+  return plan.length > 0 && plan.every((e) => /push[- ]?ups?\b/i.test(String(e?.name ?? "")) && /practice/i.test(String(e?.name ?? "")));
 }
 function scheduleOn(schedules, actionId, date) {
   return schedules.filter((s) => s.action_id === actionId && s.effective_from <= date && (s.effective_to == null || s.effective_to >= date)).sort((x, y) => x.effective_from < y.effective_from ? 1 : -1)[0] ?? null;

@@ -118,7 +118,7 @@ function pushupHistory(data: AppData, day: ISODate): PushupHistory {
       const reps = s.sets.filter((x) => x.done && (x.reps ?? 0) > 0).map((x) => x.reps ?? 0);
       if (!reps.length) continue;
       if (role === 'test') tests.push({ date: s.date, max: Math.max(...reps) });
-      else if (!lastVolume || s.date > lastVolume.date) lastVolume = { date: s.date, reps };
+      else if (role === 'volume' && (!lastVolume || s.date > lastVolume.date)) lastVolume = { date: s.date, reps };
     }
   }
   tests.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));

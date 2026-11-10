@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { WAKE_CHOICES, dailyRoutine, routineNow, routineRows, timeOfDay } from '@six/core';
+import { WAKE_CHOICES, dailyRoutine, isPushupPracticeOnly, routineNow, routineRows, timeOfDay } from '@six/core';
 import { useStore } from '../../data/store.tsx';
 import { useView } from '../../data/useView.ts';
 import { opsProfile } from '../../data/ops.ts';
@@ -41,7 +41,11 @@ export function DailyRoutine() {
   const routine = dailyRoutine(data.profile.daily_routine);
   // A lifting day is a day with a workout on it (moved or not, done or still to do); any other day is a
   // rest day: no pre-workout, no lift. A workout skipped today makes it a rest day too.
-  const lift = view.sessionsOn(today).some((s) => s.status !== 'skipped' && view.action(s.action_id)?.kind === 'workout');
+  // The optional home push-up practice isn't lifting: Wed and Sun stay rest days.
+  const lift = view.sessionsOn(today).some((s) => {
+    const a = view.action(s.action_id);
+    return s.status !== 'skipped' && a?.kind === 'workout' && !isPushupPracticeOnly(a.workout_plan);
+  });
   const rows = routineRows(routine, lift);
   const [now, setNow] = useState(() => minutesNow(data.profile.timezone));
   const [folded, setFolded] = useState(() => {

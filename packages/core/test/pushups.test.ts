@@ -49,3 +49,13 @@ test('the test day, a flat max, and the lighter week', () => {
   const light = pushupTarget('volume', '2026-12-14', h, 35, true);
   assert.deepEqual([light.sets, light.reps], [3, 20]);
 });
+
+test('home practice: 3 × 40%, skipped in a lighter week or after a flat max, and not a lifting day', async () => {
+  const { isPushupPracticeOnly } = await import('../src/index.ts');
+  assert.equal(pushupRole('Push-Up Practice'), 'practice');
+  const t = pushupTarget('practice', '2026-11-18', { tests: [{ date: '2026-11-14', max: 40 }], lastVolume: null }, 35, false);
+  assert.deepEqual([t.sets, t.reps], [3, 16]);
+  assert.match(pushupTarget('practice', '2026-12-16', { tests: [], lastVolume: null }, 35, true).text, /no home practice/);
+  assert.ok(isPushupPracticeOnly([{ name: 'Push-Up Practice' }]));
+  assert.ok(!isPushupPracticeOnly([{ name: 'Push-Ups' }]));
+});

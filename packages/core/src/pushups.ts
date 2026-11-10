@@ -15,12 +15,20 @@
  * Push-ups are bodyweight lifts, so they're outside the rep cap.
  */
 
-export type PushupRole = 'test' | 'volume';
+export type PushupRole = 'test' | 'volume' | 'practice';
 
-/** "Push-Up Max Test" is the test; any other push-up (not assisted, not a pike or handstand) is the volume day. */
+/**
+ * "Push-Up Max Test" is the test, "Push-Up Practice" the optional home practice; any other push-up
+ * (not assisted, not a pike or handstand) is the volume day.
+ */
 export function pushupRole(name: string): PushupRole | null {
   if (!/push[- ]?ups?\b/i.test(name) || /assisted|pike|handstand/i.test(name)) return null;
-  return /max|test/i.test(name) ? 'test' : 'volume';
+  return /max|test/i.test(name) ? 'test' : /practice/i.test(name) ? 'practice' : 'volume';
+}
+
+/** A workout that is only the home push-up practice: optional, at home, not a lifting day. */
+export function isPushupPracticeOnly(plan: { name: string }[] | null | undefined): boolean {
+  return !!plan?.length && plan.every((e) => pushupRole(e.name) === 'practice');
 }
 
 export interface PushupSets {
@@ -78,6 +86,27 @@ export function pushupTarget(role: PushupRole, day: string, h: PushupHistory, es
   const flat = before.length >= 2 && before.at(-1)!.max <= before.at(-2)!.max;
   const practice = pushupPractice(max);
   const flatNote = flat ? ' Same max two Saturdays running: skip the home practice this week and sleep well, then retest.' : '';
+
+  if (role === 'practice') {
+    const skip = deload || flat;
+    return {
+      role,
+      max,
+      sets: 3,
+      reps: practice,
+      extra: null,
+      practice,
+      repeat: false,
+      flat,
+      deload,
+      text: deload
+        ? 'Lighter week: no home practice this week.'
+        : flat
+          ? 'Same max two Saturdays running: skip the home practice this week and sleep well, then retest.'
+          : `Optional: 3 easy sets of ${practice} (40% of your max of ${max}), spread through the day an hour or more apart. Log what you did.`,
+      effort: skip ? '' : 'Easy: well short of failure.',
+    };
+  }
 
   if (role === 'test') {
     if (deload) return { role, max, sets: 1, reps: max, extra: null, practice, repeat: false, flat, deload, text: 'Lighter week: no test today. Test again next Saturday.', effort: '' };
