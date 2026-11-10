@@ -28,7 +28,7 @@ export const CLASS_WORDS: Record<ExerciseClass, string> = {
 };
 
 const ISOLATION = /curl|pushdown|push-down|kick-?back|triceps|tricep|extension(?!.*back)|raise|fly|flye|rear[- ]delt|straight[- ]arm|external rotation|internal rotation|face pull|shrug|pullover/i;
-const BODYWEIGHT = /crunch|sit-?up|back extension|hip extension|glute[- /]?ham|plank|hanging leg|leg raise/i;
+const BODYWEIGHT = /crunch|sit-?up|back extension|hip extension|glute[- /]?ham|plank|hanging leg|leg raise|push[- ]?ups?\b/i;
 const COMPOUND = /press|row|pull-?down|pull-?up|chin-?up|dip|squat|deadlift|lunge/i;
 
 /**
@@ -84,7 +84,8 @@ export type TargetWhy =
   | 'tempo' // isolation with no small enough step
   | 'failed_jump' // the last jump dropped set 1 below the range: back to the old load
   | 'carry' // the same lift went up on another day
-  | 'deload'; // deload week
+  | 'deload' // deload week
+  | 'pushups'; // Road to 100 Push-Ups: its own program (pushups.ts)
 
 export interface Target {
   cls: ExerciseClass;

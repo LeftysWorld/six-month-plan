@@ -7,6 +7,7 @@ import {
   weekStart,
   type ISODate,
   type PlannedExercise,
+  type PushupTarget,
   type Session,
 } from '@six/core';
 import type { AppData } from './model.ts';
@@ -20,7 +21,7 @@ import type { Decision, DecisionChange } from './workoutHistory.ts';
  * sheet is the week the coach recommends. Printed, it's the PDF.
  */
 
-export type SheetTag = 'UP' | 'HOLD' | 'DOWN' | '+1 SET' | 'TEMPO' | 'LESS ASSIST' | 'LIGHT WEEK' | 'NEW' | 'SWAP' | 'COACH';
+export type SheetTag = 'UP' | 'HOLD' | 'DOWN' | '+1 SET' | 'TEMPO' | 'LESS ASSIST' | 'LIGHT WEEK' | 'NEW' | 'SWAP' | 'COACH' | 'MAX TEST';
 
 export interface SheetRow {
   name: string;
@@ -158,6 +159,7 @@ export function weekSheet(data: AppData, monday: ISODate, today: ISODate): WeekS
   const toneOf = new Map<string, SheetDay['tone']>();
   const moves: Record<string, string[]> = { up: [], assist: [], set: [], tempo: [], down: [], hold: [] };
   const upBy = new Map<string, string[]>();
+  const pushups: PushupTarget[] = [];
 
   const days: SheetDay[] = sessions.map((s) => {
     const action = data.actions.find((a) => a.id === s.action_id)!;
@@ -172,8 +174,14 @@ export function weekSheet(data: AppData, monday: ISODate, today: ISODate): WeekS
       let tag: SheetTag = TAG[t.why] ?? 'HOLD';
       if (last === 'new' || (t.why === 'plan' && / \((Mon|Tue|Wed|Thu|Fri|Sat|Sun)\)$/.test(last))) tag = 'NEW';
       if (c) tag = c.type === 'swap' || c.type === 'add' ? 'SWAP' : 'COACH';
+      const p = t.pushup;
+      if (p) {
+        const lastReps = Math.max(0, ...(/× ([\d, ]+)/.exec(last)?.[1]?.split(',').map((x) => Number(x.trim()) || 0) ?? [0]));
+        tag = p.deload ? 'LIGHT WEEK' : p.role === 'test' ? 'MAX TEST' : last === 'new' ? 'NEW' : p.reps > lastReps ? 'UP' : 'HOLD';
+      }
       const short = ex.name.replace(/ \(knee test\)/i, '');
-      if (!c && tag === 'UP') {
+      if (p) pushups.push(p);
+      if (!c && !p && tag === 'UP') {
         const what = t.cls === 'bodyweight' ? t.text.replace(/^Every set at \d+: /, '').replace(/ now\.?$|\.$/, '') : `${weightText(t, ex, unit)} ${SHORT[dow(day)]}`;
         upBy.set(short, [...(upBy.get(short) ?? []), what]);
       }
@@ -184,8 +192,12 @@ export function weekSheet(data: AppData, monday: ISODate, today: ISODate): WeekS
       const note = c ? `Coach: ${c.reason}${t.text && t.why !== 'plan' ? ` ${t.text}` : ''}` : t.text || ex.note || '';
       return {
         name: ex.name,
-        setsReps: `${t.sets} × ${t.reps_min === t.reps_max ? t.reps_min : `${t.reps_min}–${t.reps_max}`}${/\/side/i.test(`${ex.note} ${ex.weight_note}`) ? '/side' : ''}`,
-        weight: weightText(t, ex, unit),
+        setsReps: p
+          ? p.role === 'test'
+            ? p.deload ? 'no test' : '1 × max'
+            : `${p.sets} × ${p.reps}${p.extra ? ` + 1 × ${p.extra}` : ''}`
+          : `${t.sets} × ${t.reps_min === t.reps_max ? t.reps_min : `${t.reps_min}–${t.reps_max}`}${/\/side/i.test(`${ex.note} ${ex.weight_note}`) ? '/side' : ''}`,
+        weight: p ? (p.role === 'test' && !p.deload ? `beat ${p.max}` : 'bodyweight') : weightText(t, ex, unit),
         tag,
         last: c?.type === 'swap' && c.exercise && key(c.exercise) !== key(ex.name) ? `replaces ${c.exercise}` : last,
         rest: ex.rest || '',
@@ -206,6 +218,13 @@ export function weekSheet(data: AppData, monday: ISODate, today: ISODate): WeekS
   const rules = trainingRules(data.profile.training_rules);
   const summary: string[] = [];
   if (coach) summary.push(`<b>Coach changes</b> (report of ${sheetDate(coach.as_of)}): ${esc(coach.changes.map((c) => (c.type === 'swap' && c.to?.name ? `${c.exercise} → ${c.to.name}` : `${c.exercise} (${c.type === 'reps' ? 'new rep range' : c.type === 'sets' ? 'sets' : c.type === 'load' ? 'weight' : c.type})`)).join('; '))}.`);
+  const vol = pushups.find((x) => x.role === 'volume');
+  const test = pushups.find((x) => x.role === 'test');
+  if (vol || test) {
+    const p = (vol ?? test)!;
+    const parts = [vol ? `Monday ${vol.sets} × ${vol.reps}${vol.extra ? ` + 1 × ${vol.extra}` : ''}` : '', test ? (test.deload ? 'no test Saturday' : 'max test Saturday') : '', !p.deload ? `home practice Wed and Sun (optional) 3 × ${p.practice}` : ''].filter(Boolean);
+    summary.push(`<b>Push-ups</b> (max ${p.max}): ${esc(parts.join(', '))}.${p.flat ? ' Same max two Saturdays running: skip the home practice this week, then retest.' : ''}`);
+  }
   if (rules.max_reps > 0) summary.push(`<b>${rules.max_reps} reps max</b> on everything except bodyweight lifts.`);
   if (upBy.size) summary.push(`<b>Goes up:</b> ${esc([...upBy].map(([name, w]) => `${name} (${[...new Set(w)].join(', ')})`).join('; '))}.`);
   if (moves.assist!.length) summary.push(`<b>Less assist:</b> ${esc(moves.assist!.join(', '))}.`);
@@ -229,7 +248,7 @@ export function weekSheet(data: AppData, monday: ISODate, today: ISODate): WeekS
   };
 }
 
-const TAG_CLASS: Record<SheetTag, string> = { UP: 't-up', 'LESS ASSIST': 't-up', '+1 SET': 't-up', HOLD: 't-hold', TEMPO: 't-hold', DOWN: 't-down', 'LIGHT WEEK': 't-hold', NEW: 't-swap', SWAP: 't-swap', COACH: 't-coach' };
+const TAG_CLASS: Record<SheetTag, string> = { UP: 't-up', 'LESS ASSIST': 't-up', '+1 SET': 't-up', HOLD: 't-hold', TEMPO: 't-hold', DOWN: 't-down', 'LIGHT WEEK': 't-hold', NEW: 't-swap', SWAP: 't-swap', COACH: 't-coach', 'MAX TEST': 't-coach' };
 
 /** The sheet as a self-contained page (letter size, prints straight to PDF). */
 export function weekSheetHtml(w: WeekSheet): string {

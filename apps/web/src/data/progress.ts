@@ -22,6 +22,11 @@ import {
   type Target,
   type TrainingLimit,
   type TrainingState,
+  pushupRole,
+  pushupTarget,
+  type PushupHistory,
+  type PushupRole,
+  type PushupTarget,
 } from '@six/core';
 import type { AppData, Op } from './model.ts';
 
@@ -59,7 +64,7 @@ function plannedLifts(data: AppData): { actionId: string; ex: PlannedExercise }[
 
 /** How many lifts were stalled going into the week of `monday` (each workout's exercises separately). */
 export function stalledBefore(data: AppData, monday: ISODate): number {
-  return plannedLifts(data).filter(({ actionId, ex }) => isStalled(sessionsOf(data, ex.name, monday, { actionId }, new Set()), exerciseClass(ex))).length;
+  return plannedLifts(data).filter(({ actionId, ex }) => !pushupRole(ex.name) && isStalled(sessionsOf(data, ex.name, monday, { actionId }, new Set()), exerciseClass(ex))).length;
 }
 
 /** Deload weeks from the program's start to `monday` (the 8th week, or sooner when 3+ lifts stall). */
@@ -94,6 +99,38 @@ export function capPlan(ex: PlannedExercise, maxReps: number): PlannedExercise {
 export interface ExerciseTarget extends Target {
   stalled: boolean;
   cap: number | null;
+  /** Road to 100 Push-Ups: the day's numbers from Saturday's max. */
+  pushup?: PushupTarget;
+}
+
+/** Push-up tests and the last volume day before `day` (every workout; the program runs across days). */
+function pushupHistory(data: AppData, day: ISODate): PushupHistory {
+  const tests: PushupHistory['tests'] = [];
+  let lastVolume: PushupHistory['lastVolume'] = null;
+  const byName = new Map<string, PushupRole>();
+  for (const w of data.workoutSets) {
+    if (!byName.has(w.exercise)) byName.set(w.exercise, pushupRole(w.exercise) as PushupRole);
+  }
+  for (const [name, role] of byName) {
+    if (!role) continue;
+    for (const s of sessionsOf(data, name, day, {}, new Set())) {
+      const reps = s.sets.filter((x) => x.done && (x.reps ?? 0) > 0).map((x) => x.reps ?? 0);
+      if (!reps.length) continue;
+      if (role === 'test') tests.push({ date: s.date, max: Math.max(...reps) });
+      else if (!lastVolume || s.date > lastVolume.date) lastVolume = { date: s.date, reps };
+    }
+  }
+  tests.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return { tests, lastVolume };
+}
+
+/** The starting max before the first test: the test's planned reps, else the volume day's reps ÷ 60%. */
+function pushupEstimate(data: AppData): number {
+  const all = plannedLifts(data).map((p) => p.ex);
+  const test = all.find((e) => pushupRole(e.name) === 'test');
+  if (test) return test.reps_max;
+  const vol = all.find((e) => pushupRole(e.name) === 'volume');
+  return vol ? Math.round(vol.reps_max / 0.6) : 10;
 }
 
 /** Next targets for a workout's exercises on its day, with stall flags. */
@@ -103,7 +140,12 @@ export function targetsFor(data: AppData, session: Session, plan: PlannedExercis
   const deloads = new Set(deload.weeks);
   const caps = repCaps(data);
   const maxReps = trainingRules(data.profile.training_rules).max_reps;
-  const targets = plan.map((planned) => {
+  const targets = plan.map((planned): ExerciseTarget => {
+    const role = pushupRole(planned.name);
+    if (role) {
+      const p = pushupTarget(role, day, pushupHistory(data, day), pushupEstimate(data), deload.now);
+      return { cls: 'bodyweight', weight: null, sets: p.sets, reps_min: p.reps, reps_max: role === 'test' ? p.reps : p.reps, why: 'pushups', text: p.text, effort: p.effort, cap: null, stalled: false, pushup: p };
+    }
     const ex = capPlan(planned, maxReps);
     const history = sessionsOf(data, ex.name, day, { actionId: session.action_id }, deloads);
     const others = sessionsOf(data, ex.name, day, { notActionId: session.action_id }, deloads).filter((s) => !s.deload);

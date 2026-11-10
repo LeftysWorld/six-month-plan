@@ -82,3 +82,29 @@ test('a declined report stays off the sheet, and Sunday opens next week', () => 
   assert.equal(sheetMonday('2026-11-08'), '2026-11-09');
   assert.equal(sheetMonday('2026-11-11'), '2026-11-09');
 });
+
+test('push-ups: Monday from the last Saturday max, Saturday the test, and outside the rep cap', () => {
+  const pushAction = {
+    ...action,
+    id: 'p1',
+    title: 'Chest & Back A',
+    workout_plan: [ex('Push-Ups', 5, 21, 21, null, 'bodyweight'), ex('Push-Up Max Test', 1, 35, 35, null, 'bodyweight')],
+  } as Action;
+  const test1: Session = { ...done, id: 's9', action_id: 'p1', date: '2026-11-14', week_start: '2026-11-09' } as Session;
+  const data: AppData = {
+    ...base(),
+    actions: [pushAction],
+    schedules: [{ ...schedule, id: 'sc9', action_id: 'p1', days: [1] }],
+    sessions: [test1],
+    workoutSets: [{ id: 'x', session_id: 's9', exercise: 'Push-Up Max Test', set_no: 1, weight: null, reps: 40, done: true } as WorkoutSet],
+    workoutReports: [],
+  };
+  const sheet = weekSheet(data, '2026-11-16', '2026-11-15');
+  const rows = sheet.days[0]!.rows;
+  assert.equal(rows[0]!.setsReps, '5 × 24');
+  assert.equal(rows[0]!.weight, 'bodyweight');
+  assert.equal(rows[1]!.setsReps, '1 × max');
+  assert.equal(rows[1]!.weight, 'beat 40');
+  assert.equal(rows[1]!.tag, 'MAX TEST');
+  assert.ok(sheet.summary.some((s) => s.includes('Push-ups') && s.includes('3 × 16')));
+});

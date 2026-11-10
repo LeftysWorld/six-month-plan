@@ -20,3 +20,4 @@ export * from './settings.ts';
 export * from './weight.ts';
 export * from './routine.ts';
 export * from './progression.ts';
+export * from './pushups.ts';
