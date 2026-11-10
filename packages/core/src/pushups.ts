@@ -1,149 +1,151 @@
 /**
- * Road to 100 Push-Ups. One max test a week (Saturday) sets the next week's numbers, so you always
- * train from your real current max:
+ * Road to 100 Push-Ups (the Armstrong program adapted to push-ups), on every lifting day:
  *
- * - Volume day (Monday): sub-max sets with short rest, by phase of your max.
- *     Phase 1, max under 60: 5 sets × 60% of max.
- *     Phase 2, max 60–79:   4 sets × 65% of max.
- *     Phase 3, max 80+:     3 sets × 70% of max, then 1 set to 2 short of max.
- *   Round down. Couldn't finish every set last Monday: the same numbers again.
- * - Max test (Saturday): 1 set, as many perfect reps as possible. Stop at the first rep that breaks form.
- * - Home practice (Wed and Sun, optional): 3 sets × 40% of max, an hour or more apart.
- * - Lighter week: Monday 3 sets × 50% of max, no test, no home practice.
- * - Same max two Saturdays in a row: skip home practice for a week, then retest.
+ * - Monday · Test + Max Sets: after 1 easy warm-up set of 10, 5 all-out sets with 90 s rest. Set 1
+ *   is the weekly test; the total of all 5 is the volume score.
+ * - Tuesday · Paused Push-Ups and Friday · Close-Grip Push-Ups (strength, after dips): 3 × 8–12,
+ *   stopping 1–2 reps short. All 3 sets at 12 → 3 × 15; all 3 at 15 → add a vest or a plate and drop
+ *   back to 8–12.
+ * - Thursday · Training Sets: sets of half the Monday test (rounded down), 60 s rest, as many sets
+ *   as you can with perfect form, up to 10. All 10 done → 1 more rep per set next week.
+ * - Saturday · Density Pyramid: 1 rep, rest 10 s; 2 reps, rest 20 s; … until you can't finish a
+ *   step; then rest 2 min and do 1 all-out set. Logged as two sets: the top step, then the final set.
+ * - Lighter week: Monday the test set only, Thursday 5 training sets, Tue/Fri 2 sets, no pyramid.
  *
  * Push-ups are bodyweight lifts, so they're outside the rep cap.
  */
 
-export type PushupRole = 'test' | 'volume' | 'practice';
+export type PushupRole = 'test' | 'strength' | 'training' | 'pyramid';
 
 /**
- * "Push-Up Max Test" is the test, "Push-Up Practice" the optional home practice; any other push-up
- * (not assisted, not a pike or handstand) is the volume day.
+ * Which part of the program a push-up is: "Push-Up Max Sets" / "… Test" (Monday), "Training Sets"
+ * (Thursday), "Density Pyramid" (Saturday), and any other push-up, like "Paused" or "Close-Grip",
+ * a strength day. Assisted, pike and handstand push-ups aren't part of it.
  */
 export function pushupRole(name: string): PushupRole | null {
   if (!/push[- ]?ups?\b/i.test(name) || /assisted|pike|handstand/i.test(name)) return null;
-  return /max|test/i.test(name) ? 'test' : /practice/i.test(name) ? 'practice' : 'volume';
+  if (/max|test/i.test(name)) return 'test';
+  if (/pyramid|density/i.test(name)) return 'pyramid';
+  if (/training|volume/i.test(name)) return 'training';
+  return 'strength';
 }
 
-/** A workout that is only the home push-up practice: optional, at home, not a lifting day. */
-export function isPushupPracticeOnly(plan: { name: string }[] | null | undefined): boolean {
-  return !!plan?.length && plan.every((e) => pushupRole(e.name) === 'practice');
-}
-
-export interface PushupSets {
-  phase: 1 | 2 | 3 | null;
-  sets: number;
-  reps: number;
-  /** Phase 3's last set: 2 short of max. */
-  extra: number | null;
-}
-
-/** Monday's sets for a max (round down). `deload`: the lighter week's 3 × 50%. */
-export function pushupVolume(max: number, deload = false): PushupSets {
-  const m = Math.max(1, Math.floor(max));
-  if (deload) return { phase: null, sets: 3, reps: Math.max(1, Math.floor(m * 0.5)), extra: null };
-  if (m < 60) return { phase: 1, sets: 5, reps: Math.max(1, Math.floor(m * 0.6)), extra: null };
-  if (m < 80) return { phase: 2, sets: 4, reps: Math.floor(m * 0.65), extra: null };
-  return { phase: 3, sets: 3, reps: Math.floor(m * 0.7), extra: m - 2 };
-}
-
-/** Home practice: 3 sets × 40% of max. */
-export const pushupPractice = (max: number): number => Math.max(1, Math.floor(Math.floor(max) * 0.4));
-
-export interface PushupHistory {
-  /** Saturday tests before the day, oldest first: the best set of each. */
-  tests: { date: string; max: number }[];
-  /** The last volume day before the day: its date and the reps of each set. */
-  lastVolume: { date: string; reps: number[] } | null;
-}
-
-/** The max in effect on `day`: the latest test before it, else the starting estimate. */
-export function pushupMaxOn(tests: PushupHistory['tests'], day: string, estimate: number): number {
-  return tests.filter((t) => t.date < day).at(-1)?.max ?? estimate;
+/** One logged push-up workout: the day, which part of the program, and the reps (and any added weight) of each set. */
+export interface PushupLog {
+  date: string;
+  role: PushupRole;
+  name: string;
+  reps: number[];
+  weight: number | null;
 }
 
 export interface PushupTarget {
   role: PushupRole;
-  max: number;
+  /** The latest Monday test (set 1), or the starting estimate. */
+  test: number;
   sets: number;
-  reps: number;
-  extra: number | null;
-  practice: number;
-  /** Repeating last Monday's numbers because not every set reached them. */
-  repeat: boolean;
-  /** The same max two Saturdays running. */
-  flat: boolean;
+  reps_min: number;
+  reps_max: number;
+  /** Added weight (a vest or a plate) on a strength day; null for bodyweight. */
+  weight: number | null;
+  /** Saturday: the last top step. */
+  step: number | null;
   deload: boolean;
+  /** Up from last time (more reps, more weight, the next stage). */
+  up: boolean;
+  /** Nothing to do today (the lighter week's pyramid). */
+  skip: boolean;
   text: string;
   effort: string;
 }
 
-/** The push-up target for a day, from the tests and the last volume day. */
-export function pushupTarget(role: PushupRole, day: string, h: PushupHistory, estimate: number, deload: boolean): PushupTarget {
-  const max = pushupMaxOn(h.tests, day, estimate);
-  const before = h.tests.filter((t) => t.date < day);
-  const flat = before.length >= 2 && before.at(-1)!.max <= before.at(-2)!.max;
-  const practice = pushupPractice(max);
-  const flatNote = flat ? ' Same max two Saturdays running: skip the home practice this week and sleep well, then retest.' : '';
+const byDate = (a: PushupLog, b: PushupLog) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+const before = (logs: PushupLog[], day: string, f: (l: PushupLog) => boolean) => logs.filter((l) => l.date < day && l.reps.length > 0 && f(l)).sort(byDate);
 
-  if (role === 'practice') {
-    const skip = deload || flat;
-    return {
-      role,
-      max,
-      sets: 3,
-      reps: practice,
-      extra: null,
-      practice,
-      repeat: false,
-      flat,
-      deload,
-      text: deload
-        ? 'Lighter week: no home practice this week.'
-        : flat
-          ? 'Same max two Saturdays running: skip the home practice this week and sleep well, then retest.'
-          : `Optional: 3 easy sets of ${practice} (40% of your max of ${max}), spread through the day an hour or more apart. Log what you did.`,
-      effort: skip ? '' : 'Easy: well short of failure.',
-    };
-  }
+/** The latest Monday test (set 1 of the max sets) before `day`, else the estimate. */
+export function pushupTest(logs: PushupLog[], day: string, estimate: number): number {
+  return before(logs, day, (l) => l.role === 'test').at(-1)?.reps[0] ?? estimate;
+}
+
+/** The push-up target for a day, from everything logged before it. */
+export function pushupTarget(role: PushupRole, name: string, day: string, logs: PushupLog[], estimate: number, deload: boolean): PushupTarget {
+  const test = pushupTest(logs, day, estimate);
+  const base = { role, test, weight: null as number | null, step: null as number | null, deload, up: false, skip: false };
 
   if (role === 'test') {
-    if (deload) return { role, max, sets: 1, reps: max, extra: null, practice, repeat: false, flat, deload, text: 'Lighter week: no test today. Test again next Saturday.', effort: '' };
-    const last = before.at(-1);
+    const last = before(logs, day, (l) => l.role === 'test').at(-1);
+    const total = last ? last.reps.slice(0, 5).reduce((a, b) => a + b, 0) : null;
+    if (deload) return { ...base, sets: 1, reps_min: test, reps_max: test + 1, text: `Lighter week: the test set only. Warm up with 1 easy set of 10, then 1 all-out set. Last test: ${test}.`, effort: 'One all-out set.' };
     return {
-      role,
-      max,
-      sets: 1,
-      reps: max + 1,
-      extra: null,
-      practice,
-      repeat: false,
-      flat,
-      deload,
-      text: `One set, as many perfect reps as you can, right after the pull-ups. ${last ? `Last max: ${last.max}.` : `Starting estimate: ${max}.`} Stop at the first rep that breaks form: that number sets next week.${flatNote}`,
-      effort: 'One set to the first broken rep.',
+      ...base,
+      sets: 5,
+      reps_min: Math.max(1, Math.floor(test / 2)),
+      reps_max: test + 1,
+      text: `Warm up with 1 easy set of 10, then 5 all-out sets with 90 s rest. Set 1 is your weekly test: ${last ? `beat ${test}` : `your first one (estimate ${test})`}.${total ? ` Last week's 5-set total: ${total}; beat it.` : ''} Each set ends at the first rep that breaks form.`,
+      effort: 'All-out: every set to the first broken rep.',
     };
   }
 
-  let s = pushupVolume(max, deload);
-  let repeat = false;
-  // Couldn't finish every set at the target last Monday: keep the same numbers.
-  if (!deload && h.lastVolume) {
-    const thenMax = pushupMaxOn(h.tests, h.lastVolume.date, estimate);
-    const then = pushupVolume(thenMax);
-    const reps = h.lastVolume.reps;
-    const done = reps.length >= then.sets && reps.slice(0, then.sets).every((r) => r >= then.reps);
-    if (!done) {
-      s = then;
-      repeat = true;
+  if (role === 'training') {
+    const half = Math.max(1, Math.floor(test / 2));
+    const last = before(logs, day, (l) => l.role === 'training').at(-1);
+    let reps = half;
+    let note = `half your test of ${test}`;
+    if (last) {
+      const lastTarget = last.reps[0]!;
+      const done10 = last.reps.length >= 10 && last.reps.slice(0, 10).every((r) => r >= lastTarget);
+      if (done10 && lastTarget + 1 > reps) {
+        reps = lastTarget + 1;
+        note = 'you finished all 10 last week: 1 more rep';
+      } else if (!done10 && lastTarget > reps) {
+        reps = lastTarget;
+        note = "last week's number: aim to finish all 10";
+      }
     }
+    return {
+      ...base,
+      sets: deload ? 5 : 10,
+      reps_min: reps,
+      reps_max: reps,
+      up: !!last && reps > last.reps[0]!,
+      text: deload
+        ? `Lighter week: 5 training sets of ${reps}, 60 s rest.`
+        : `Sets of ${reps} (${note}), 60 s rest, as many sets as you can with perfect form, up to 10. Finish all 10 and next week goes up by 1.`,
+      effort: 'Perfect form; stop when a set would break it.',
+    };
   }
-  const sets = `${s.sets} × ${s.reps}${s.extra ? `, then 1 set of ${s.extra}` : ''}`;
-  const text = deload
-    ? `Lighter week: ${sets} (half your max of ${max}). No test Saturday, no home practice.`
-    : repeat
-      ? `Not every set reached ${s.reps} last time: the same ${sets} again. Max ${max}.${flatNote}`
-      : `Max ${max} → phase ${s.phase}: ${sets}, 90 s rest. Stop each set with 2–3 good reps left. Home practice Wed and Sun (optional): 3 × ${practice}.${flatNote}`;
-  return { role, max, sets: s.sets, reps: s.reps, extra: s.extra, practice, repeat, flat, deload, text, effort: deload ? 'Easy: 3–4 reps left on every set.' : 'Stop each set with 2–3 good reps left.' };
+
+  if (role === 'pyramid') {
+    const last = before(logs, day, (l) => l.role === 'pyramid').at(-1);
+    const step = last?.reps[0] ?? null;
+    const final = last?.reps[1] ?? null;
+    if (deload) return { ...base, sets: 1, reps_min: 1, reps_max: 1, skip: true, text: 'Lighter week: no pyramid today. Skip it.', effort: '' };
+    return {
+      ...base,
+      sets: 2,
+      reps_min: step ? step + 1 : 1,
+      reps_max: step ? step + 1 : 10,
+      step,
+      text: `1 push-up, rest 10 s; 2, rest 20 s; 3, rest 30 s; keep adding 1 rep and 10 s of rest until you can't finish a step. Rest 2 min, then 1 all-out set. Log set 1 = the highest step you finished, set 2 = the final set.${step ? ` Last time: step ${step}${final ? `, final set ${final}` : ''}. Reach step ${step + 1}.` : ''} If another workout was clearly this week's hardest, you can repeat it instead.`,
+      effort: 'The final set all-out.',
+    };
+  }
+
+  // Strength (Tue paused, Fri close-grip): 3 × 8–12 → 3 × 15 → add weight and drop back to 8–12.
+  const last = before(logs, day, (l) => l.role === 'strength' && l.name.toLowerCase() === name.toLowerCase()).at(-1);
+  const sets = deload ? 2 : 3;
+  const style = /paus/i.test(name) ? ' 3 s down, 2 s pause just above the floor, press up.' : /close/i.test(name) ? ' Hands just inside shoulder width, elbows brushing your sides.' : '';
+  const effort = '1–2 good reps left on each set.';
+  if (!last) return { ...base, sets, reps_min: 8, reps_max: 12, text: `${sets} × 8–12, stopping each set with 1–2 good reps left.${style} If your left shoulder complains, these are the first push-ups to drop.`, effort };
+  const reps = last.reps.slice(0, 3);
+  const weight = last.weight && last.weight > 0 ? last.weight : null;
+  const on = (w: number | null) => (w ? ` with ${w} lb on` : '');
+  const full = reps.length >= 3;
+  if (full && reps.every((r) => r >= 15)) {
+    const next = (weight ?? 0) + 10;
+    return { ...base, sets, reps_min: 8, reps_max: 12, weight: next, up: true, text: `All 3 sets at 15${on(weight)}: add a weight vest or a plate on your back (about ${next} lb) and drop back to 8–12.${style}`, effort };
+  }
+  if (reps.some((r) => r > 12)) return { ...base, sets, reps_min: 15, reps_max: 15, weight, text: `Keep at ${sets} × 15${on(weight)}: get every set to 15.${style}`, effort };
+  if (full && reps.every((r) => r >= 12)) return { ...base, sets, reps_min: 15, reps_max: 15, weight, up: true, text: `All 3 sets at 12: now ${sets} × 15${on(weight)}.${style}`, effort };
+  return { ...base, sets, reps_min: 8, reps_max: 12, weight, text: `${sets} × 8–12${on(weight)}: get every set to 12.${style}`, effort };
 }

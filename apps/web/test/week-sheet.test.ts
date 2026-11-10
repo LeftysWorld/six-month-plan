@@ -83,30 +83,28 @@ test('a declined report stays off the sheet, and Sunday opens next week', () => 
   assert.equal(sheetMonday('2026-11-11'), '2026-11-09');
 });
 
-test('push-ups: Monday from the last Saturday max, Saturday the test, and outside the rep cap', () => {
+test('push-ups: Monday test sets, Thursday training sets from it, all outside the rep cap', () => {
   const pushAction = {
     ...action,
     id: 'p1',
-    title: 'Chest & Back A',
-    workout_plan: [ex('Push-Ups', 5, 21, 21, null, 'bodyweight'), ex('Push-Up Max Test', 1, 35, 35, null, 'bodyweight')],
+    title: 'Chest & Back B',
+    workout_plan: [ex('Push-Up Training Sets', 10, 17, 17, null, 'bodyweight'), ex('Paused Push-Ups', 3, 8, 12, null, 'bodyweight')],
   } as Action;
-  const test1: Session = { ...done, id: 's9', action_id: 'p1', date: '2026-11-14', week_start: '2026-11-09' } as Session;
+  const monday: Session = { ...done, id: 's9', action_id: 'other', date: '2026-11-16', week_start: '2026-11-16' } as Session;
   const data: AppData = {
     ...base(),
     actions: [pushAction],
-    schedules: [{ ...schedule, id: 'sc9', action_id: 'p1', days: [1] }],
-    sessions: [test1],
-    workoutSets: [{ id: 'x', session_id: 's9', exercise: 'Push-Up Max Test', set_no: 1, weight: null, reps: 40, done: true } as WorkoutSet],
+    schedules: [{ ...schedule, id: 'sc9', action_id: 'p1', days: [4] }],
+    sessions: [monday],
+    workoutSets: [40, 30, 26, 22, 20].map((r, i) => ({ id: `x${i}`, session_id: 's9', exercise: 'Push-Up Max Sets', set_no: i + 1, weight: null, reps: r, done: true }) as WorkoutSet),
     workoutReports: [],
   };
-  const sheet = weekSheet(data, '2026-11-16', '2026-11-15');
+  const sheet = weekSheet(data, '2026-11-16', '2026-11-17');
   const rows = sheet.days[0]!.rows;
-  assert.equal(rows[0]!.setsReps, '5 × 24');
+  assert.equal(rows[0]!.setsReps, 'up to 10 × 20');
   assert.equal(rows[0]!.weight, 'bodyweight');
-  assert.equal(rows[1]!.setsReps, '1 × max');
-  assert.equal(rows[1]!.weight, 'beat 40');
-  assert.equal(rows[1]!.tag, 'MAX TEST');
-  assert.ok(sheet.summary.some((s) => s.includes('Push-ups') && s.includes('3 × 16')));
+  assert.equal(rows[1]!.setsReps, '3 × 8–12');
+  assert.ok(sheet.summary.some((s) => s.includes('Push-ups') && s.includes('last test 40') && s.includes('Thursday: up to 10 × 20')));
 });
 
 test("a plan change doesn't rewrite a workout already done: past days show the plan they had", async () => {

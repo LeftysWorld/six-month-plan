@@ -24,8 +24,7 @@ import {
   type TrainingState,
   pushupRole,
   pushupTarget,
-  type PushupHistory,
-  type PushupRole,
+  type PushupLog,
   type PushupTarget,
   type Action,
 } from '@six/core';
@@ -104,34 +103,26 @@ export interface ExerciseTarget extends Target {
   pushup?: PushupTarget;
 }
 
-/** Push-up tests and the last volume day before `day` (every workout; the program runs across days). */
-function pushupHistory(data: AppData, day: ISODate): PushupHistory {
-  const tests: PushupHistory['tests'] = [];
-  let lastVolume: PushupHistory['lastVolume'] = null;
-  const byName = new Map<string, PushupRole>();
-  for (const w of data.workoutSets) {
-    if (!byName.has(w.exercise)) byName.set(w.exercise, pushupRole(w.exercise) as PushupRole);
-  }
-  for (const [name, role] of byName) {
+/** Every logged push-up workout of the program (any workout, any day): its role, reps and any added weight. */
+function pushupLogs(data: AppData, day: ISODate): PushupLog[] {
+  const out: PushupLog[] = [];
+  for (const name of new Set(data.workoutSets.map((w) => w.exercise))) {
+    const role = pushupRole(name);
     if (!role) continue;
     for (const s of sessionsOf(data, name, day, {}, new Set())) {
-      const reps = s.sets.filter((x) => x.done && (x.reps ?? 0) > 0).map((x) => x.reps ?? 0);
-      if (!reps.length) continue;
-      if (role === 'test') tests.push({ date: s.date, max: Math.max(...reps) });
-      else if (role === 'volume' && (!lastVolume || s.date > lastVolume.date)) lastVolume = { date: s.date, reps };
+      const done = s.sets.filter((x) => x.done && (x.reps ?? 0) > 0);
+      if (!done.length) continue;
+      const w = done.map((x) => x.weight).find((x) => x != null && x > 0) ?? null;
+      out.push({ date: s.date, role, name, reps: done.map((x) => x.reps ?? 0), weight: w });
     }
   }
-  tests.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  return { tests, lastVolume };
+  return out;
 }
 
-/** The starting max before the first test: the test's planned reps, else the volume day's reps ÷ 60%. */
+/** The starting test before the first Monday: the Monday plan's reps (the estimate), else 35. */
 function pushupEstimate(data: AppData): number {
-  const all = plannedLifts(data).map((p) => p.ex);
-  const test = all.find((e) => pushupRole(e.name) === 'test');
-  if (test) return test.reps_max;
-  const vol = all.find((e) => pushupRole(e.name) === 'volume');
-  return vol ? Math.round(vol.reps_max / 0.6) : 10;
+  const test = plannedLifts(data).map((p) => p.ex).find((e) => pushupRole(e.name) === 'test');
+  return test ? test.reps_max : 35;
 }
 
 /** Next targets for a workout's exercises on its day, with stall flags. */
@@ -144,8 +135,8 @@ export function targetsFor(data: AppData, session: Session, plan: PlannedExercis
   const targets = plan.map((planned): ExerciseTarget => {
     const role = pushupRole(planned.name);
     if (role) {
-      const p = pushupTarget(role, day, pushupHistory(data, day), pushupEstimate(data), deload.now);
-      return { cls: 'bodyweight', weight: null, sets: p.sets, reps_min: p.reps, reps_max: role === 'test' ? p.reps : p.reps, why: 'pushups', text: p.text, effort: p.effort, cap: null, stalled: false, pushup: p };
+      const p = pushupTarget(role, planned.name, day, pushupLogs(data, day), pushupEstimate(data), deload.now);
+      return { cls: 'bodyweight', weight: p.weight, sets: p.sets, reps_min: p.reps_min, reps_max: p.reps_max, why: 'pushups', text: p.text, effort: p.effort, cap: null, stalled: false, pushup: p };
     }
     const ex = capPlan(planned, maxReps);
     const history = sessionsOf(data, ex.name, day, { actionId: session.action_id }, deloads);
