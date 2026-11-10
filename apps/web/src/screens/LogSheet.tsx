@@ -8,6 +8,7 @@ import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
 import { SessionFiles } from '../components/Attachments.tsx';
 import { lastReading, opsRecordReading, opsSetTaskGoals, readingOn } from '../data/connect.ts';
 import { WorkoutSheet } from '../components/Workout.tsx';
+import { planOn } from '../data/progress.ts';
 import { StretchSheet } from '../components/Stretch.tsx';
 import { LinkToGoal, needsGoalLink } from '../components/LinkToGoal.tsx';
 import { MoveDayPicker } from '../components/MoveDayPicker.tsx';
@@ -75,7 +76,7 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
 
   const hasWorkoutLog = action?.kind === 'workout' && !!action.workout_plan?.length;
   if (hasWorkoutLog && !general) {
-    return <WorkoutSheet session={session} plan={action!.workout_plan!} onClose={onClose} onGeneral={() => setGeneral(true)} />;
+    return <WorkoutSheet session={session} plan={planOn(data, action!, session, today)} onClose={onClose} onGeneral={() => setGeneral(true)} />;
   }
   const hasStretchLog = action?.kind === 'stretch' && !!action.stretch_plan?.holds.length;
   if (hasStretchLog && !general) {

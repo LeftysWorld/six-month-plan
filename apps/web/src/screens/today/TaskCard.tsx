@@ -5,6 +5,7 @@ import { fmt, minutesText } from '../../data/derive.ts';
 import { useView } from '../../data/useView.ts';
 import { readingOn } from '../../data/connect.ts';
 import { talliesFor, tallyFor } from '../../data/tally.ts';
+import { planOn } from '../../data/progress.ts';
 import { Icon } from '../../components/ui.tsx';
 import { WorkoutCardPlan } from '../../components/Workout.tsx';
 import { StretchCardPlan } from '../../components/Stretch.tsx';
@@ -119,7 +120,7 @@ export function TaskCard({ session, hint, onToggle, onOpen, swipe, grip, wrap }:
               <span style={{ marginLeft: goals.length > 1 ? 3 : 0 }}>{meta}</span>
             </span>
           )}
-          {action?.kind === 'workout' && action.workout_plan?.length ? <WorkoutCardPlan session={s} plan={action.workout_plan} /> : null}
+          {action?.kind === 'workout' && action.workout_plan?.length ? <WorkoutCardPlan session={s} plan={planOn(data, action, s, today)} /> : null}
           {action?.kind === 'stretch' && action.stretch_plan?.holds.length ? <StretchCardPlan session={s} plan={action.stretch_plan} /> : null}
         </button>
         <button type="button" className={`tick-btn ${ring}`} aria-label={label} onClick={onToggle}>

@@ -27,6 +27,7 @@ import {
   type PushupHistory,
   type PushupRole,
   type PushupTarget,
+  type Action,
 } from '@six/core';
 import type { AppData, Op } from './model.ts';
 
@@ -156,6 +157,24 @@ export function targetsFor(data: AppData, session: Session, plan: PlannedExercis
     return { ...t, cap, stalled: !deload.now && isStalled(history, t.cls) };
   });
   return { targets, deload };
+}
+
+/**
+ * A workout's plan as it stood on a past day: the version in effect then, so changing the plan
+ * never rewrites a workout you already did (Monday's log keeps the machine press it had). A
+ * version made on the same day counts only if it came before the workout was logged. Today and
+ * later, and workouts with no versions, use the plan as it is now.
+ */
+export function planOn(data: AppData, action: Action, session: Session, today: ISODate): PlannedExercise[] {
+  const current = action.workout_plan ?? [];
+  const day = dayOf(session);
+  if (day >= today) return current;
+  const loggedAt = session.logged_at ?? null;
+  const versions = data.planVersions
+    .filter((v) => v.action_id === action.id && (v.effective_on < day || (v.effective_on === day && (!loggedAt || (v.created_at ?? '') <= loggedAt))))
+    .sort((a, b) => (a.effective_on !== b.effective_on ? (a.effective_on < b.effective_on ? -1 : 1) : (a.created_at ?? '') < (b.created_at ?? '') ? -1 : 1));
+  const plan = versions.at(-1)?.plan as PlannedExercise[] | undefined;
+  return Array.isArray(plan) && plan.length ? plan : current;
 }
 
 /**

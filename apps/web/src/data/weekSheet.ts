@@ -11,7 +11,7 @@ import {
   type Session,
 } from '@six/core';
 import type { AppData } from './model.ts';
-import { bodyWeight, deloadFor, targetsFor, type ExerciseTarget } from './progress.ts';
+import { bodyWeight, deloadFor, planOn, targetsFor, type ExerciseTarget } from './progress.ts';
 import type { Decision, DecisionChange } from './workoutHistory.ts';
 
 /**
@@ -164,7 +164,8 @@ export function weekSheet(data: AppData, monday: ISODate, today: ISODate): WeekS
   const days: SheetDay[] = sessions.map((s) => {
     const action = data.actions.find((a) => a.id === s.action_id)!;
     if (!toneOf.has(action.id)) toneOf.set(action.id, tones[toneOf.size % tones.length]!);
-    const { plan, touched } = withCoach(action.workout_plan ?? [], action.id, action.title, coach?.changes ?? []);
+    // A day already past shows the plan it had (a plan change never rewrites what you did).
+    const { plan, touched } = withCoach(planOn(data, action, s, today), action.id, action.title, coach?.changes ?? []);
     const day = s.date ?? monday;
     const { targets } = targetsFor(data, { ...s, date: day }, plan);
     const rows: SheetRow[] = plan.map((ex, i) => {

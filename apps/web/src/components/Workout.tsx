@@ -512,7 +512,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
     const kept = extras.filter((e) => e.keep);
     const planOps: Op[] =
       kept.length && action
-        ? [{ kind: 'update', collection: 'actions', id: action.id, patch: { workout_plan: cleanPlan([...basePlan, ...kept.map(({ keep: _k, ...e }) => ({ ...e, note: e.note === 'Added this workout' ? '' : e.note }))]) } }]
+        ? [{ kind: 'update', collection: 'actions', id: action.id, patch: { workout_plan: cleanPlan([...(action.workout_plan ?? basePlan), ...kept.map(({ keep: _k, ...e }) => ({ ...e, note: e.note === 'Added this workout' ? '' : e.note }))]) } }]
         : [];
     const logs = opsSaveExerciseLogs(
       data,

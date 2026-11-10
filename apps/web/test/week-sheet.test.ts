@@ -108,3 +108,24 @@ test('push-ups: Monday from the last Saturday max, Saturday the test, and outsid
   assert.equal(rows[1]!.tag, 'MAX TEST');
   assert.ok(sheet.summary.some((s) => s.includes('Push-ups') && s.includes('3 × 16')));
 });
+
+test("a plan change doesn't rewrite a workout already done: past days show the plan they had", async () => {
+  const { planOn } = await import('../src/data/progress.ts');
+  const old = [ex('Machine Chest Press', 3, 10, 12, 60)];
+  const now = [ex('Push-Ups', 5, 21, 21, null, 'bodyweight')];
+  const act = { ...action, id: 'm1', workout_plan: now } as Action;
+  const data: AppData = {
+    ...base(),
+    planVersions: [
+      { id: 'v1', action_id: 'm1', plan: old, effective_on: '2026-11-03', created_at: '2026-11-03T20:00:00Z' },
+      { id: 'v2', action_id: 'm1', plan: now, effective_on: '2026-11-10', created_at: '2026-11-10T13:25:00Z' },
+    ] as AppData['planVersions'],
+  };
+  const monday = { ...done, action_id: 'm1', date: '2026-11-09', logged_at: '2026-11-09T18:00:00Z' } as Session;
+  assert.equal(planOn(data, act, monday, '2026-11-10')[0]!.name, 'Machine Chest Press');
+  assert.equal(planOn(data, act, { ...monday, date: '2026-11-16' } as Session, '2026-11-10')[0]!.name, 'Push-Ups');
+  assert.equal(planOn(data, act, { ...monday, date: '2026-11-10' } as Session, '2026-11-10')[0]!.name, 'Push-Ups');
+  // A change made later on the same day as a logged workout doesn't reach back into it.
+  const tuesdayLogged = { ...monday, date: '2026-11-10', logged_at: '2026-11-10T09:00:00Z' } as Session;
+  assert.equal(planOn(data, act, tuesdayLogged, '2026-11-11')[0]!.name, 'Machine Chest Press');
+});
