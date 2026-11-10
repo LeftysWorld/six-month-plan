@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { exerciseClass, pushupRole, pushupTarget, pushupTest, type PushupLog } from '../src/index.ts';
+import { exerciseClass, pushupRole, pushupTarget, pushupTest, pyramidResult, type PushupLog } from '../src/index.ts';
 
 const log = (date: string, name: string, reps: number[], weight: number | null = null): PushupLog => ({ date, role: pushupRole(name)!, name, reps, weight });
 
@@ -58,9 +58,14 @@ test('Tuesday and Friday: 8–12, then 15, then a plate back at 8–12; 2 sets i
   assert.equal(pushupTarget('strength', name, '2026-12-15', [], 35, true).sets, 2);
 });
 
-test('Saturday: the pyramid, beat last step; skipped in a lighter week', () => {
-  const t = pushupTarget('pyramid', 'Push-Up Density Pyramid', '2026-11-21', [log('2026-11-14', 'Push-Up Density Pyramid', [8, 22])], 35, false);
+test('Saturday: one set per step (1, 2, 3 …) and a final set; beat last step; skipped in a lighter week', () => {
+  const first = pushupTarget('pyramid', 'Push-Up Density Pyramid', '2026-11-14', [], 35, false);
+  assert.deepEqual(first.set_reps, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 17]);
+  assert.equal(first.sets, 11);
+  assert.deepEqual(pyramidResult([1, 2, 3, 4, 5, 6, 7, 8, 22]), { step: 8, final: 22 });
+  const t = pushupTarget('pyramid', 'Push-Up Density Pyramid', '2026-11-21', [log('2026-11-14', 'Push-Up Density Pyramid', [1, 2, 3, 4, 5, 6, 7, 8, 22])], 35, false);
   assert.equal(t.step, 8);
+  assert.deepEqual(t.set_reps, [1, 2, 3, 4, 5, 6, 7, 8, 9, 23]);
   assert.match(t.text, /step 8, final set 22\. Reach step 9/);
   assert.ok(pushupTarget('pyramid', 'Push-Up Density Pyramid', '2026-12-19', [], 35, true).skip);
 });

@@ -9,7 +9,8 @@
  * - Thursday · Training Sets: sets of half the Monday test (rounded down), 60 s rest, as many sets
  *   as you can with perfect form, up to 10. All 10 done → 1 more rep per set next week.
  * - Saturday · Density Pyramid: 1 rep, rest 10 s; 2 reps, rest 20 s; … until you can't finish a
- *   step; then rest 2 min and do 1 all-out set. Logged as two sets: the top step, then the final set.
+ *   step; then rest 2 min and do 1 all-out set. Each step is a set (1, 2, 3 … reps), and the last
+ *   set is the final all-out set.
  * - Lighter week: Monday the test set only, Thursday 5 training sets, Tue/Fri 2 sets, no pyramid.
  *
  * Push-ups are bodyweight lifts, so they're outside the rep cap.
@@ -50,6 +51,8 @@ export interface PushupTarget {
   weight: number | null;
   /** Saturday: the last top step. */
   step: number | null;
+  /** Each set's own reps when they differ: the pyramid's steps (1, 2, 3 …) and then its final set. */
+  set_reps?: number[];
   deload: boolean;
   /** Up from last time (more reps, more weight, the next stage). */
   up: boolean;
@@ -61,6 +64,16 @@ export interface PushupTarget {
 
 const byDate = (a: PushupLog, b: PushupLog) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
 const before = (logs: PushupLog[], day: string, f: (l: PushupLog) => boolean) => logs.filter((l) => l.date < day && l.reps.length > 0 && f(l)).sort(byDate);
+
+/**
+ * A logged pyramid: the steps are the leading sets of 1, 2, 3 … reps, the final set is the last one.
+ * ([1, 2, 3, 4, 5, 6, 7, 8, 22] → step 8, final 22.)
+ */
+export function pyramidResult(reps: number[]): { step: number | null; final: number | null } {
+  let k = 0;
+  while (k < reps.length - 1 && reps[k] === k + 1) k++;
+  return { step: k || null, final: reps.length > k ? reps.at(-1)! : null };
+}
 
 /** The latest Monday test (set 1 of the max sets) before `day`, else the estimate. */
 export function pushupTest(logs: PushupLog[], day: string, estimate: number): number {
@@ -117,16 +130,20 @@ export function pushupTarget(role: PushupRole, name: string, day: string, logs: 
 
   if (role === 'pyramid') {
     const last = before(logs, day, (l) => l.role === 'pyramid').at(-1);
-    const step = last?.reps[0] ?? null;
-    const final = last?.reps[1] ?? null;
+    const { step, final } = last ? pyramidResult(last.reps) : { step: null, final: null };
     if (deload) return { ...base, sets: 1, reps_min: 1, reps_max: 1, skip: true, text: 'Lighter week: no pyramid today. Skip it.', effort: '' };
+    // One set per step up to one past your best (10 the first time), then the final set.
+    const steps = step ? step + 1 : 10;
+    const finalTarget = final ? final + 1 : Math.max(1, Math.floor(test / 2));
+    const set_reps = [...Array.from({ length: steps }, (_, i) => i + 1), finalTarget];
     return {
       ...base,
-      sets: 2,
-      reps_min: step ? step + 1 : 1,
-      reps_max: step ? step + 1 : 10,
+      sets: set_reps.length,
+      reps_min: 1,
+      reps_max: finalTarget,
       step,
-      text: `1 push-up, rest 10 s; 2, rest 20 s; 3, rest 30 s; keep adding 1 rep and 10 s of rest until you can't finish a step. Rest 2 min, then 1 all-out set. Log set 1 = the highest step you finished, set 2 = the final set.${step ? ` Last time: step ${step}${final ? `, final set ${final}` : ''}. Reach step ${step + 1}.` : ''} If another workout was clearly this week's hardest, you can repeat it instead.`,
+      set_reps,
+      text: `Each set is a step: 1 push-up, rest 10 s; 2, rest 20 s; 3, rest 30 s; and so on. Tick each step you finish and stop at the first one you can't. Then rest 2 min and do the last set, your final all-out set (type what you got).${step ? ` Last time: step ${step}${final ? `, final set ${final}` : ''}. Reach step ${step + 1}.` : ' Sets 1–10 are the steps; go as far as you can.'} Steps you don't reach: delete them or leave them unticked. If another workout was clearly this week's hardest, you can repeat it instead.`,
       effort: 'The final set all-out.',
     };
   }

@@ -324,13 +324,15 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   };
   const suggestions = targets;
   const planWeight = (i: number) => suggestions[i]!.weight;
+  /** A set's planned reps: its own number when the sets differ (the push-up pyramid: 1, 2, 3 …), else the top of the range. */
+  const setReps = (i: number, k: number) => suggestions[i]!.pushup?.set_reps?.[k] ?? plan[i]!.reps_max;
 
   const [rows, setRows] = useState<Row[][]>(() => {
     {
       const parsed = draft?.rows ?? null;
       // A draft only fits if the plan still has the same exercises and sets.
       if (parsed && parsed.length === plan.length && parsed.every((r, i) => r.length >= plan[i]!.sets)) {
-        return parsed.map((r, i) => r.map((x) => (x.done ? x : { ...x, weight: x.weight || (suggestions[i]!.weight == null ? '' : String(suggestions[i]!.weight)), reps: x.reps || String(plan[i]!.reps_max) })));
+        return parsed.map((r, i) => r.map((x, k) => (x.done ? x : { ...x, weight: x.weight || (suggestions[i]!.weight == null ? '' : String(suggestions[i]!.weight)), reps: x.reps || String(setReps(i, k)) })));
       }
     }
     return plan.map((e) =>
@@ -340,7 +342,7 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
         if (s) return { weight: s.weight == null ? '' : String(s.weight), reps: s.reps == null ? '' : String(s.reps), done: s.done };
         // Start from the plan: weight (or last time's) and the top of the rep range, ready to tick or type over.
         const w = suggestions[plan.indexOf(e)]!.weight;
-        return { weight: w == null ? '' : String(w), reps: String(e.reps_max), done: false };
+        return { weight: w == null ? '' : String(w), reps: String(setReps(plan.indexOf(e), k)), done: false };
       }),
     );
   });
@@ -472,7 +474,8 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   const canMove = moveDatesFor(view, session, today).length > 0;
   const workouts = data.actions.filter((a) => !a.archived_at && a.kind === 'workout' && a.workout_plan?.length);
   const doneCount = rows.flat().filter((r) => r.done).length;
-  const total = rows.flat().length;
+  // The push-up pyramid ends where you stop: with its final set done, steps you didn't reach don't count as missed.
+  const total = rows.reduce((n, r, i) => n + (suggestions[i]?.pushup?.role === 'pyramid' && r.at(-1)?.done ? r.filter((x) => x.done).length : r.length), 0);
 
   /** What to show under an exercise once rated: what the number means for next time. */
   const hintFor = (i: number): string | null => {
