@@ -15,6 +15,7 @@ import { CommitmentCard } from '../components/Commitment.tsx';
 import { MeasureSheet } from '../components/MeasureSheet.tsx';
 import { carriedPhotos } from '../data/tracking.ts';
 import { DailyRoutine } from './today/DailyRoutine.tsx';
+import { DayCalendar } from './today/DayCalendar.tsx';
 import { TrainingNotices } from './today/TrainingNotices.tsx';
 import { byDayOrder, opsOrderDay } from '../data/dayOrder.ts';
 import { useListDrag } from '../components/listDrag.ts';
@@ -368,6 +369,7 @@ export function Today({ date }: { date?: ISODate } = {}) {
           {weekStrip}
         </div>
 
+        <DayCalendar day={day} />
         {isToday && <PrizeCelebration />}
         {isToday && <PlanPackNudge />}
         {isToday && <AppUpdatesNudge />}
