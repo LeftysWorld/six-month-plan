@@ -1313,6 +1313,10 @@ a.rm-name:hover .rm-title { color: var(--accent-ink); }
 .kmark.k-start { width: 3px; height: 10px; border-radius: 2px; }
 .kmark.k-finish { width: 8px; height: 8px; border-radius: 1.5px; transform: rotate(45deg); }
 .kmark.k-season { background: var(--accent); width: 10px; height: 3px; border-radius: 2px; }
+/* Google Calendar events: a thin bar in the calendar's colour. */
+.kmark.k-event { width: 3px; height: 9px; border-radius: 1.5px; }
+.cal-legend .kmark.k-event { --c: #4285f4; }
+.cal-dot.k-event { border-radius: 1.5px; width: 3px; height: 7px; }
 .kmark.k-done { background: var(--c); }
 .cal-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--muted); }
 .cal-legend > span { display: inline-flex; align-items: center; gap: 6px; }

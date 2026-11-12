@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { addDays, isoWeekday, type ISODate } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
+import { eventsByDay, shortClock } from '../data/googleCalendar.ts';
 import { KIND_TEXT, calendarItems, dayTitle, repeatingOn, type CalItem, type CalKind } from '../data/calendar.ts';
 import { opsToggleMilestone } from '../data/ops.ts';
 import { href, navigate } from '../router.ts';
@@ -59,6 +60,8 @@ export function Calendar() {
   const rangeStart = `${months[0]}-01`;
   const rangeEnd = addDays(`${shiftMonth(months.at(-1)!, 1)}-01`, -1);
   const items = calendarItems(view, rangeStart, rangeEnd);
+  // Google Calendar events (Settings → Google Calendar), read-only, after the app's own dates.
+  const events = eventsByDay(data, rangeStart, rangeEnd, data.profile.timezone);
   const [y, m] = month.split('-').map(Number) as [number, number];
   const initial = (data.profile.display_name || 'You').trim().charAt(0).toUpperCase();
   const upcoming = [...items.entries()].filter(([d]) => d >= today && monthOf(d) === month).reduce((n, [, l]) => n + l.filter((x) => !x.done && x.kind !== 'season').length, 0);
@@ -202,7 +205,12 @@ export function Calendar() {
               <div className="cal-grid" role="grid" aria-label={`${MONTHS[mm - 1]} ${yy}`}>
                 {cells.map((d, i) => {
                   if (!d) return <span key={`b${i}`} className="cal-cell blank" aria-hidden="true" />;
-                  const list = items.get(d) ?? [];
+                  const own = items.get(d) ?? [];
+                  const evs = events.get(d) ?? [];
+                  const list: CellItem[] = [
+                    ...own,
+                    ...evs.map((e) => ({ id: `g-${e.event.id}`, kind: 'event' as const, title: e.time === 'All day' || e.start === 0 ? e.event.title || 'Busy' : `${shortClock(e.start)} ${e.event.title || 'Busy'}`, color: e.feed?.color || '#4285f4', done: false })),
+                  ];
                   const rep = repeating ? repeatingOn(data, d) : null;
                   return (
                     <button
@@ -257,11 +265,19 @@ export function Calendar() {
               <KindMark kind={k} /> {k === 'task' ? 'One day' : k === 'start' ? 'Goal starts' : k === 'finish' ? 'Goal due' : k === 'season' ? 'Season' : k === 'checkpoint' ? '3-month, month, week goal' : 'Date to hit'}
             </span>
           ))}
+          {(data.calendarFeeds ?? []).length > 0 && (
+            <span>
+              <KindMark kind="event" /> Google Calendar
+            </span>
+          )}
         </div>
       </section>
     </div>
   );
 }
+
+/** What a day cell shows: the app's own dates, then calendar events. */
+type CellItem = Pick<CalItem, 'id' | 'title' | 'color' | 'done'> & { kind: CalKind | 'event' };
 
 /** How many months from one to another (both YYYY-MM). */
 function monthsBetween(a: string, b: string): number {
@@ -271,7 +287,7 @@ function monthsBetween(a: string, b: string): number {
 }
 
 /** A small mark for each kind: a square for a one-day task, a ring for a date to hit, a bar end for a goal's start or due date. */
-export function KindMark({ kind }: { kind: CalKind }) {
+export function KindMark({ kind }: { kind: CalKind | 'event' }) {
   return <span className={`kmark k-${kind}`} aria-hidden="true" />;
 }
 

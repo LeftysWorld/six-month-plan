@@ -52,6 +52,45 @@ export function clock(minutes: number): string {
   return `${h12}:${String(m).padStart(2, '0')}${h < 12 ? 'am' : 'pm'}`;
 }
 
+/** Short start time for a calendar cell: "9a", "12:30p". */
+export function shortClock(minutes: number): string {
+  const h = Math.floor(minutes / 60) % 24;
+  const m = minutes % 60;
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'a' : 'p'}`;
+}
+
+/** Calendar events by day for a span of days (the Calendar tab), each day in eventsOn's order. */
+export function eventsByDay(data: AppData, from: string, to: string, timeZone: string): Map<string, DayEvent[]> {
+  const out = new Map<string, DayEvent[]>();
+  if (!(data.calendarEvents ?? []).length) return out;
+  const days = new Set<string>();
+  for (const e of data.calendarEvents) {
+    let a: string | null = null;
+    let b: string | null = null;
+    if (e.all_day && e.start_date && e.end_date) {
+      a = e.start_date;
+      b = e.end_date;
+    } else if (e.starts_at && e.ends_at) {
+      a = zonedParts(Date.parse(e.starts_at), timeZone).date;
+      b = zonedParts(Date.parse(e.ends_at), timeZone).date;
+    }
+    if (!a || !b || b < from || a > to) continue;
+    // Every day it touches (an event over a few days shows on each).
+    for (let d = a < from ? from : a, n = 0; d <= b && d <= to && n < 62; n++) {
+      days.add(d);
+      const t = new Date(`${d}T12:00:00Z`);
+      t.setUTCDate(t.getUTCDate() + 1);
+      d = t.toISOString().slice(0, 10);
+    }
+  }
+  for (const d of [...days].sort()) {
+    const list = eventsOn(data, d, timeZone);
+    if (list.length) out.set(d, list);
+  }
+  return out;
+}
+
 /** The calendar events on a day, all-day first, then by start time. */
 export function eventsOn(data: AppData, day: string, timeZone: string): DayEvent[] {
   const feeds = new Map((data.calendarFeeds ?? []).map((f) => [f.id, f]));

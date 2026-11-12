@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { feedUrl, syncCalendars, syncFeed, type CalendarFeedRow, type CalendarStore } from '../api-src/calendar_sync.ts';
-import { eventsOn, syncDue } from '../src/data/googleCalendar.ts';
+import { eventsByDay, eventsOn, shortClock, syncDue } from '../src/data/googleCalendar.ts';
 import { emptyData } from '../src/data/model.ts';
 import type { CalendarEvent, CalendarFeed } from '@six/core';
 
@@ -128,4 +128,20 @@ test('the bundled calendar server function is up to date with its source', async
     // esbuild isn't installed here: the content check above still ran
   }
   if (fresh) assert.equal(committed, fresh, 'run: node apps/web/scripts/build-agent-api.mjs');
+});
+
+test('Calendar tab: events by day across a month, multi-day events on each day', () => {
+  const data = emptyData();
+  data.calendarFeeds = [{ id: 'f1', name: 'Google Calendar', url: '', color: '#4285f4', last_synced_at: null, last_error: null }];
+  const base = { feed_id: 'f1', location: '', starts_at: null, ends_at: null, start_date: null, end_date: null };
+  data.calendarEvents = [
+    { ...base, id: '1', key: '1', title: 'Zoom', all_day: false, starts_at: '2026-11-12T17:30:00+00:00', ends_at: '2026-11-12T18:00:00+00:00' },
+    { ...base, id: '2', key: '2', title: 'Trip', all_day: true, start_date: '2026-11-20', end_date: '2026-11-23' },
+    { ...base, id: '3', key: '3', title: 'Next month', all_day: false, starts_at: '2026-12-05T15:00:00Z', ends_at: '2026-12-05T16:00:00Z' },
+  ];
+  const by = eventsByDay(data, '2026-11-01', '2026-11-30', 'America/New_York');
+  assert.deepEqual([...by.keys()], ['2026-11-12', '2026-11-20', '2026-11-21', '2026-11-22']);
+  assert.equal(by.get('2026-11-12')![0]!.start, 750);
+  assert.equal(shortClock(750), '12:30p');
+  assert.equal(shortClock(9 * 60), '9a');
 });
