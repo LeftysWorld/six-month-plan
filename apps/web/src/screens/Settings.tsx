@@ -12,7 +12,7 @@ import { BackLink, Sheet, WEEKDAY_NAMES, useToast } from '../components/ui.tsx';
 import type { ShellProps } from '../App.tsx';
 import { getTheme, setTheme, type Theme } from '../theme.ts';
 import { ReminderSettings } from '../components/ReminderSettings.tsx';
-import { BodySection, CoachSection, SetCard, Toggle, TrainingSection, nextCoachRun, runLabel } from './SettingsSections.tsx';
+import { BodySection, CalendarSection, CoachSection, SetCard, Toggle, TrainingSection, nextCoachRun, runLabel } from './SettingsSections.tsx';
 import { lastExport, markExported, remindersLive, useSystemStatus, type SystemStatus } from '../data/systemStatus.ts';
 import { bodyPrefs, daysBetween, rulesSummary, shortDate, trainingRules, type ISODate } from '@six/core';
 
@@ -217,11 +217,12 @@ function ImportData({ onClose, onIdeasFile }: { onClose: () => void; onIdeasFile
   );
 }
 
-type SectionId = 'you' | 'week' | 'training' | 'body' | 'coach' | 'reminders' | 'partner' | 'data' | 'advanced';
+type SectionId = 'you' | 'week' | 'calendar' | 'training' | 'body' | 'coach' | 'reminders' | 'partner' | 'data' | 'advanced';
 
 const ICONS: Record<SectionId, string> = {
   you: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
   week: 'M4 6h16v14H4zM4 10h16M9 3v4M15 3v4',
+  calendar: 'M4 6h16v14H4zM4 10h16M9 3v4M15 3v4M8 14h3v3H8z',
   training: 'M6 9v6M18 9v6M3 11v2M21 11v2M6 12h12',
   body: 'M4 12h16M7 8v8M11 6v12M15 8v8M19 10v4',
   coach: 'M12 3l2.5 5 5.5.8-4 3.9.9 5.5L12 15.6 7.1 18.2 8 12.7 4 8.8l5.5-.8z',
@@ -232,7 +233,7 @@ const ICONS: Record<SectionId, string> = {
 };
 
 const GROUPS: { label: string; ids: SectionId[] }[] = [
-  { label: 'You and your week', ids: ['you', 'week'] },
+  { label: 'You and your week', ids: ['you', 'week', 'calendar'] },
   { label: 'Training and body', ids: ['training', 'body', 'coach'] },
   { label: 'Staying on track', ids: ['reminders', 'partner'] },
   { label: 'Your data', ids: ['data', 'advanced'] },
@@ -241,6 +242,7 @@ const GROUPS: { label: string; ids: SectionId[] }[] = [
 const TITLES: Record<SectionId, string> = {
   you: 'You',
   week: 'Week',
+  calendar: 'Google Calendar',
   training: 'Training',
   body: 'Body',
   coach: 'Workout coach',
@@ -292,6 +294,9 @@ function useOverview(signedIn: boolean) {
   const summary: Record<SectionId, string> = {
     you: `${p.display_name || 'Your name'} · ${p.timezone.split('/').pop()?.replace(/_/g, ' ')} · ${p.units === 'kg' ? 'kg, cm' : 'lb, in'}`,
     week: `${sameWeekdays ? `${minutesLabel(weekdayMin[0] ?? 0)} on weekdays` : 'Time set per day'} · week starts Monday · review Sunday`,
+    calendar: data.calendarFeeds?.length
+      ? `${data.calendarFeeds.map((f) => f.name).join(', ')} · on Today`
+      : 'Show your calendar’s events on Today (read only)',
     training: rulesSummary(rules, p.units),
     body: `Weight daily · ${tapeCount ? `${tapeCount} tape measurement${tapeCount === 1 ? '' : 's'}` : 'tape measurements'} on ${['', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'][body.measure_day]}`,
     coach: p.coach_key_hash ? `Connected · next run ${runLabel(nextCoachRun(), p.timezone)}` : 'Not connected',
@@ -303,6 +308,7 @@ function useOverview(signedIn: boolean) {
   const pills: Record<SectionId, Pill> = {
     you: null,
     week: null,
+    calendar: data.calendarFeeds?.some((f) => f.last_error) ? { text: 'Not syncing', tone: 'warn' } : data.calendarFeeds?.length ? { text: 'On', tone: 'ok' } : null,
     training: null,
     body: tapeCount === 0 ? { text: 'New', tone: 'ok' } : null,
     coach: signedIn ? (p.coach_key_hash ? { text: 'On', tone: 'ok' } : { text: 'Not set up', tone: 'warn' }) : null,
@@ -498,6 +504,8 @@ function SectionBody({ id, props, status, onExport }: { id: SectionId; props: Sh
       return <YouSection />;
     case 'week':
       return <WeekSection />;
+    case 'calendar':
+      return <CalendarSection signedIn={!props.demo} />;
     case 'training':
       return <TrainingSection />;
     case 'body':

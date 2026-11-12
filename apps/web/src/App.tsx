@@ -4,6 +4,7 @@ import type { Db } from './data/db.ts';
 import { createLocalDb } from './data/local.ts';
 import type { AppData } from './data/model.ts';
 import { StoreProvider, useStore } from './data/store.tsx';
+import { useCalendarSync } from './data/useGoogleCalendar.ts';
 import { createSupabaseDb, getSupabase, schemaWarning, supabaseConfigured } from './data/supabase.ts';
 import { useView } from './data/useView.ts';
 import { opsProfile } from './data/ops.ts';
@@ -135,7 +136,9 @@ export interface ShellProps {
 
 function Shell(props: ShellProps) {
   const route = useRoute();
-  const { sync, clearError, today, data, commit } = useStore();
+  const { sync, clearError, today, data, commit, db, reload } = useStore();
+  // Calendars (Settings → Google Calendar): fresh when the app opens or comes back into view.
+  useCalendarSync(data, !props.demo && db.mode === 'supabase', reload);
   const view = useView();
   // The day Today is showing (when it isn't today): the dock's + adds to it.
   const shownDay = useShownDay();

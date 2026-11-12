@@ -24,6 +24,8 @@ import type {
   WeekPlan,
   WorkoutPlanVersion,
   WorkoutReport,
+  CalendarFeed,
+  CalendarEvent,
   WorkoutSet,
   WorkoutExerciseLog,
 } from '@six/core';
@@ -64,6 +66,9 @@ export interface AppData {
   planVersions: WorkoutPlanVersion[];
   /** Reports from the workout coach agent. */
   workoutReports: WorkoutReport[];
+  /** Calendars read into the app (Settings → Calendars) and their events (read-only, kept in step by the server). */
+  calendarFeeds: CalendarFeed[];
+  calendarEvents: CalendarEvent[];
 }
 
 export type CollectionKey = Exclude<keyof AppData, 'profile'>;
@@ -95,6 +100,8 @@ export const TABLES: Record<CollectionKey, string> = {
   experiments: 'path_experiments',
   planVersions: 'workout_plan_versions',
   workoutReports: 'workout_reports',
+  calendarFeeds: 'calendar_feeds',
+  calendarEvents: 'calendar_events',
 };
 
 export const COLLECTIONS = Object.keys(TABLES) as CollectionKey[];
@@ -157,6 +164,8 @@ export function emptyData(): AppData {
     experiments: [],
     planVersions: [],
     workoutReports: [],
+    calendarFeeds: [],
+    calendarEvents: [],
   };
 }
 

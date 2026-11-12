@@ -17,6 +17,9 @@ import { opsAddMeasurement, opsAddMeasurementType, opsProfile } from '../data/op
 import { fmt } from '../data/derive.ts';
 import { CoachSetup, RunCoachButton, coachUrl } from '../components/CoachSetup.tsx';
 import { useToast } from '../components/ui.tsx';
+import { getSupabase } from '../data/supabase.ts';
+import { FEED_COLORS, eventsOn } from '../data/googleCalendar.ts';
+import { syncCalendarsNow } from '../data/useGoogleCalendar.ts';
 
 /**
  * The sections of Settings that shape training and the coach: Training (your limits, your gym,
@@ -577,6 +580,158 @@ export function CoachSection() {
           <CoachSetup />
         </div>
       </details>
+    </div>
+  );
+}
+
+// ---------- Google Calendar ----------
+
+function agoText(iso: string | null): string {
+  if (!iso) return 'Not synced yet';
+  const min = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  if (min < 1) return 'Synced just now';
+  if (min < 60) return `Synced ${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `Synced ${h} h ago`;
+  return `Synced ${Math.round(h / 24)} d ago`;
+}
+
+/**
+ * Calendars read into the app, one way: what's on them shows on Today among your routine, and
+ * events added, moved or deleted there follow here. The app never writes to the calendar.
+ */
+export function CalendarSection({ signedIn }: { signedIn: boolean }) {
+  const { data, today, reload } = useStore();
+  const toast = useToast();
+  const feeds = data.calendarFeeds ?? [];
+  const [name, setName] = useState('');
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState<'add' | 'sync' | string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const todayCount = eventsOn(data, today, data.profile.timezone).length;
+
+  const sync = async (quiet = false) => {
+    const r = await syncCalendarsNow();
+    await reload();
+    const failed = r.feeds.filter((f) => !f.ok);
+    if (r.message) setError(r.message);
+    else if (failed.length) setError(failed.map((f) => f.error).filter(Boolean).join(' '));
+    else {
+      setError(null);
+      if (!quiet) toast(`Calendar synced · ${r.feeds.reduce((n, f) => n + (f.events ?? 0), 0)} events in the next four months`);
+    }
+    return r;
+  };
+
+  const add = async () => {
+    const address = url.trim();
+    if (!/^(https|webcal):\/\//i.test(address)) return setError('Paste the address that starts with https:// (Google calls it “Secret address in iCal format”).');
+    const sb = getSupabase();
+    if (!sb) return setError('Sign in first.');
+    setBusy('add');
+    setError(null);
+    const color = FEED_COLORS[feeds.length % FEED_COLORS.length]!;
+    const { error: e } = await sb.from('calendar_feeds').insert({ name: name.trim() || 'Google Calendar', url: address, color });
+    if (e) {
+      setBusy(null);
+      return setError(`Couldn't save it: ${e.message}`);
+    }
+    setName('');
+    setUrl('');
+    const r = await sync(true);
+    setBusy(null);
+    if (r.ok) toast('Calendar added. Today now shows its events.');
+  };
+
+  const remove = async (id: string, label: string) => {
+    const sb = getSupabase();
+    if (!sb || !window.confirm(`Stop reading “${label}”? Its events leave the app. Nothing changes in your calendar.`)) return;
+    setBusy(id);
+    const { error: e } = await sb.from('calendar_feeds').delete().eq('id', id);
+    setBusy(null);
+    if (e) return setError(`Couldn't remove it: ${e.message}`);
+    await reload();
+    toast(`${label} removed`);
+  };
+
+  if (!signedIn) {
+    return (
+      <div className="set-stack">
+        <p className="set-lede">Sign in to bring your Google Calendar into the app.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="set-stack">
+      <p className="set-lede">
+        Your calendar's events show on Today, slotted into your day by time. It's one way: add, move or delete an event in Google Calendar and the app follows. The app never adds anything to your calendar.
+      </p>
+
+      {feeds.length > 0 && (
+        <SetCard
+          title="Your calendars"
+          action={
+            <button
+              type="button"
+              className="link-btn small"
+              disabled={busy != null}
+              onClick={async () => {
+                setBusy('sync');
+                await sync();
+                setBusy(null);
+              }}
+            >
+              {busy === 'sync' ? 'Syncing…' : 'Sync now'}
+            </button>
+          }
+        >
+          {feeds.map((f) => (
+            <div key={f.id} className="set-row">
+              <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: f.color || '#4285f4', flex: 'none' }} />
+              <span className="grow" style={{ minWidth: 0 }}>
+                <span>{f.name}</span>
+                <span className="set-hint" style={f.last_error ? { color: 'var(--amber-ink)' } : undefined}>
+                  {f.last_error ? f.last_error : agoText(f.last_synced_at)}
+                </span>
+              </span>
+              <button type="button" className="link-btn small" disabled={busy != null} onClick={() => void remove(f.id, f.name)}>
+                {busy === f.id ? 'Removing…' : 'Remove'}
+              </button>
+            </div>
+          ))}
+          <span className="set-hint">
+            {todayCount ? `${todayCount} event${todayCount === 1 ? '' : 's'} today. ` : 'Nothing on your calendar today. '}
+            Checks for changes when you open the app (at most every 10 minutes) and once a day on its own.
+          </span>
+        </SetCard>
+      )}
+
+      <SetCard title={feeds.length ? 'Add another calendar' : 'Connect Google Calendar'}>
+        <ol className="small" style={{ margin: 0, paddingLeft: 20, display: 'grid', gap: 4 }}>
+          <li>On a computer, open Google Calendar → the gear → Settings.</li>
+          <li>Under “Settings for my calendars” on the left, pick the calendar.</li>
+          <li>Scroll to “Integrate calendar” and copy “Secret address in iCal format”.</li>
+          <li>Paste it below.</li>
+        </ol>
+        <label className="field">
+          Name
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Google Calendar" autoComplete="off" />
+        </label>
+        <label className="field">
+          Secret address in iCal format
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" autoComplete="off" autoCapitalize="off" spellCheck={false} inputMode="url" />
+        </label>
+        {error && (
+          <span className="small" role="alert" style={{ color: 'var(--amber-ink)' }}>
+            {error}
+          </span>
+        )}
+        <button type="button" className="btn primary" disabled={busy != null || !url.trim()} onClick={() => void add()}>
+          {busy === 'add' ? 'Adding…' : 'Add calendar'}
+        </button>
+        <span className="set-hint">The secret address lets anyone who has it read the calendar, so it's kept with your account only. If it ever leaks, reset it in Google Calendar and paste the new one here.</span>
+      </SetCard>
     </div>
   );
 }

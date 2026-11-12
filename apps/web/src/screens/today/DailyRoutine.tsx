@@ -4,6 +4,7 @@ import { useStore } from '../../data/store.tsx';
 import { useView } from '../../data/useView.ts';
 import { opsProfile } from '../../data/ops.ts';
 import { Icon, useToast } from '../../components/ui.tsx';
+import { eventsOn, type DayEvent } from '../../data/googleCalendar.ts';
 
 const FOLD_KEY = 'six.routine.folded';
 
@@ -74,17 +75,34 @@ export function DailyRoutine() {
   };
 
   const where = routineNow(rows, now);
+  // Today's calendar events (Settings → Google Calendar), read-only: all-day ones first, timed ones
+  // slotted in among the routine by start time. They're not tasks; nothing here counts them.
+  const events = eventsOn(data, today, data.profile.timezone);
+  const allDay = events.filter((e) => e.time === 'All day');
+  const timed = events.filter((e) => e.time !== 'All day');
+  type Entry = { kind: 'routine'; i: number } | { kind: 'cal'; e: DayEvent };
+  const entries: Entry[] = [...allDay.map((e) => ({ kind: 'cal' as const, e }))];
+  let t = 0;
+  rows.forEach((r, i) => {
+    while (t < timed.length && timed[t]!.start < r.start) entries.push({ kind: 'cal', e: timed[t++]! });
+    entries.push({ kind: 'routine', i });
+  });
+  while (t < timed.length) entries.push({ kind: 'cal', e: timed[t++]! });
   const focus = where.current ?? where.next;
   const focusRow = focus != null ? rows[focus]! : null;
   const summary = focusRow
     ? `${where.current != null ? 'Now' : 'Next'}: ${focusRow.item.what} · ${focusRow.time}`
     : `Done for today · up at ${timeOfDay(routine.wake)}`;
+  const eventsLeft = events.filter((e) => e.time === 'All day' || e.end > now).length;
 
   if (folded) {
     return (
       <button type="button" className="ritual-fold routine-fold" onClick={() => fold(false)} aria-expanded={false}>
         <span className="label">{lift ? 'Your day' : 'Rest day'}</span>
-        <span className="xsmall muted routine-fold-sub">{summary}</span>
+        <span className="xsmall muted routine-fold-sub">
+          {summary}
+          {eventsLeft ? ` · ${eventsLeft} calendar event${eventsLeft === 1 ? '' : 's'}` : ''}
+        </span>
         <Icon name="chevron" size={14} stroke={2.2} />
       </button>
     );
@@ -109,7 +127,10 @@ export function DailyRoutine() {
         </label>
       </div>
       <ol className="routine-list">
-        {rows.map((r, i) => {
+        {entries.map((entry) => {
+          if (entry.kind === 'cal') return <CalendarRow key={`cal-${entry.e.event.id}`} d={entry.e} now={now} />;
+          const i = entry.i;
+          const r = rows[i]!;
           const state = i === where.current ? 'now' : i === where.next && where.current == null ? 'next' : where.past(i) ? 'past' : '';
           return (
             <li key={`${r.item.at}-${r.item.what}`} className={`routine-row ${state}`} aria-current={state === 'now' || state === 'next' ? 'time' : undefined}>
@@ -130,5 +151,27 @@ export function DailyRoutine() {
         })}
       </ol>
     </section>
+  );
+}
+
+/** A calendar event among the routine: its own colour mark, read-only, fades once it's over. */
+function CalendarRow({ d, now }: { d: DayEvent; now: number }) {
+  const allDay = d.time === 'All day';
+  const state = allDay ? '' : d.end <= now ? 'past' : d.start <= now ? 'now' : '';
+  const color = d.feed?.color || '#4285f4';
+  return (
+    <li className={`routine-row cal ${state}`} style={{ ['--cal' as string]: color }}>
+      <span className="routine-time num">{d.time}</span>
+      <span className="routine-mark" aria-hidden="true" />
+      <span className="routine-body">
+        <span className="routine-what">
+          {d.event.title || 'Busy'}
+          {state === 'now' && <span className="routine-chip">Now</span>}
+        </span>
+        {(d.event.location || d.feed) && state !== 'past' && (
+          <span className="routine-note">{[d.event.location, d.feed?.name].filter(Boolean).join(' · ')}</span>
+        )}
+      </span>
+    </li>
   );
 }

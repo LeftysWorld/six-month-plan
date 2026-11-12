@@ -334,6 +334,33 @@ export interface WorkoutPlanVersion {
   created_at: string;
 }
 
+/** A calendar read into the app (one way) from its private iCal address. */
+export interface CalendarFeed {
+  id: string;
+  name: string;
+  /** The private iCal address ("Secret address in iCal format" in Google Calendar). */
+  url: string;
+  color: string;
+  last_synced_at: string | null;
+  last_error: string | null;
+}
+
+/** An event read from a calendar (recurring events come as one per date). Read-only in the app. */
+export interface CalendarEvent {
+  id: string;
+  feed_id: string;
+  key: string;
+  title: string;
+  location: string;
+  all_day: boolean;
+  /** Timed events: UTC ISO. */
+  starts_at: string | null;
+  ends_at: string | null;
+  /** All-day events: first day and the day after the last. */
+  start_date: string | null;
+  end_date: string | null;
+}
+
 /** A coach report from the workout coach agent, with your verdict on it. */
 export interface WorkoutReport {
   id: string;

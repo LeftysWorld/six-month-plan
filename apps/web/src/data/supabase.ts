@@ -70,6 +70,8 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261201000000_day_order.sql', table: 'sessions', columns: ['day_order'] },
   { file: '20261202000000_progression.sql', table: 'sessions', columns: ['shoulder_pain'] },
   { file: '20261202000000_progression.sql', table: 'profiles', columns: ['training_state'] },
+  { file: '20261203000000_calendar.sql', table: 'calendar_feeds', columns: [], creates: true },
+  { file: '20261203000000_calendar.sql', table: 'calendar_events', columns: [], creates: true },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */
@@ -404,7 +406,7 @@ export function createSupabaseDb(sb: SupabaseClient, userId: string): Db {
       for (let i = 0; i < paths.length; i += 100) await sb.storage.from(BUCKET).remove(paths.slice(i, i + 100));
       // Children first so nothing is left pointing at a deleted row (the foreign keys cascade anyway).
       const order = [
-        'workout_reports', 'workout_plan_versions',
+        'calendar_feeds', 'workout_reports', 'workout_plan_versions',
         'attachments', 'goal_ideas', 'change_log', 'reviews', 'week_plans', 'measurements', 'workout_sets', 'workout_exercises', 'stretch_holds', 'sessions',
         'path_experiments', 'action_goals', 'action_schedules', 'actions', 'milestones', 'goal_targets',
         'plan_steps', 'plan_goals', 'goals', 'goal_groups', 'plans', 'paths', 'measurement_types',
