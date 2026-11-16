@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type Session, type SessionStatus, classOf, logsReading, planVariants, variantPlan } from '@six/core';
+import { type Session, type SessionStatus, classOf, logsReading, planVariants, variantName, variantPlan } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { opsLogSession, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
@@ -7,9 +7,9 @@ import { href } from '../router.ts';
 import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
 import { SessionFiles } from '../components/Attachments.tsx';
 import { lastReading, opsRecordReading, opsSetTaskGoals, readingOn } from '../data/connect.ts';
-import { WorkoutSheet } from '../components/Workout.tsx';
+import { clearWorkoutDraft, WorkoutSheet } from '../components/Workout.tsx';
 import { WorkoutChoice } from '../components/WorkoutChoice.tsx';
-import { fullPlanOn, isClassSession, planOn, sessionVariant } from '../data/progress.ts';
+import { fullPlanOn, isClassSession, opsChooseAgain, planOn, sessionVariant } from '../data/progress.ts';
 import { StretchSheet } from '../components/Stretch.tsx';
 import { LinkToGoal, needsGoalLink } from '../components/LinkToGoal.tsx';
 import { MoveDayPicker } from '../components/MoveDayPicker.tsx';
@@ -30,6 +30,14 @@ function savePick(sessionId: string, variant: string) {
     localStorage.setItem(pickKey(sessionId), variant);
   } catch {
     // Private mode: the pick lasts until the sheet closes.
+  }
+}
+
+function clearPick(sessionId: string) {
+  try {
+    localStorage.removeItem(pickKey(sessionId));
+  } catch {
+    // Private mode: nothing was kept.
   }
 }
 
@@ -98,10 +106,28 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
 
   // A session done as a class has no sets to log: it opens as an ordinary task.
   const hasWorkoutLog = action?.kind === 'workout' && !!action.workout_plan?.length && !isClassSession(session);
+  const hasSets = data.workoutSets.some((w) => w.session_id === session.id);
+  // A workout that rotates (Workout A, B, or a class) can always go back to that choice: picked the
+  // wrong one, or went to a class after all. Anything already logged for this session is cleared
+  // (asked first when that means sets), and one undo brings it back.
+  const rotating = action?.kind === 'workout' && planVariants(action.workout_plan ?? []).length > 0;
+  function chooseAgain() {
+    if (!action) return;
+    const logged = hasSets || session.status !== 'planned';
+    if (hasSets && !window.confirm('Choose again? The sets logged for this session will be cleared.')) return;
+    if (logged) {
+      const { ops, undo } = opsChooseAgain(data, action, session);
+      commit(ops);
+      toast('Cleared: choose again', () => commit(undo));
+    }
+    clearPick(session.id);
+    clearWorkoutDraft(session.id);
+    setPicked(null);
+    setGeneral(false);
+  }
   if (hasWorkoutLog && !general) {
     const full = fullPlanOn(data, action!, session, today);
     const rotates = planVariants(full).length > 0;
-    const hasSets = data.workoutSets.some((w) => w.session_id === session.id);
     if (rotates && !hasSets && !picked) {
       const pick = (variant: string) => {
         // Unchecked after being logged as a class: it's a gym day again, under the task's own name.
@@ -111,8 +137,10 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
       };
       return <WorkoutChoice session={session} action={action!} plan={full} onPick={pick} onGeneral={() => setGeneral(true)} onClose={onClose} />;
     }
-    const plan = rotates ? variantPlan(full, hasSets ? sessionVariant(data, action!, session, full) : picked) : planOn(data, action!, session, today);
-    return <WorkoutSheet session={session} plan={plan} onClose={onClose} onGeneral={() => setGeneral(true)} />;
+    const variant = rotates ? (hasSets ? sessionVariant(data, action!, session, full) : picked) : null;
+    const plan = rotates ? variantPlan(full, variant) : planOn(data, action!, session, today);
+    const chosen = rotates ? { name: variant ? variantName(variant) : 'This workout', change: chooseAgain } : undefined;
+    return <WorkoutSheet session={session} plan={plan} onClose={onClose} onGeneral={() => setGeneral(true)} chosen={chosen} />;
   }
   const hasStretchLog = action?.kind === 'stretch' && !!action.stretch_plan?.holds.length;
   if (hasStretchLog && !general) {
@@ -125,6 +153,11 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
       {hasWorkoutLog && (
         <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start', padding: 0 }} onClick={() => setGeneral(false)}>
           ‹ Log it set by set instead
+        </button>
+      )}
+      {rotating && isClassSession(session) && (
+        <button type="button" className="link-btn small" style={{ alignSelf: 'flex-start', padding: 0 }} onClick={chooseAgain}>
+          ‹ Change: the gym instead, or another class
         </button>
       )}
       {hasStretchLog && (

@@ -247,6 +247,15 @@ function lastEfforts(data: AppData, session: Session): Map<string, number> {
 
 const draftKey = (sessionId: string) => `six.workout.${sessionId}`;
 
+/** Drop the unfinished log kept on this device for a session (choosing a different workout starts clean). */
+export function clearWorkoutDraft(sessionId: string) {
+  try {
+    localStorage.removeItem(draftKey(sessionId));
+  } catch {
+    // storage blocked: nothing was kept
+  }
+}
+
 /** An exercise added during a workout; `keep` adds it to the task's plan when you finish. */
 type Extra = PlannedExercise & { keep?: boolean };
 interface Draft {
@@ -288,7 +297,20 @@ const clock = (t: number) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2,
  * finished exercise folds to what you actually did. Progress is kept on this device until you
  * finish, so a locked phone loses nothing.
  */
-export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { session: Session; plan: PlannedExercise[]; onClose: () => void; onGeneral?: () => void }) {
+export function WorkoutSheet({
+  session,
+  plan: basePlan,
+  onClose,
+  onGeneral,
+  chosen,
+}: {
+  session: Session;
+  plan: PlannedExercise[];
+  onClose: () => void;
+  onGeneral?: () => void;
+  /** For a workout picked from a choice (Workout A, B or a class): its name, and the way back to choose again. */
+  chosen?: { name: string; change: () => void };
+}) {
   const { data, today, commit } = useStore();
   const view = useView();
   const toast = useToast();
@@ -725,6 +747,14 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
   return (
     <Sheet title={session.title} onClose={onClose}>
       {needsGoalLink(data, session) && <LinkToGoal session={session} />}
+      {chosen && (
+        <div className="row-between small" style={{ gap: 8, marginTop: -8 }}>
+          <b>{chosen.name}</b>
+          <button type="button" className="link-btn small" onClick={chosen.change}>
+            Change: another workout or a class
+          </button>
+        </div>
+      )}
       <div className="stack-sm" style={{ marginTop: -8, gap: 8 }}>
         <div className="row-between small muted">
           <span>

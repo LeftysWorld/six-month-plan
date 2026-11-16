@@ -209,6 +209,32 @@ export function sessionVariant(data: AppData, action: Action, session: Session, 
   return nextVariant(variants, earlier.at(-1)?.variant ?? null);
 }
 
+/**
+ * Choose again for a rotating workout's session: whatever was picked or logged for it (a class
+ * marked done, a workout's sets) is cleared and the session is open again, on the same day and
+ * under the task's own name, so the next thing it shows is the gym-or-class choice. One undo puts
+ * everything back.
+ */
+export function opsChooseAgain(data: AppData, action: Action, session: Session): { ops: Op[]; undo: Op[] } {
+  const sets = data.workoutSets.filter((w) => w.session_id === session.id);
+  const logs = data.workoutExercises.filter((w) => w.session_id === session.id);
+  const { id, ...before } = session;
+  const patch = { status: 'planned', logged_at: null, actual_minutes: null, actual_count: null, title: classOf(session.title) ? action.title : session.title };
+  const asRows = (list: unknown[]) => list as ({ id: string } & Record<string, unknown>)[];
+  return {
+    ops: [
+      ...sets.map((w): Op => ({ kind: 'delete', collection: 'workoutSets', id: w.id })),
+      ...logs.map((w): Op => ({ kind: 'delete', collection: 'workoutExercises', id: w.id })),
+      { kind: 'update', collection: 'sessions', id, patch },
+    ],
+    undo: [
+      { kind: 'update', collection: 'sessions', id, patch: before as Record<string, unknown> },
+      ...(sets.length ? [{ kind: 'insert', collection: 'workoutSets', rows: asRows(sets) } as Op] : []),
+      ...(logs.length ? [{ kind: 'insert', collection: 'workoutExercises', rows: asRows(logs) } as Op] : []),
+    ],
+  };
+}
+
 /** A rotating workout's week so far: gym workouts and classes done, and the days she lifted. */
 export function rotationWeek(data: AppData, actionId: string, monday: ISODate): { gym: number; classes: number; planned: number; liftedOn: ISODate[] } {
   const week = data.sessions.filter((s) => s.action_id === actionId && s.status !== 'moved' && weekStart(dayOf(s)) === monday);

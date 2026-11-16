@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyData, type AppData } from '../src/data/model.ts';
-import { fullPlanOn, isClassSession, planOn, rotationWeek, sessionVariant } from '../src/data/progress.ts';
+import { applyOp } from '../src/data/model.ts';
+import { fullPlanOn, isClassSession, opsChooseAgain, planOn, rotationWeek, sessionVariant } from '../src/data/progress.ts';
 import type { Action, PlannedExercise, Session, WorkoutSet } from '@six/core';
 
 const ex = (name: string, variant?: string): PlannedExercise => ({ name, sets: 3, reps_min: 8, reps_max: 10, weight: null, weight_note: '', rest: '60 sec', note: '', ...(variant ? { variant } : {}) });
@@ -49,4 +50,28 @@ test('an ordinary workout is untouched: one plan, no rotation', () => {
   const data: AppData = { ...emptyData(), actions: [plain], sessions: [s] };
   assert.equal(sessionVariant(data, plain, s), null);
   assert.equal(planOn(data, plain, s, TODAY), plain.workout_plan);
+});
+
+test('choosing again: a class or a logged workout is cleared, the session is open on its day, and undo brings it back', () => {
+  // Logged a class, then went to the gym after all.
+  const cls = session('s1', '2026-11-17', 'done', 'Class: Water exercise', '2026-11-17T14:00:00Z');
+  const withClass: AppData = { ...emptyData(), actions: [action], sessions: [cls] };
+  const again = opsChooseAgain(withClass, action, cls);
+  const reopened = again.ops.reduce(applyOp, withClass);
+  const open = reopened.sessions[0]!;
+  assert.deepEqual([open.status, open.title, open.date, open.logged_at], ['planned', 'Strength day', '2026-11-17', null]);
+  assert.equal(isClassSession(open), false);
+  assert.equal(sessionVariant(reopened, action, open), 'A', 'the choice is back, with the next workout in turn');
+  assert.deepEqual(again.undo.reduce(applyOp, reopened).sessions[0], cls);
+
+  // Finished workout A, then it should have been something else: its sets go with it, and come back on undo.
+  const gym = session('s2', '2026-11-16', 'done', 'Strength day', '2026-11-16T14:00:00Z');
+  const withGym: AppData = { ...emptyData(), actions: [action], sessions: [gym], workoutSets: sets('s2', A) };
+  const redo = opsChooseAgain(withGym, action, gym);
+  const cleared = redo.ops.reduce(applyOp, withGym);
+  assert.equal(cleared.workoutSets.length, 0);
+  assert.equal(cleared.sessions[0]!.status, 'planned');
+  const back = redo.undo.reduce(applyOp, cleared);
+  assert.deepEqual(back.sessions[0], gym);
+  assert.deepEqual(back.workoutSets.map((w) => w.exercise).sort(), [...A].sort());
 });
