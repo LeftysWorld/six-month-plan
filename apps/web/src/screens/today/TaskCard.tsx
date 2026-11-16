@@ -1,11 +1,11 @@
 import { useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { shortDate, tallyText, type Session, logsReading } from '@six/core';
+import { planVariants, shortDate, tallyText, variantName, type Session, logsReading } from '@six/core';
 import { useStore } from '../../data/store.tsx';
 import { fmt, minutesText } from '../../data/derive.ts';
 import { useView } from '../../data/useView.ts';
 import { readingOn } from '../../data/connect.ts';
 import { talliesFor, tallyFor } from '../../data/tally.ts';
-import { planOn } from '../../data/progress.ts';
+import { planOn, sessionVariant } from '../../data/progress.ts';
 import { Icon } from '../../components/ui.tsx';
 import { WorkoutCardPlan } from '../../components/Workout.tsx';
 import { StretchCardPlan } from '../../components/Stretch.tsx';
@@ -40,6 +40,9 @@ export function TaskCard({ session, hint, onToggle, onOpen, swipe, grip, wrap }:
   if (s.status === 'skipped') meta = s.obstacles.length ? `Skipped · ${s.obstacles.join(', ')}` : 'Skipped';
   if (s.origin === 'unplanned') meta = s.status === 'planned' ? 'Extra today' : 'Logged extra';
   if (hint && s.status === 'planned') meta = [hint, meta].filter(Boolean).join(' · ');
+  // A rotating workout: which one is next, and that a class counts too.
+  const upNext = action?.kind === 'workout' && s.status === 'planned' && planVariants(action.workout_plan ?? []).length > 0 ? sessionVariant(data, action, s) : null;
+  if (upNext) meta = [`${variantName(upNext)} next, or a class`, meta].filter(Boolean).join(' · ');
   const fileCount = data.attachments.filter((a) => a.session_id === s.id).length;
   if (fileCount > 0) meta = [meta, fileCount === 1 ? '1 file' : `${fileCount} files`].filter(Boolean).join(' · ');
   if (tally?.t && s.status === 'planned') meta = [meta, `${tally.t.total} of ${tally.t.target} by ${shortDate(tally.m.due_date)}`].filter(Boolean).join(' · ');

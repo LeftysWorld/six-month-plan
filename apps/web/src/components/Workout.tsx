@@ -513,9 +513,11 @@ export function WorkoutSheet({ session, plan: basePlan, onClose, onGeneral }: { 
       ...(saved.length ? [{ kind: 'insert', collection: 'workoutSets', rows: saved as unknown as ({ id: string } & Record<string, unknown>)[] } as Op] : []),
     ];
     const kept = extras.filter((e) => e.keep);
+    // In a rotating workout, an exercise you keep joins the workout you added it to.
+    const keptVariant = basePlan.find((e) => e.variant)?.variant;
     const planOps: Op[] =
       kept.length && action
-        ? [{ kind: 'update', collection: 'actions', id: action.id, patch: { workout_plan: cleanPlan([...(action.workout_plan ?? basePlan), ...kept.map(({ keep: _k, ...e }) => ({ ...e, note: e.note === 'Added this workout' ? '' : e.note }))]) } }]
+        ? [{ kind: 'update', collection: 'actions', id: action.id, patch: { workout_plan: cleanPlan([...(action.workout_plan ?? basePlan), ...kept.map(({ keep: _k, ...e }) => ({ ...e, note: e.note === 'Added this workout' ? '' : e.note, ...(keptVariant ? { variant: keptVariant } : {}) }))]) } }]
         : [];
     const logs = opsSaveExerciseLogs(
       data,

@@ -24,6 +24,11 @@ export interface PlannedExercise {
    * Each keeps its own sets, weight and reps. `sets` is the number of rounds.
    */
   superset?: string;
+  /**
+   * Which workout this exercise belongs to when one task rotates between workouts ("A", "B"): each
+   * time you do the task you do one of them. An exercise with no label is in every workout.
+   */
+  variant?: string;
 }
 
 /** One set as logged. */
@@ -289,4 +294,55 @@ export function restSeconds(rest: string): number | null {
   const hi = m[2] ? Number(m[2]) : lo;
   const mins = /^m/i.test(m[3] ?? '') || (!m[3] && hi <= 5);
   return Math.round(((lo + hi) / 2) * (mins ? 60 : 1));
+}
+
+// ---------- Rotating workouts: one task, two or more workouts taken in turn ----------
+
+const variantOf = (e: PlannedExercise) => (e.variant ?? '').trim();
+
+/**
+ * The workouts a plan rotates between ("A", "B"), in the order they first appear. A plan whose
+ * exercises carry no `variant` is one workout, and this is empty.
+ */
+export function planVariants(plan: PlannedExercise[]): string[] {
+  return [...new Set(plan.map(variantOf).filter((v) => v !== ''))];
+}
+
+/** One workout of a rotating plan: its own exercises and any shared by all. An ordinary plan comes back whole. */
+export function variantPlan(plan: PlannedExercise[], variant: string | null): PlannedExercise[] {
+  if (!variant || planVariants(plan).length === 0) return plan;
+  return plan.filter((e) => variantOf(e) === '' || variantOf(e) === variant);
+}
+
+/**
+ * Which workout a logged session was, from the exercises it logged: the one with the most of its
+ * own exercises among them (the first on a tie). Null when none of them match.
+ */
+export function variantLogged(plan: PlannedExercise[], loggedNames: string[]): string | null {
+  const logged = new Set(loggedNames.map((n) => n.toLowerCase()));
+  const counts = planVariants(plan)
+    .map((variant) => ({ variant, n: plan.filter((e) => variantOf(e) === variant && logged.has(e.name.toLowerCase())).length }))
+    .filter((c) => c.n > 0)
+    .sort((a, b) => b.n - a.n);
+  return counts[0]?.variant ?? null;
+}
+
+/** The workout after `last` in the rotation; the first when nothing has been done yet. */
+export function nextVariant(variants: string[], last: string | null): string | null {
+  if (variants.length === 0) return null;
+  const at = last ? variants.indexOf(last) : -1;
+  return variants[(at + 1) % variants.length]!;
+}
+
+/** "Workout A" for a short label; a longer label ("Legs") stands on its own. */
+export function variantName(variant: string): string {
+  return variant.length <= 2 ? `Workout ${variant}` : variant;
+}
+
+/** A session done as a class instead of the gym workout is titled "Class: Water exercise". */
+export const CLASS_PREFIX = 'Class: ';
+
+/** The class a session was done as, or null for anything else. */
+export function classOf(title: string): string | null {
+  return title.startsWith(CLASS_PREFIX) ? title.slice(CLASS_PREFIX.length).trim() || null : null;
 }

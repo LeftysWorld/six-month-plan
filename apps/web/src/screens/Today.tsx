@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { addDays, hourIn, isoWeekday, minutesLeft, shortDate, weekDates, weekStart, weekdayName, type ISODate, type Session, logsReading } from '@six/core';
+import { addDays, hourIn, isoWeekday, minutesLeft, planVariants, shortDate, weekDates, weekStart, weekdayName, type ISODate, type Session, logsReading } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { minutesText } from '../data/derive.ts';
 import { useView } from '../data/useView.ts';
@@ -170,7 +170,13 @@ export function Today({ date }: { date?: ISODate } = {}) {
       toast(`You can check this off on ${weekdayName(day)}`);
       return;
     }
-    const kind = view.action(s.action_id)?.kind;
+    const action = view.action(s.action_id);
+    const kind = action?.kind;
+    // A rotating workout asks gym or class first, so its tick opens the choice.
+    if (s.status === 'planned' && kind === 'workout' && planVariants(action?.workout_plan ?? []).length > 0) {
+      setOpen(s);
+      return;
+    }
     if (s.status === 'planned' && logsReading(kind)) {
       setMeasuring(s);
       return;

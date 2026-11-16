@@ -3,10 +3,15 @@ import {
   deloadPlan,
   equipmentKind,
   exerciseClass,
+  classOf,
   isStalled,
   isTimedHold,
   isWeightType,
   nextTarget,
+  nextVariant,
+  planVariants,
+  variantLogged,
+  variantPlan,
   phaseSwitchDue,
   repCap,
   rollingAverage,
@@ -159,6 +164,15 @@ export function targetsFor(data: AppData, session: Session, plan: PlannedExercis
  * later, and workouts with no versions, use the plan as it is now.
  */
 export function planOn(data: AppData, action: Action, session: Session, today: ISODate): PlannedExercise[] {
+  const plan = fullPlanOn(data, action, session, today);
+  if (planVariants(plan).length === 0) return plan;
+  // A rotating workout: the session's own workout (A or B), and nothing for one done as a class.
+  if (isClassSession(session)) return [];
+  return variantPlan(plan, sessionVariant(data, action, session, plan));
+}
+
+/** The whole plan as it stood on the session's day: every workout of a rotating one. */
+export function fullPlanOn(data: AppData, action: Action, session: Session, today: ISODate): PlannedExercise[] {
   const current = action.workout_plan ?? [];
   const day = dayOf(session);
   if (day >= today) return current;
@@ -168,6 +182,39 @@ export function planOn(data: AppData, action: Action, session: Session, today: I
     .sort((a, b) => (a.effective_on !== b.effective_on ? (a.effective_on < b.effective_on ? -1 : 1) : (a.created_at ?? '') < (b.created_at ?? '') ? -1 : 1));
   const plan = versions.at(-1)?.plan as PlannedExercise[] | undefined;
   return Array.isArray(plan) && plan.length ? plan : current;
+}
+
+/** A session of a rotating workout that was done as a class instead ("Class: Water exercise"). */
+export function isClassSession(session: Session): boolean {
+  return session.status !== 'planned' && classOf(session.title) != null;
+}
+
+/**
+ * Which workout of a rotating plan a session is. Logged with sets: the one its exercises belong
+ * to. Otherwise the next in the rotation after the task's latest gym workout (for a session
+ * already logged without sets, the latest before its day). Null for an ordinary plan or a class.
+ */
+export function sessionVariant(data: AppData, action: Action, session: Session, plan: PlannedExercise[] = action.workout_plan ?? []): string | null {
+  const variants = planVariants(plan);
+  if (variants.length === 0 || isClassSession(session)) return null;
+  const namesOf = (id: string) => data.workoutSets.filter((w) => w.session_id === id).map((w) => w.exercise);
+  const own = variantLogged(plan, namesOf(session.id));
+  if (own) return own;
+  const before = session.status === 'planned' ? null : dayOf(session);
+  const earlier = data.sessions
+    .filter((s) => s.action_id === action.id && s.id !== session.id && logged(s) && (before == null || dayOf(s) < before))
+    .map((s) => ({ day: dayOf(s), at: s.logged_at ?? '', variant: variantLogged(plan, namesOf(s.id)) }))
+    .filter((s) => s.variant != null)
+    .sort((a, b) => (a.day !== b.day ? (a.day < b.day ? -1 : 1) : a.at < b.at ? -1 : 1));
+  return nextVariant(variants, earlier.at(-1)?.variant ?? null);
+}
+
+/** A rotating workout's week so far: gym workouts and classes done, and the days she lifted. */
+export function rotationWeek(data: AppData, actionId: string, monday: ISODate): { gym: number; classes: number; planned: number; liftedOn: ISODate[] } {
+  const week = data.sessions.filter((s) => s.action_id === actionId && s.status !== 'moved' && weekStart(dayOf(s)) === monday);
+  const done = week.filter((s) => s.status === 'done' || s.status === 'partial' || s.status === 'minimum');
+  const gym = done.filter((s) => !isClassSession(s));
+  return { gym: gym.length, classes: done.length - gym.length, planned: week.length, liftedOn: gym.map(dayOf) };
 }
 
 /**

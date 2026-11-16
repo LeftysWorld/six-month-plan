@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { linkWithNext, parseWorkoutPlan, planGroups, splitSupersets, suggestWeight, targetText } from '../src/workout.ts';
+import { classOf, linkWithNext, nextVariant, parseWorkoutPlan, planGroups, planVariants, splitSupersets, suggestWeight, targetText, variantLogged, variantName, variantPlan, type PlannedExercise } from '../src/workout.ts';
 
 const friday = `WARM-UP (every session)
 • Band pull-aparts or face pulls: 2×15
@@ -103,4 +103,21 @@ test('linking and unlinking exercises in the editor', () => {
   assert.equal(back[0]!.superset, undefined);
   const none = linkWithNext(linked, 0, false);
   assert.deepEqual(none.map((e) => e.superset), [undefined, undefined, undefined]);
+});
+
+test('a rotating plan: its workouts in order, each one\'s exercises, and what comes next', () => {
+  const e = (name: string, variant?: string): PlannedExercise => ({ name, sets: 3, reps_min: 8, reps_max: 10, weight: null, weight_note: '', rest: '', note: '', ...(variant ? { variant } : {}) });
+  const plan = [e('Squat', 'A'), e('Romanian Deadlift', 'A'), e('Chest Press Machine', 'A'), e('Leg Press', 'B'), e('Chest Press Machine', 'B'), e('Lat Pulldown', 'B'), e('Suitcase Carry')];
+  assert.deepEqual(planVariants(plan), ['A', 'B']);
+  assert.deepEqual(variantPlan(plan, 'B').map((x) => x.name), ['Leg Press', 'Chest Press Machine', 'Lat Pulldown', 'Suitcase Carry'], 'its own exercises and the shared one');
+  assert.equal(variantLogged(plan, ['leg press', 'Chest Press Machine']), 'B', 'the workout with the most of its own exercises logged');
+  assert.equal(variantLogged(plan, ['Something else']), null);
+  assert.deepEqual([nextVariant(['A', 'B'], null), nextVariant(['A', 'B'], 'A'), nextVariant(['A', 'B'], 'B')], ['A', 'B', 'A']);
+  assert.deepEqual([variantName('A'), variantName('Legs')], ['Workout A', 'Legs']);
+  // An ordinary plan is one workout: nothing rotates and nothing is filtered.
+  const ordinary = [e('Squat'), e('Leg Press')];
+  assert.deepEqual(planVariants(ordinary), []);
+  assert.equal(variantPlan(ordinary, 'A'), ordinary);
+  assert.equal(nextVariant([], null), null);
+  assert.deepEqual([classOf('Class: Water exercise'), classOf('Strength day'), classOf('Class: ')], ['Water exercise', null, null]);
 });

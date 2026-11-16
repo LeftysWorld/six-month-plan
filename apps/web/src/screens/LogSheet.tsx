@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type Session, type SessionStatus, logsReading } from '@six/core';
+import { type Session, type SessionStatus, classOf, logsReading, planVariants, variantPlan } from '@six/core';
 import { useStore } from '../data/store.tsx';
 import { useView } from '../data/useView.ts';
 import { opsLogSession, opsMoveSession, opsRestoreSession } from '../data/ops.ts';
@@ -8,10 +8,30 @@ import { OBSTACLES, Sheet, useToast } from '../components/ui.tsx';
 import { SessionFiles } from '../components/Attachments.tsx';
 import { lastReading, opsRecordReading, opsSetTaskGoals, readingOn } from '../data/connect.ts';
 import { WorkoutSheet } from '../components/Workout.tsx';
-import { planOn } from '../data/progress.ts';
+import { WorkoutChoice } from '../components/WorkoutChoice.tsx';
+import { fullPlanOn, isClassSession, planOn, sessionVariant } from '../data/progress.ts';
 import { StretchSheet } from '../components/Stretch.tsx';
 import { LinkToGoal, needsGoalLink } from '../components/LinkToGoal.tsx';
 import { MoveDayPicker } from '../components/MoveDayPicker.tsx';
+
+const pickKey = (sessionId: string) => `six.workout.variant.${sessionId}`;
+
+/** Which workout of a rotating one you picked for this session, kept on this device. */
+function readPick(sessionId: string): string | null {
+  try {
+    return localStorage.getItem(pickKey(sessionId));
+  } catch {
+    return null;
+  }
+}
+
+function savePick(sessionId: string, variant: string) {
+  try {
+    localStorage.setItem(pickKey(sessionId), variant);
+  } catch {
+    // Private mode: the pick lasts until the sheet closes.
+  }
+}
 
 /** Log an item beyond a one-tap check: amount, state, obstacles, note, or move it. */
 export function LogSheet({ session, onClose }: { session: Session; onClose: () => void }) {
@@ -40,6 +60,8 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
 
   // A workout with a plan opens the workout log; "Skip, move…" comes back here.
   const [general, setGeneral] = useState(false);
+  // A rotating workout asks which one (or a class) first; the pick is kept on this device with the draft.
+  const [picked, setPicked] = useState<string | null>(() => readPick(session.id));
   const minLabel = action?.min_label;
   const states: { value: SessionStatus; title: string; sub: string; amber?: boolean }[] = [
     { value: 'done', title: 'Done', sub: 'Full target met' },
@@ -74,9 +96,23 @@ export function LogSheet({ session, onClose }: { session: Session; onClose: () =
     onClose();
   }
 
-  const hasWorkoutLog = action?.kind === 'workout' && !!action.workout_plan?.length;
+  // A session done as a class has no sets to log: it opens as an ordinary task.
+  const hasWorkoutLog = action?.kind === 'workout' && !!action.workout_plan?.length && !isClassSession(session);
   if (hasWorkoutLog && !general) {
-    return <WorkoutSheet session={session} plan={planOn(data, action!, session, today)} onClose={onClose} onGeneral={() => setGeneral(true)} />;
+    const full = fullPlanOn(data, action!, session, today);
+    const rotates = planVariants(full).length > 0;
+    const hasSets = data.workoutSets.some((w) => w.session_id === session.id);
+    if (rotates && !hasSets && !picked) {
+      const pick = (variant: string) => {
+        // Unchecked after being logged as a class: it's a gym day again, under the task's own name.
+        if (classOf(session.title) && action) commit([{ kind: 'update', collection: 'sessions', id: session.id, patch: { title: action.title } }]);
+        savePick(session.id, variant);
+        setPicked(variant);
+      };
+      return <WorkoutChoice session={session} action={action!} plan={full} onPick={pick} onGeneral={() => setGeneral(true)} onClose={onClose} />;
+    }
+    const plan = rotates ? variantPlan(full, hasSets ? sessionVariant(data, action!, session, full) : picked) : planOn(data, action!, session, today);
+    return <WorkoutSheet session={session} plan={plan} onClose={onClose} onGeneral={() => setGeneral(true)} />;
   }
   const hasStretchLog = action?.kind === 'stretch' && !!action.stretch_plan?.holds.length;
   if (hasStretchLog && !general) {
