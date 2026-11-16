@@ -67,3 +67,16 @@ test('clearing the drafted milestones keeps the one you just ticked', () => {
   const after = run(d, applyUpdate(docStudyUpdate, d, TODAY, { pausePractice: true, clearMilestones: true }).ops);
   assert.deepEqual(after.milestones.map((m) => m.id), ['m1']);
 });
+
+test('updates are offered by account: a new account sees none of them, the account they were written for sees its own', async () => {
+  const { APP_UPDATES, updatesFor } = await import('../src/data/updates.ts');
+  const { emptyData } = await import('../src/data/model.ts');
+  // A fresh profile names no updates, so nothing is offered on Today or listed in Settings.
+  assert.deepEqual(updatesFor(emptyData().profile.app_updates), []);
+  assert.deepEqual(updatesFor(null), []);
+  assert.deepEqual(updatesFor([]), []);
+  // The profile that names them is offered exactly those, newest first; an unknown id is ignored.
+  assert.deepEqual(updatesFor(['glamping-site-group-2026-10', 'fermentation-group-2026-10-b', 'gone']).map((u) => u.id), ['fermentation-group-2026-10-b', 'glamping-site-group-2026-10']);
+  assert.equal(updatesFor(APP_UPDATES.map((u) => u.id)).length, APP_UPDATES.length);
+});
+

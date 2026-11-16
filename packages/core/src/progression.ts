@@ -322,7 +322,8 @@ export interface PhaseState {
   snoozed_until?: ISODate | null;
 }
 
-export const DEFAULT_PHASE: PhaseState = { phase: 'cut', target: 175 };
+/** Until a profile saves its own: building, with no cut to finish (a cut and its target weight are one person's, saved on their profile). */
+export const DEFAULT_PHASE: PhaseState = { phase: 'build', target: 0 };
 
 /** Saved on the profile (profiles.training_state). */
 export interface TrainingState extends PhaseState {

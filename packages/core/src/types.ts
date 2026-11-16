@@ -42,10 +42,12 @@ export interface Profile {
   workout_prefs?: Partial<import('./settings.ts').WorkoutPrefs> | null;
   /** Tape-measuring day and photo reminder. */
   body_prefs?: Partial<import('./settings.ts').BodyPrefs> | null;
-  /** The daily routine on Today, built around a wake-up time (routine.ts). Unset: the default at 7:00. */
+  /** The daily routine on Today: a wake-up time and your own items (routine.ts). Unset: no routine yet. */
   daily_routine?: Partial<import('./routine.ts').DailyRoutine> | null;
   /** Where training stands: the phase (cut until a weight, then build) and deload weeks you said no to. */
   training_state?: Partial<import('./progression.ts').TrainingState> | null;
+  /** Shipped plan updates (data/updates.ts) this account is offered, by id. Each is written for one person's plan, so a new account has none. */
+  app_updates?: string[] | null;
 }
 
 /**

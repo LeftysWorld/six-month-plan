@@ -4,6 +4,7 @@ import { useStore } from '../../data/store.tsx';
 import { useView } from '../../data/useView.ts';
 import { opsProfile } from '../../data/ops.ts';
 import { Icon, useToast } from '../../components/ui.tsx';
+import { RoutineEditor } from './RoutineEditor.tsx';
 
 const FOLD_KEY = 'six.routine.folded';
 
@@ -28,8 +29,9 @@ function inText(minutes: number): string {
 }
 
 /**
- * Your day, on Today between the check-in and the week's goals: the routine at clock times, built
- * around one wake-up time. On a rest day (no workout today) the pre-workout and the lift drop out.
+ * Your day, on Today between the check-in and the week's goals: your own routine at clock times,
+ * built around one wake-up time. The items are yours (Edit); the app ships none, so until you set
+ * it up the card only offers to. On a rest day (no workout today) workout-day items drop out.
  * What's under way or next is marked; what's past fades and drops its
  * note. Change "Up at" and the whole day moves with it. Folds to one line (remembered on this
  * device) that still says what's next.
@@ -65,10 +67,12 @@ export function DailyRoutine() {
     }
   };
 
+  const [editing, setEditing] = useState(false);
+
   const setWake = (wake: number) => {
     const before = data.profile.daily_routine ?? null;
-    // Only the wake-up is saved; the items come from the app, so changes to them (rest days) reach you.
-    commit(opsProfile({ daily_routine: { ...(data.profile.daily_routine ?? {}), wake, items: undefined } }));
+    // The items are yours and stay as saved: only the wake-up moves, and the day with it.
+    commit(opsProfile({ daily_routine: { ...(data.profile.daily_routine ?? {}), wake } }));
     const lights = routineRows({ ...routine, wake }, lift).at(-1);
     toast(`Up at ${timeOfDay(wake)}${lights ? ` · ${lights.item.what.toLowerCase()} ${timeOfDay(lights.start)}` : ''}`, () => commit(opsProfile({ daily_routine: before })));
   };
@@ -76,17 +80,36 @@ export function DailyRoutine() {
   const where = routineNow(rows, now);
   const focus = where.current ?? where.next;
   const focusRow = focus != null ? rows[focus]! : null;
-  const summary = focusRow
-    ? `${where.current != null ? 'Now' : 'Next'}: ${focusRow.item.what} · ${focusRow.time}`
-    : `Done for today · up at ${timeOfDay(routine.wake)}`;
+  const empty = routine.items.length === 0;
+  const summary = empty
+    ? 'Not set up yet'
+    : focusRow
+      ? `${where.current != null ? 'Now' : 'Next'}: ${focusRow.item.what} · ${focusRow.time}`
+      : `Done for today · up at ${timeOfDay(routine.wake)}`;
 
   if (folded) {
     return (
       <button type="button" className="ritual-fold routine-fold" onClick={() => fold(false)} aria-expanded={false}>
-        <span className="label">{lift ? 'Your day' : 'Rest day'}</span>
+        <span className="label">{lift || empty ? 'Your day' : 'Rest day'}</span>
         <span className="xsmall muted routine-fold-sub">{summary}</span>
         <Icon name="chevron" size={14} stroke={2.2} />
       </button>
+    );
+  }
+
+  if (empty) {
+    return (
+      <section className="card stack-sm routine" aria-label="Your day">
+        <button type="button" className="routine-head" onClick={() => fold(true)} aria-expanded>
+          <span className="label">Your day</span>
+          <Icon name="chevron" size={14} stroke={2.2} />
+        </button>
+        <span className="small muted">Your own routine at clock times: when you get up, meals, a walk, lights out. Set it up once and Today shows what's next.</span>
+        <button type="button" className="btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setEditing(true)}>
+          Set up my day
+        </button>
+        {editing && <RoutineEditor onClose={() => setEditing(false)} />}
+      </section>
     );
   }
 
@@ -107,6 +130,9 @@ export function DailyRoutine() {
             ))}
           </select>
         </label>
+        <button type="button" className="link-btn small" style={{ flex: 'none' }} onClick={() => setEditing(true)}>
+          Edit
+        </button>
       </div>
       <ol className="routine-list">
         {rows.map((r, i) => {
@@ -129,6 +155,7 @@ export function DailyRoutine() {
           );
         })}
       </ol>
+      {editing && <RoutineEditor onClose={() => setEditing(false)} />}
     </section>
   );
 }

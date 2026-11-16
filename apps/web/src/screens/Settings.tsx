@@ -816,7 +816,6 @@ function AdvancedSection({ demo, email, onSignOut }: ShellProps) {
         <button type="button" className="btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setPack(true)}>
           Review the plan pack
         </button>
-        <span className="set-hint">Smaller changes, applied with one tap (Today shows any that are waiting):</span>
         <AppUpdatesList />
       </SetCard>
       {pack && <PlanPackSheet onClose={() => setPack(false)} />}

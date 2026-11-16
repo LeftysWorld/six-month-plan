@@ -72,6 +72,7 @@ const MIGRATIONS: { file: string; table: string; columns: string[]; creates?: bo
   { file: '20261202000000_progression.sql', table: 'profiles', columns: ['training_state'] },
   { file: '20261203000000_calendar.sql', table: 'calendar_feeds', columns: [], creates: true },
   { file: '20261203000000_calendar.sql', table: 'calendar_events', columns: [], creates: true },
+  { file: '20261204000000_app_updates.sql', table: 'profiles', columns: ['app_updates'] },
 ];
 
 /** Columns older exports may still carry that the schema no longer has. */

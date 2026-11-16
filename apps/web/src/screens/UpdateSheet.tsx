@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../data/store.tsx';
-import { APP_UPDATES, applyUpdate, type AppUpdate } from '../data/updates.ts';
+import { applyUpdate, updatesFor, type AppUpdate } from '../data/updates.ts';
 import { Sheet, useToast } from '../components/ui.tsx';
 
 /** Review one app update: what it changes, its choices, then apply (with Undo). */
@@ -58,7 +58,7 @@ export function AppUpdatesNudge() {
   const { data, today } = useStore();
   const [open, setOpen] = useState<AppUpdate | null>(null);
   const [, bump] = useState(0);
-  const waiting = APP_UPDATES.filter((u) => {
+  const waiting = updatesFor(data.profile.app_updates).filter((u) => {
     try {
       if (localStorage.getItem(dismissKey(u)) === '1') return false;
     } catch {
@@ -102,9 +102,12 @@ export function AppUpdatesNudge() {
 export function AppUpdatesList() {
   const { data, today } = useStore();
   const [open, setOpen] = useState<AppUpdate | null>(null);
+  const mine = updatesFor(data.profile.app_updates);
+  if (mine.length === 0) return null;
   return (
     <>
-      {APP_UPDATES.map((u) => {
+      <span className="set-hint">Smaller changes, applied with one tap (Today shows any that are waiting):</span>
+      {mine.map((u) => {
         const p = u.preview(data, today);
         return (
           <div key={u.id} className="row-between small" style={{ gap: 10 }}>

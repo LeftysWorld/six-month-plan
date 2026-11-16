@@ -311,6 +311,8 @@ Everything a goal tracks (numbers like a distance or a waist, and photos) sits a
 
 ## App updates
 
+**Updates are per account.** Each one is written for one person's plan, so an account is offered only the updates its profile names (`profiles.app_updates`, a list of update ids; migration `20261204000000_app_updates.sql`). A new account is offered none, on Today or in Settings. To offer one, add its id to that profile's list. The same goes for anything personal: **Your day** on Today (wake-up, meals, supplements, lights out) ships with no items; each account writes its own with **Set up my day** / **Edit**, saved on its profile (`profiles.daily_routine`, `packages/core/src/routine.ts`, `apps/web/src/screens/today/RoutineEditor.tsx`), and a new account starts in *build* with no cut target (`DEFAULT_PHASE`).
+
 Small changes to your plan ship with the app as one-tap updates (`apps/web/src/data/updates.ts`): Today shows a line while one is waiting, **Review** lists what it changes and any choices, **Apply** makes the change, and Undo puts it back. Settings → Plans lists them all. The first: **Doc Film Academy: an hour a day** — the documentary goal's study task becomes 1 hour every day from Mon Nov 2, the course purchase is ticked, and the shoot/edit practice pauses until you add your own (optionally the drafted milestones go too).
 
 ## Goals: Backlog, Now, Roadmap

@@ -1,8 +1,9 @@
 /**
- * The daily routine shown on Today: a fixed day built around one wake-up time. Every item sits a
+ * The daily routine shown on Today: your own day, built around one wake-up time. Every item sits a
  * set number of minutes after waking, so moving the wake-up (7:00 → 6:00) moves the whole day
- * with it and the gaps stay the same: pre-workout 30 minutes after waking, lights out 16 hours in.
- * Saved on the profile (profiles.daily_routine); unset means the routine below at 7:00.
+ * with it and the gaps stay the same: breakfast 30 minutes after waking, lights out 16 hours in.
+ * Saved on the profile (profiles.daily_routine), wake-up and items both. The app ships no items
+ * of its own: a profile with none saved has no routine until its owner sets one up.
  */
 
 export interface RoutineItem {
@@ -25,17 +26,14 @@ export interface DailyRoutine {
   items: RoutineItem[];
 }
 
-export const DEFAULT_ROUTINE: DailyRoutine = {
-  wake: 7 * 60,
+/** The wake-up a routine starts from until you pick one: 7:00 am. */
+export const DEFAULT_WAKE = 7 * 60;
+
+/** What "Set up my day" starts you with: the two ends of the day, to change and add to. */
+export const STARTER_ROUTINE: DailyRoutine = {
+  wake: DEFAULT_WAKE,
   items: [
-    { at: 0, what: 'Wake up, glass of water' },
-    { at: 30, what: 'GHOST Legend pre-workout', note: 'Take it 20–30 min before you lift.', on: 'lift' },
-    { at: 60, minutes: 90, what: 'Lift, then stretch', on: 'lift' },
-    { at: 165, what: 'Whey shake #1 + creatine (5\u00a0g)', note: 'Mix the creatine right into the shake. It works the same at any time of day. Taking it daily is what matters.', rest_note: 'Rest day, same shake and creatine: taking it daily is what matters.' },
-    { at: 360, what: 'Whey shake #2', note: 'This replaces lunch. No caffeine after this point.' },
-    { at: 690, what: 'Dinner', note: 'Finish eating at least 3 hours before bed.' },
-    { at: 900, what: 'Magnesium bisglycinate', note: 'It helps you relax and sleep.' },
-    { at: 915, what: 'Deep Sleep Complex', note: 'Take it 30–45 min before bed.' },
+    { at: 0, what: 'Wake up' },
     { at: 960, what: 'Lights out', note: '8 hours of sleep, up at {wake}.' },
   ],
 };
@@ -43,11 +41,52 @@ export const DEFAULT_ROUTINE: DailyRoutine = {
 /** Wake-up choices: every 15 minutes from 4:00 to 9:00 am. */
 export const WAKE_CHOICES: number[] = Array.from({ length: (9 * 60 - 4 * 60) / 15 + 1 }, (_, i) => 4 * 60 + i * 15);
 
-/** The saved routine, or the default; a bad wake-up falls back to 7:00. */
+/** The saved routine; none saved is an empty day at 7:00. A bad wake-up falls back to 7:00. */
 export function dailyRoutine(raw: Partial<DailyRoutine> | null | undefined): DailyRoutine {
-  const wake = typeof raw?.wake === 'number' && raw.wake >= 0 && raw.wake < 24 * 60 ? Math.round(raw.wake) : DEFAULT_ROUTINE.wake;
-  const items = Array.isArray(raw?.items) && raw.items.length ? raw.items.filter((i) => i && typeof i.at === 'number' && typeof i.what === 'string') : DEFAULT_ROUTINE.items;
+  const wake = typeof raw?.wake === 'number' && raw.wake >= 0 && raw.wake < 24 * 60 ? Math.round(raw.wake) : DEFAULT_WAKE;
+  const items = Array.isArray(raw?.items) ? raw.items.filter((i) => i && typeof i.at === 'number' && typeof i.what === 'string') : [];
   return { wake, items: [...items].sort((a, b) => a.at - b.at) };
+}
+
+/**
+ * Minutes after waking for a clock time (minutes after midnight). A time earlier than the wake-up
+ * belongs to the end of the day: with a 7:00 wake-up, 12:30 am is 17½ hours in, not 6½ hours before.
+ */
+export function afterWaking(wake: number, clock: number): number {
+  return (((Math.round(clock) - wake) % 1440) + 1440) % 1440;
+}
+
+/**
+ * A routine as edited, ready to save: items with nothing written are dropped, text is trimmed, an
+ * empty note or "which days" is left off, and the day is in time order.
+ */
+export function cleanRoutine(wake: number, items: RoutineItem[]): DailyRoutine {
+  const tidy = (item: RoutineItem): RoutineItem => {
+    const note = (item.note ?? '').trim();
+    const rest = (item.rest_note ?? '').trim();
+    return {
+      at: Math.min(1439, Math.max(0, Math.round(item.at))),
+      ...(item.minutes && item.minutes > 0 ? { minutes: Math.round(item.minutes) } : {}),
+      what: item.what.trim(),
+      ...(note ? { note } : {}),
+      ...(item.on === 'lift' || item.on === 'rest' ? { on: item.on } : {}),
+      ...(rest ? { rest_note: rest } : {}),
+    };
+  };
+  return { wake: dailyRoutine({ wake }).wake, items: items.filter((i) => i.what.trim()).map(tidy).sort((a, b) => a.at - b.at) };
+}
+
+/** "07:30" (a time input's value) for minutes after midnight, and back; a bad value reads as null. */
+export function clockValue(minutes: number): string {
+  const m = ((Math.round(minutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+export function clockMinutes(value: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(value.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h < 24 && min < 60 ? h * 60 + min : null;
 }
 
 /** "7:00 am", "1:00 pm", "12:30 am" from minutes after midnight (wrapping past midnight). */

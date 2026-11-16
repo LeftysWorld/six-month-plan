@@ -620,3 +620,13 @@ export const stretchPicturesUpdate: AppUpdate = {
  * and retired: the splits moved to a weekly check, and offering it again would set them back to daily.
  */
 export const APP_UPDATES: AppUpdate[] = [stretchPicturesUpdate, fermentUpdate, glampGroupUpdate, docStudyUpdate];
+
+/**
+ * The updates an account is offered. Each one is written for one person's plan (a fermentation
+ * group, a course they bought), so it reaches only the accounts whose profile names it by id
+ * (profiles.app_updates); a new account is offered none, on Today or in Settings.
+ */
+export function updatesFor(offered: string[] | null | undefined): AppUpdate[] {
+  const ids = new Set(offered ?? []);
+  return APP_UPDATES.filter((u) => ids.has(u.id));
+}
