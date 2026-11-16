@@ -51,6 +51,9 @@ test('a rep cap brings long ranges down to it and leaves bodyweight lifts alone'
   assert.equal(capPlan(ex('Flat DB Bench Press', 3, 8, 12, 55), 12).reps_min, 8);
   assert.equal(capPlan(ex('Sit-Up Bench Crunch', 3, 12, 15, null, 'bodyweight'), 12).reps_max, 15);
   assert.equal(capPlan(ex('Fly', 3, 12, 15, 25), 0).reps_max, 15);
+  // Timed holds count seconds, so the cap leaves them alone.
+  assert.deepEqual([capPlan(ex('Assisted Dead Hang', 3, 20, 30, null, '~62.5 lb assist'), 12).reps_min, capPlan(ex('Assisted Dead Hang', 3, 20, 30, null, '~62.5 lb assist'), 12).reps_max], [20, 30]);
+  assert.equal(capPlan(ex('Seated Dumbbell Hold', 3, 30, 40, 50), 12).reps_max, 40);
 });
 
 test("the week sheet lays the coach's swap over the plan and gives every lift its next target", () => {

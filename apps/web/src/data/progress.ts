@@ -4,6 +4,7 @@ import {
   equipmentKind,
   exerciseClass,
   isStalled,
+  isTimedHold,
   isWeightType,
   nextTarget,
   phaseSwitchDue,
@@ -88,11 +89,12 @@ function stepsFor(data: AppData, ex: PlannedExercise): ProgressionSteps {
 }
 
 /**
- * The plan's range under your rep cap (Settings → Training): bodyweight lifts are left alone; a range
- * that reaches past the cap ends at it and starts 2 below (12–15 → 10–12, 15 → 10–12).
+ * The plan's range under your rep cap (Settings → Training): bodyweight lifts and timed holds (their
+ * numbers are seconds) are left alone; a range that reaches past the cap ends at it and starts 2 below
+ * (12–15 → 10–12, 15 → 10–12).
  */
 export function capPlan(ex: PlannedExercise, maxReps: number): PlannedExercise {
-  if (!maxReps || maxReps <= 0 || ex.reps_max <= maxReps || exerciseClass(ex) === 'bodyweight') return ex;
+  if (!maxReps || maxReps <= 0 || ex.reps_max <= maxReps || exerciseClass(ex) === 'bodyweight' || isTimedHold(ex.name)) return ex;
   return { ...ex, reps_max: maxReps, reps_min: Math.max(1, Math.min(ex.reps_min, maxReps - 2)) };
 }
 

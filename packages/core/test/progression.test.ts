@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deloadPlan, exerciseClass, isStalled, nextTarget, phaseSwitchDue, repCap, type ExerciseSession, type PlannedExercise } from '../src/index.ts';
+import { deloadPlan, exerciseClass, isStalled, isTimedHold, nextTarget, phaseSwitchDue, repCap, type ExerciseSession, type PlannedExercise } from '../src/index.ts';
 
 const ex = (name: string, sets: number, lo: number, hi: number, weight: number | null, extra: Partial<PlannedExercise> = {}): PlannedExercise => ({ name, sets, reps_min: lo, reps_max: hi, weight, weight_note: '', rest: '', note: '', ...extra });
 const sess = (date: string, weight: number | null, reps: number[], deload = false): ExerciseSession => ({ date, deload, sets: reps.map((r) => ({ weight, reps: r, done: true })) });
@@ -145,4 +145,13 @@ test('a plan weight you changed since the last session wins; an old longer plan 
   const curl = nextTarget({ ex: ex('Seated DB Curl', 3, 10, 12, 25), history: [sess('2026-11-03', 25, [12, 12, 12]), sess('2026-11-10', 25, [12, 12, 12, 10])] });
   assert.deepEqual([curl.why, curl.sets], ['hold', 4]);
   assert.equal(nextTarget({ ex: ex('Hammer Strength Back Extension', 4, 10, 15, null, { weight_note: 'bodyweight' }), history: [sess('2026-10-29', null, [12, 12, 12, 10])] }).text, 'Get every set to 15.');
+});
+
+test('timed holds: a hang or a hold counts seconds, and an assisted hang still progresses by less assist', () => {
+  for (const n of ['Assisted Dead Hang', 'Seated Dumbbell Hold', 'Plank', "Farmer's Holds"]) assert.equal(isTimedHold(n), true, n);
+  for (const n of ['Seated DB Shrug', 'Hanging Leg Raise', 'Flat DB Bench Press', 'Glute Bridge']) assert.equal(isTimedHold(n), false, n);
+  const hang = nextTarget({ ex: ex('Assisted Dead Hang', 3, 20, 30, null, { weight_note: '~62.5 lb assist' }), history: [sess('2026-11-18', 62.5, [30, 30, 30])] });
+  assert.deepEqual([hang.cls, hang.why, hang.weight, hang.reps_max], ['assisted', 'assist_down', 57.5, 30]);
+  const hold = nextTarget({ ex: ex('Seated Dumbbell Hold', 3, 30, 40, 50), history: [sess('2026-11-18', 50, [40, 35, 30])] });
+  assert.deepEqual([hold.why, hold.weight, hold.reps_min, hold.reps_max], ['hold', 50, 30, 40]);
 });

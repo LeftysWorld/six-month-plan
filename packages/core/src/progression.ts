@@ -47,6 +47,14 @@ export function exerciseClass(ex: Pick<PlannedExercise, 'name' | 'weight_note'> 
   return 'isolation';
 }
 
+/**
+ * Timed holds (a dead hang, a dumbbell hold, a plank): the plan's "reps" are seconds held, so a rep
+ * cap doesn't apply to them (20–30 s stays 20–30, not 10–12).
+ */
+export function isTimedHold(name: string): boolean {
+  return /\b(holds?|hangs?|planks?)\b/i.test(name);
+}
+
 /** One set as logged, with its reps in reserve when given. */
 export interface LoggedSet {
   weight: number | null;
