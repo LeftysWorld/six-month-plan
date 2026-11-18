@@ -145,6 +145,23 @@ test('from Nov 2: Wednesday and Sunday off, lifting and stretching Mon, Tue, Thu
   assert.ok(titlesOn(after, '2026-11-04').includes('Read'));
 });
 
+test('a six-day week keeps its Wednesday: a workout added there later is not moved, and no update is offered', () => {
+  const d = base();
+  let after = run(d, opsApplySplitsPack(d, TODAY, all(d)).ops);
+  assert.equal(previewSplitsPack(after, TODAY).state, 'current');
+  // Later, a sixth workout goes on Wednesday on purpose: Mon to Sat, one a day.
+  after = run(after, [
+    { kind: 'insert', collection: 'actions', rows: [{ ...action('w6', 'Light Day: Glutes, Core & Grip', 'workout') }] },
+    { kind: 'insert', collection: 'schedules', rows: [{ ...days('w6', [3]) }] },
+  ]);
+  after = run(after, opsEnsureWeek(after, '2026-11-02'));
+  const p = previewSplitsPack(after, '2026-11-03');
+  assert.deepEqual(p.moving, [], 'moving would put two workouts on Saturday');
+  assert.equal(p.state, 'current', p.updates.join(' | '));
+  assert.deepEqual(titlesOn(after, '2026-11-04').filter((x) => /Light Day/.test(x)), ['Light Day: Glutes, Core & Grip']);
+  assert.deepEqual(liftOn(after, '2026-11-07'), ['Chest & Back C']);
+});
+
 test('one Undo puts everything back, and applying again has nothing to do', () => {
   const d = buggyWeek();
   const { ops, undo } = opsApplySplitsPack(d, TODAY, all(d));

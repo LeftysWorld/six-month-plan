@@ -16,6 +16,7 @@ import { withPictures } from './plans/stretchPictures.ts';
  * - the old stretching task (and the Sunday splits-gap measure) stop the day before the plan starts
  * - workouts move off Wednesday from this week: Wed → Thu, Thu → Fri, Fri → Sat. This week keeps one
  *   of each workout, on its new day: a copy left on the old day is taken off.
+ *   A six-day week (a workout every day Mon to Sat) keeps its Wednesday: there is no free day to move into.
  * Nothing logged is lost: stopped tasks keep their history. The whole change can be undone at once.
  *
  * Already applied an earlier version (the one that started Nov 2, in its own group)? The same step
@@ -158,18 +159,21 @@ export function previewSplitsPack(data: AppData, today: ISODate): PackPreview {
   // so applying again moves nothing.
   const workouts = data.actions.filter((a) => !a.archived_at && a.kind === 'workout');
   const onWednesday = workouts.some((a) => liveSchedules(data, a.id, monday).some((s) => s.rule === 'days' && s.days.includes(3)));
-  const moving: PackPreview['moving'] = [];
-  if (onWednesday) {
-    for (const a of workouts) {
-      // The schedule in effect this week (an update to the Nov 2 version also has one from Nov 2).
-      const s = liveSchedules(data, a.id, monday)
-        .filter((x) => x.rule === 'days' && x.effective_from <= addDays(monday, 6))
-        .sort((x, y) => (x.effective_from < y.effective_from ? 1 : -1))[0];
-      if (!s) continue;
-      const to = movedDays(s.days);
-      if (to) moving.push({ action: a, from: [...s.days].sort((x, y) => x - y), to });
-    }
-  }
+  // The schedule in effect this week (an update to the Nov 2 version also has one from Nov 2).
+  const inEffect = (a: Action) =>
+    liveSchedules(data, a.id, monday)
+      .filter((x) => x.rule === 'days' && x.effective_from <= addDays(monday, 6))
+      .sort((x, y) => (x.effective_from < y.effective_from ? 1 : -1))[0];
+  const week = workouts
+    .map((action) => ({ action, days: inEffect(action)?.days }))
+    .filter((w): w is { action: Action; days: number[] } => w.days != null)
+    .map((w) => ({ action: w.action, from: [...w.days].sort((x, y) => x - y), to: movedDays(w.days) }));
+  // Moving needs a free day to move into. With a workout on every day Mon to Sat (a six-day week),
+  // Wed → Thu → Fri → Sat would stack two on Saturday: then Wednesday is a training day by choice
+  // and nothing moves.
+  const doubled = (days: number[]) => days.length - new Set(days).size;
+  const stacks = doubled(week.flatMap((w) => w.to ?? w.from)) > doubled(week.flatMap((w) => w.from));
+  const moving: PackPreview['moving'] = onWednesday && !stacks ? week.flatMap((w) => (w.to ? [{ action: w.action, from: w.from, to: w.to }] : [])) : [];
   const extras = moving.flatMap((m) => fitWeek(data, m.action.id, m.to, monday, today).remove);
 
   const updates: string[] = [];
